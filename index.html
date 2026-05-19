@@ -504,6 +504,66 @@
   .kpi.kpi-empty .kpi-accent-bar{background:var(--border);}
   .kpi.kpi-empty .kpi-sub{color:var(--text-mute);}
 
+  /* KPI clickeable (service crítico): chevron sutil + hover marcado */
+  .kpi.kpi-clickable{cursor:pointer;}
+  .kpi.kpi-clickable:hover{background:var(--bg-elev);outline:1px solid var(--border-accent);outline-offset:-1px;}
+  .kpi.kpi-clickable .kpi-label::after{content:' ›';color:var(--text3);font-weight:400;}
+
+  /* Service crítico modal */
+  .sv-modal-overlay{
+    position:fixed;inset:0;background:rgba(0,0,0,.72);
+    display:none;align-items:center;justify-content:center;z-index:1000;
+  }
+  .sv-modal-overlay.open{display:flex;animation:svFadeIn .15s ease-out;}
+  @keyframes svFadeIn{from{opacity:0}to{opacity:1}}
+  .sv-modal{
+    background:var(--bg2);border:1px solid var(--border);
+    max-width:820px;width:92%;max-height:82vh;overflow:hidden;
+    display:flex;flex-direction:column;
+    box-shadow:0 24px 60px rgba(0,0,0,.5);
+  }
+  .sv-modal-head{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:18px 22px 14px;border-bottom:1px solid var(--border);
+  }
+  .sv-modal-title{
+    font-family:'IBM Plex Sans',sans-serif;font-size:12px;
+    text-transform:uppercase;letter-spacing:.14em;color:var(--text2);
+    font-weight:600;
+  }
+  .sv-modal-title b{color:var(--red);font-weight:700;}
+  .sv-modal-close{
+    background:none;border:none;color:var(--text3);
+    width:34px;height:34px;cursor:pointer;font-size:22px;line-height:1;
+    border-radius:0;
+  }
+  .sv-modal-close:hover{color:var(--text);}
+  .sv-modal-list{overflow-y:auto;}
+  .sv-row{
+    display:grid;grid-template-columns:88px 1fr 110px 110px 96px;gap:14px;
+    align-items:center;padding:12px 22px;
+    border-bottom:1px solid var(--divider);cursor:pointer;
+    transition:background var(--t-fast) var(--ease);
+  }
+  .sv-row:hover{background:var(--bg-elev);}
+  .sv-row:last-child{border-bottom:none;}
+  .sv-cod{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:var(--accent);}
+  .sv-nom{font-size:13px;color:var(--text);line-height:1.35;}
+  .sv-hr{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text2);text-align:right;}
+  .sv-hr small,.sv-rest small{display:block;color:var(--text3);font-size:9px;text-transform:uppercase;letter-spacing:.1em;font-weight:500;margin-bottom:2px;font-family:'IBM Plex Sans',sans-serif;}
+  .sv-rest{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;text-align:right;color:var(--red);}
+  .sv-rest.amber{color:var(--amber);}
+  .sv-fuente{
+    font-family:'JetBrains Mono',monospace;font-size:9px;
+    color:var(--text3);text-transform:uppercase;letter-spacing:.08em;
+    padding:3px 6px;border:1px solid var(--border2);text-align:center;
+  }
+  @media (max-width:680px){
+    .sv-row{grid-template-columns:74px 1fr auto;gap:10px;padding:10px 14px;}
+    .sv-row .sv-hr,.sv-row .sv-fuente{display:none;}
+    .sv-modal-head{padding:14px 16px 12px;}
+  }
+
   /* ═══════════════════════════════════════════════════════════════
      TABLAS
   ═══════════════════════════════════════════════════════════════ */
@@ -1235,6 +1295,17 @@
   </div>
   <div id="errorState" class="state-msg" style="display:none"></div>
 </main>
+
+<!-- Modal: equipos con service en estado crítico -->
+<div class="sv-modal-overlay" id="svModalOverlay" onclick="if(event.target===this)closeServiceCriticoModal()" role="dialog" aria-modal="true" aria-labelledby="svModalTitle">
+  <div class="sv-modal">
+    <div class="sv-modal-head">
+      <div class="sv-modal-title" id="svModalTitle">Service <b>crítico</b> · <span id="svModalCount">0</span> equipos</div>
+      <button class="sv-modal-close" onclick="closeServiceCriticoModal()" title="Cerrar (Esc)" aria-label="Cerrar">×</button>
+    </div>
+    <div class="sv-modal-list" id="svModalList"></div>
+  </div>
+</div>
 
 <script>
 /* ═══════════════════════════════════════════════════════
@@ -2672,19 +2743,51 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
   const totalEquipos=Object.keys(window._estadoEquipos||{}).length;
 
   // Service: contar equipos en rango crítico según PANEL_PROGRAMA
-  // Usa hr/km del último service como base si no hay otra lectura disponible.
+  // Prioridad para hr "actual": combustible (lectura más fresca) > horómetros precargados > último service.
+  // También armamos la lista de equipos rojos para el modal del KPI clickeable.
   let serviceCritico=0, serviceAmber=0, serviceGreen=0, serviceConDatos=0;
   const sp=window._servicePanel||{};
+  const _criticosList=[];
+  const _numClean=v=>{const n=parseFloat(String(v||'').replace(/[^\d.,-]/g,'').replace(',','.'));return isFinite(n)?n:null;};
   for(const codN of Object.keys(sp)){
+    const comb=(window._combustiblePorEquipo||{})[codN];
     const hor=(window._horometros||{})[codN];
-    const hrActual=hor?.actual||sp[codN].ultHrKm;
+    let hrActual, fuente;
+    if(comb && comb.ultimaHr!=null){ hrActual=comb.ultimaHr; fuente='combustible'; }
+    else if(hor?.actual){ hrActual=hor.actual; fuente='horómetro'; }
+    else { hrActual=sp[codN].ultHrKm; fuente='último service'; }
     const c=clasificarServicio(sp[codN],hrActual);
     if(c==='gray')continue;
     serviceConDatos++;
-    if(c==='red')serviceCritico++;
+    if(c==='red'){
+      serviceCritico++;
+      const info=(window._estadoEquipos||{})[codN]||{};
+      const estN=_numClean(sp[codN].estHrKm);
+      const hrN=_numClean(hrActual);
+      _criticosList.push({
+        codN,
+        codigo: info.rawCod || sp[codN].codigo || codN,
+        nombre: info.equipo || sp[codN].descripcion || '',
+        hrActual: hrN,
+        hrActualFmt: (typeof hrActual==='number') ? fmtInt(hrActual) : String(hrActual||'—'),
+        estimado: estN,
+        estimadoFmt: sp[codN].estHrKm || '—',
+        restantes: (estN!=null && hrN!=null) ? (estN-hrN) : null,
+        fuente,
+        ultFecha: comb?.ultimaFecha || sp[codN].ultFecha || '',
+      });
+    }
     else if(c==='amber')serviceAmber++;
     else serviceGreen++;
   }
+  // Más pasado (restantes más negativo) primero.
+  _criticosList.sort((a,b)=>{
+    const ra=a.restantes==null?Infinity:a.restantes;
+    const rb=b.restantes==null?Infinity:b.restantes;
+    return ra-rb;
+  });
+  window._serviceCriticosList=_criticosList;
+
   const serviceClass=serviceCritico>0?'red':(serviceAmber>0?'amber':'green');
   const serviceSub=serviceConDatos>0
     ? `${serviceAmber} próximo · ${serviceGreen} ok · ${Object.keys(sp).length-serviceConDatos} sin datos`
@@ -2700,7 +2803,7 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
     <div class="kpi${totalEquipos?'':' kpi-empty'}"><div class="kpi-label">operativos</div><div class="kpi-val green">${fmtInt(operativosAbs)}<span style="font-size:18px;color:var(--text3);font-weight:400"> / ${totalEquipos?fmtInt(totalEquipos):'—'}</span></div><div class="kpi-sub">estado verde en CÓDIGOS</div><div class="kpi-accent-bar green"></div></div>
     <div class="kpi${pendActivos?'':' kpi-empty'}"><div class="kpi-label">pedidos activos</div><div class="kpi-val ${pendActivos>10?'red':'amber'}">${fmtInt(pendActivos)}</div><div class="kpi-sub">pendiente · parcial · comprado</div><div class="kpi-accent-bar ${pendActivos>10?'red':'amber'}"></div></div>
     <div class="kpi${enReparacion?'':' kpi-empty'}"><div class="kpi-label">equipos en reparación</div><div class="kpi-val amber">${fmtInt(enReparacion)}</div><div class="kpi-sub">estado naranja en CÓDIGOS</div><div class="kpi-accent-bar amber"></div></div>
-    <div class="kpi${_kpiServiceEmpty?' kpi-empty':''}"><div class="kpi-label">service crítico</div><div class="kpi-val ${serviceClass}">${fmtInt(serviceCritico)}</div><div class="kpi-sub">${serviceSub}</div><div class="kpi-accent-bar ${serviceClass}"></div></div>
+    <div class="kpi${_kpiServiceEmpty?' kpi-empty':''}${serviceCritico>0?' kpi-clickable':''}"${serviceCritico>0?' onclick="openServiceCriticoModal()" title="Ver lista de equipos críticos"':''}><div class="kpi-label">service crítico</div><div class="kpi-val ${serviceClass}">${fmtInt(serviceCritico)}</div><div class="kpi-sub">${serviceSub}</div><div class="kpi-accent-bar ${serviceClass}"></div></div>
     <div class="kpi${_kpiCostoEmpty?' kpi-empty':''}"><div class="kpi-label">costo en repuestos</div><div class="kpi-val amber">${totalCostoMes>0?formatMoney(totalCostoMes):'—'}</div><div class="kpi-sub">${MES_ACTUAL.label} · ${fmtInt(entConCosto)} entregas con costo</div><div class="kpi-accent-bar amber"></div></div>
     <div class="kpi${_kpiHorasEmpty?' kpi-empty':''}"><div class="kpi-label">horas en taller</div><div class="kpi-val">${horasTotalFlota>0?fmtInt(horasTotalFlota)+' hr':'—'}</div><div class="kpi-sub">acumuladas 2026 · flota</div><div class="kpi-accent-bar blue"></div></div>
     <div class="kpi kpi-empty" id="kpiDispCard"><div class="kpi-label">disponibilidad global</div><div class="kpi-val" id="kpiDisp">—</div><div class="kpi-sub">cargando…</div><div class="kpi-accent-bar" id="kpiDispBar"></div></div>
@@ -3722,6 +3825,71 @@ window.diag=function(codigo){
 };
 // Exponer también pickCol y COLS_PED para que diag los use (están dentro de openEquipoDetail por ahora)
 // Si están definidos en otro scope, diag igual funciona con la guarda inline.
+
+/* ═══════════════════════════════════════════════════════════════════
+   MODAL: Service crítico — lista clickeable de equipos pasados/al borde
+═══════════════════════════════════════════════════════════════════ */
+function openServiceCriticoModal(){
+  const list=window._serviceCriticosList||[];
+  const wrap=document.getElementById('svModalList');
+  const count=document.getElementById('svModalCount');
+  const overlay=document.getElementById('svModalOverlay');
+  if(!wrap||!overlay)return;
+  count.textContent=fmtInt(list.length);
+  const _esc=s=>String(s==null?'':s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  if(!list.length){
+    wrap.innerHTML='<div style="padding:36px;text-align:center;color:var(--text3);font-size:13px">Sin equipos en estado crítico.</div>';
+  }else{
+    wrap.innerHTML=list.map(c=>{
+      const restCls = (c.restantes!=null && c.restantes>0) ? ' amber' : '';
+      const restStr = c.restantes==null ? '—'
+        : c.restantes<=0 ? `−${fmtInt(Math.abs(c.restantes))}`
+        : fmtInt(c.restantes);
+      const restLbl = c.restantes==null ? 'sin estimado'
+        : c.restantes<=0 ? 'pasado'
+        : 'restantes';
+      const ce=c.codigo.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      return `<div class="sv-row" onclick="_irAEquipoDesdeKpi('${ce}')" title="Abrir detalle del equipo">
+        <div class="sv-cod">${_esc(c.codigo)}</div>
+        <div class="sv-nom">${_esc(c.nombre||'—')}</div>
+        <div class="sv-hr"><small>actual</small>${_esc(c.hrActualFmt||'—')}</div>
+        <div class="sv-hr"><small>próximo</small>${_esc(c.estimadoFmt||'—')}</div>
+        <div class="sv-rest${restCls}"><small>${restLbl}</small>${restStr}</div>
+      </div>`;
+    }).join('');
+  }
+  overlay.classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closeServiceCriticoModal(){
+  const overlay=document.getElementById('svModalOverlay');
+  if(!overlay)return;
+  overlay.classList.remove('open');
+  document.body.style.overflow='';
+}
+function _irAEquipoDesdeKpi(codigo){
+  closeServiceCriticoModal();
+  const id='eqcard_'+String(codigo).replace(/[^a-z0-9]/gi,'_');
+  const open=()=>{
+    const card=document.getElementById(id);
+    if(!card)return false;
+    // Si los filtros lo dejaron oculto, lo des-ocultamos puntualmente para que aparezca.
+    card.classList.remove('hidden');
+    toggleEquipoDetail(codigo,card);
+    card.scrollIntoView({behavior:'smooth',block:'center'});
+    return true;
+  };
+  if(!open())setTimeout(open,80);
+}
+// Esc cierra el modal de service crítico.
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    const ov=document.getElementById('svModalOverlay');
+    if(ov&&ov.classList.contains('open'))closeServiceCriticoModal();
+  }
+});
 
 loadAll();
 </script>
