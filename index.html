@@ -4,7 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="theme-color" content="#0c0e12">
 <title>Panel de Mantenimiento — INGECO</title>
+<!-- PWA: manifest, iconos y meta para "Add to Home Screen" en iOS -->
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="INGECOV">
 <!-- preconnect a CDNs externos: reduce el round-trip TLS antes de pedir las fuentes -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -4382,6 +4391,32 @@ document.addEventListener('keydown',e=>{
 });
 
 loadAll();
+
+/* ═══════════════════════════════════════════════════════
+   PWA · registro del service worker
+   - Solo se registra en HTTPS o localhost (regla del browser).
+   - El SW intercepta fetches: app shell + CDN cacheados, gviz passthrough.
+   - Si hay update disponible, lo aplicamos en background sin molestar al
+     usuario; el próximo refresh va a tomar la versión nueva.
+═══════════════════════════════════════════════════════ */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js', { scope: './' })
+      .then(reg => {
+        // Si aparece un SW nuevo, lo dejamos correr — se activará en el
+        // próximo cierre/apertura. No forzamos reload para no perder estado.
+        reg.addEventListener('updatefound', () => {
+          const nw = reg.installing;
+          if (nw) nw.addEventListener('statechange', () => {
+            if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+              console.log('[SW] versión nueva instalada, activa al próximo abrir');
+            }
+          });
+        });
+      })
+      .catch(err => console.warn('[SW] registro falló:', err));
+  });
+}
 </script>
 </body>
 </html>
