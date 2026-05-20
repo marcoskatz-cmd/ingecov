@@ -1138,17 +1138,33 @@
     /* SUMMARY BAR */
     .summary-bar{font-size:10px;gap:14px;padding:10px 12px;}
 
-    /* GRID DE EQUIPOS */
-    .equipo-grid{grid-template-columns:repeat(2,1fr);}
-    .equipo-card{padding:11px 12px 11px 18px;min-height:86px;}
+    /* GRID DE EQUIPOS — 1 columna ancha (mucho más legible que 2 angostas) */
+    .equipo-grid{grid-template-columns:1fr;}
+    .equipo-card{
+      padding:12px 14px 12px 18px;min-height:0;
+      display:grid;
+      grid-template-columns:auto 1fr;
+      grid-template-areas:
+        "code  name"
+        "meta  meta";
+      gap:3px 10px;align-items:center;
+    }
     .equipo-card:hover{background:var(--bg-elev);}
     .eq-status-strip{width:4px;}
-    .eq-code{font-size:9.5px;margin-bottom:3px;}
-    .eq-name{font-size:12px;margin-bottom:6px;line-height:1.25;}
-    .eq-meta{font-size:9px;gap:5px;}
-    .eq-patente{font-size:9px;padding:1px 6px;}
-    .eq-tenencia{font-size:8.5px;padding:1px 5px;}
-    .equipo-card.has-pending::before{top:9px;right:10px;width:6px;height:6px;}
+    .eq-code{
+      grid-area:code;font-size:10.5px;margin:0;
+      letter-spacing:.06em;align-self:center;
+    }
+    .eq-name{
+      grid-area:name;font-size:13px;margin:0;line-height:1.25;
+      -webkit-line-clamp:1;align-self:center;
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+      display:block;
+    }
+    .eq-meta{grid-area:meta;font-size:9.5px;gap:6px;margin-top:2px;}
+    .eq-patente{font-size:9.5px;padding:1px 6px;}
+    .eq-tenencia{font-size:9px;padding:1px 6px;}
+    .equipo-card.has-pending::before{top:11px;right:12px;width:7px;height:7px;}
 
     /* LISTA DE EQUIPOS */
     .equipo-list-row{
@@ -1204,21 +1220,59 @@
     .eq-sub-label{font-size:10.5px;padding:10px 0;letter-spacing:.08em;}
     .eq-sec-body{padding-top:12px;}
 
-    /* Bloque inline de Service / Horómetro — items 2 por fila */
-    .equipo-detail-body [style*="min-width:140px"]{
+    /* Bloque inline de Service / Horómetro — solo afecta los DIVs (flex items),
+       no a los <span style="...min-width:140px"> de la sección Fuente de datos */
+    .equipo-detail-body div[style*="min-width:140px"]{
       min-width:0 !important;flex:1 1 calc(50% - 1px) !important;
     }
-    .equipo-detail-body [style*="min-width:120px"]{
+    .equipo-detail-body div[style*="min-width:120px"]{
       min-width:0 !important;flex:1 1 100% !important;
       border-right:none !important;
     }
 
-    /* TABLAS — habilitar scroll horizontal cuando no entran */
-    .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
-    thead th{padding:10px 10px;font-size:9px;letter-spacing:.1em;}
-    tbody td{padding:11px 12px;font-size:12px;}
-    .eq-inner-table th{padding:9px 9px;font-size:9px;}
-    .eq-inner-table td{padding:10px 9px;font-size:11.5px;}
+    /* Fuente de datos — label arriba, link debajo (en vez de label 140px inline) */
+    .equipo-detail-body span[style*="min-width:140px"]{
+      display:block !important;min-width:0 !important;
+      margin-bottom:3px;font-size:9px !important;
+    }
+
+    /* TABLAS — habilitar scroll horizontal */
+    .table-wrap{
+      overflow-x:auto;-webkit-overflow-scrolling:touch;
+    }
+    thead th{padding:9px 8px;font-size:9px;letter-spacing:.08em;}
+    tbody td{padding:10px 9px;font-size:11.5px;}
+    .eq-inner-table th{padding:8px 8px;font-size:8.5px;letter-spacing:.06em;}
+    .eq-inner-table td{padding:9px 8px;font-size:11px;}
+
+    /* Tabla PEDIDOS del detalle (8 cols) — ocultar las menos críticas en mobile.
+       Solo aplica a tablas con la clase eq-inner-table-pedidos.
+       Visibles en mobile: N° Pedido, Descripción, Costo, Estado. */
+    .eq-inner-table-pedidos thead th:nth-child(2),  /* F. Pedido */
+    .eq-inner-table-pedidos tbody td:nth-child(2),
+    .eq-inner-table-pedidos thead th:nth-child(4),  /* N° Entrega */
+    .eq-inner-table-pedidos tbody td:nth-child(4),
+    .eq-inner-table-pedidos thead th:nth-child(5),  /* F. Entrega */
+    .eq-inner-table-pedidos tbody td:nth-child(5),
+    .eq-inner-table-pedidos thead th:nth-child(6),  /* Demora */
+    .eq-inner-table-pedidos tbody td:nth-child(6){
+      display:none;
+    }
+
+    /* Tabla COMBUSTIBLE — 7 cols. Ocultar Tipo, Lugar, Operario, Observación.
+       Visibles: Fecha, Horóm./Odóm., Litros. */
+    .eq-inner-table-combustible thead th:nth-child(n+4),
+    .eq-inner-table-combustible tbody td:nth-child(n+4){
+      display:none;
+    }
+
+    /* Tabla TRABAJOS — 6 cols. Ocultar Planilla, Lugar. Mantener Fecha, Tipo, Descripción, Tiempo. */
+    .eq-inner-table-trabajos thead th:nth-child(1),
+    .eq-inner-table-trabajos tbody td:nth-child(1),
+    .eq-inner-table-trabajos thead th:nth-child(5),
+    .eq-inner-table-trabajos tbody td:nth-child(5){
+      display:none;
+    }
 
     /* PEDIDOS PENDIENTES — controles apilados, full width */
     .pend-controls{gap:6px;}
@@ -1272,9 +1326,31 @@
     .eq-name{-webkit-line-clamp:1;font-size:13px;}
     .eq-meta{font-size:9.5px;}
 
-    /* Eq kpis del detalle */
+    /* Eq kpis del detalle: 2 cols sigue (no 1, sería demasiada altura) */
     .eq-kpi{padding:11px 8px;}
     .eq-kpi-val{font-size:16px;}
+    .eq-kpi-label{font-size:8px;letter-spacing:.1em;}
+
+    /* KPIs principales: 1 columna ancha + valor grande legible en lugar de 2 angostas */
+    .kpi-grid{grid-template-columns:1fr;}
+    .kpi{
+      padding:11px 14px;min-height:0;
+      display:grid;
+      grid-template-columns:1fr auto;
+      grid-template-areas:
+        "label val"
+        "sub   sub";
+      column-gap:14px;align-items:center;
+    }
+    .kpi-label{grid-area:label;margin:0;font-size:10px;}
+    .kpi-val{grid-area:val;margin:0;font-size:22px;text-align:right;}
+    .kpi-sub{grid-area:sub;margin-top:4px;font-size:10px;}
+
+    /* Skeleton tambien 1 col */
+    .sk-kpi-grid{grid-template-columns:1fr;}
+    .sk-block{min-height:60px;flex-direction:row;align-items:center;justify-content:space-between;gap:14px;}
+    .sk-line{margin-bottom:0;}
+    .sk-line.lg{margin-top:0;width:35%;}
 
     /* Detalle */
     .equipo-detail-header{padding:12px 12px 10px;}
@@ -3378,7 +3454,7 @@ async function toggleEquipoDetail(codigo,cardEl){
   filasServicio.sort((a,b)=>b._ts-a._ts);
 
   const contServicio=filasServicio.length
-    ?`<div class="table-wrap"><table class="eq-inner-table">
+    ?`<div class="table-wrap"><table class="eq-inner-table eq-inner-table-trabajos">
         <thead><tr><th>Planilla</th><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Lugar</th><th style="text-align:right">Tiempo</th></tr></thead>
         <tbody>${filasServicio.map(f=>`<tr>
           <td class="mono" style="font-size:10px;color:var(--text3)">${f.ref}</td>
@@ -3502,7 +3578,7 @@ async function toggleEquipoDetail(codigo,cardEl){
   };
 
   const contPedidos=todosPedidos.length
-    ?`<div class="table-wrap"><table class="eq-inner-table">
+    ?`<div class="table-wrap"><table class="eq-inner-table eq-inner-table-pedidos">
         <thead><tr><th>N° Pedido</th><th>F. Pedido</th><th>Descripción</th><th>N° Entrega</th><th>F. Entrega</th><th style="text-align:center">Demora</th><th style="text-align:right">Costo</th><th>Estado</th></tr></thead>
         <tbody>${todosPedidos.map(p=>{const costo=getCE(p.nroEntrega);return`<tr>
           <td class="mono" style="font-size:10px">${p.nro}</td>
@@ -3611,7 +3687,7 @@ async function toggleEquipoDetail(codigo,cardEl){
   const _hrUnit = _unidad==='km'?'km':'hr';
   const cargasOrdenadas = comb?.cargas ? [...comb.cargas].reverse() : [];
   const contCombustible = cargasOrdenadas.length
-    ? `<div class="table-wrap"><table class="eq-inner-table">
+    ? `<div class="table-wrap"><table class="eq-inner-table eq-inner-table-combustible">
         <thead><tr>
           <th>Fecha</th>
           <th style="text-align:right">${_hrUnit==='km'?'Odómetro':'Horóm.'}</th>
