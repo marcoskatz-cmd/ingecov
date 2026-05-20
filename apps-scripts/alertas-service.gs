@@ -1,60 +1,61 @@
 /**
  * INGECOV · Alertas por email de service crítico
  * ---------------------------------------------------------------------------
- * Lee PANEL_PROGRAMA, detecta equipos que CRUZARON al estado "rojo" desde la
- * última corrida, y manda un email a los destinatarios configurados.
+ * Lee PANEL_PROGRAMA y cruza con la planilla de combustible para determinar
+ * el horómetro/odómetro REAL más actualizado de cada equipo (el form de
+ * combustible se llena mucho más seguido que las planillas de service, así
+ * que casi siempre tiene la lectura más fresca). Si la última carga de
+ * combustible es más reciente que el ULT_FECHA del service, usa ESA hr/km
+ * para clasificar — exactamente como hace el panel HTML.
+ *
+ * Detecta equipos que CRUZARON al estado "rojo" desde la última corrida y
+ * manda email a los destinatarios configurados en la pestaña CONFIG_ALERTAS.
  *
  * Idempotencia: si un equipo sigue en rojo en corridas sucesivas, NO se
  * re-notifica. Solo cuando vuelve a verde/amber por al menos 1 corrida y
  * vuelve a rojo, dispara una alerta nueva.
  *
- * Reset automático: si un equipo lleva más de RESET_DIAS sin ser visto,
- * se borra del snapshot — la próxima vez que aparezca rojo, alerta de nuevo
- * (esto cubre el caso de que el script no corra por mucho tiempo).
+ * Reset automático: si un equipo lleva más de RESET_DIAS sin ser visto en
+ * el panel, se borra del snapshot.
  *
  * Vive en el Sheet maestro de service:
  *   id: 1zB9q0e9kxRKe52-I0u5Dqg7PUSE_nlxi3IYn7pxF0Iw
  *
  * Funciones expuestas desde el menú INGECOV:
  *   - chequearAlertasService()    Corrida normal (la que dispara el trigger).
- *   - probarAlertaService()       Manda email con el estado actual sin actualizar
- *                                  el snapshot (útil para verificar plantilla).
- *   - resetSnapshotService()      Limpia el snapshot. Después de esto, todos
- *                                  los equipos en rojo van a aparecer como
- *                                  "nuevos" en la próxima corrida.
+ *   - probarAlertaService()       Manda email con TODOS los críticos actuales
+ *                                  sin actualizar el snapshot.
+ *   - resetSnapshotService()      Limpia el snapshot.
  *   - estadoSnapshotService()     Loguea el snapshot actual para debug.
+ *   - editarDestinatarios()       Abre la pestaña CONFIG_ALERTAS y posiciona
+ *                                  el cursor en la celda de emails.
  *
- * Setup:
- *   1) Abrir el Sheet maestro de service → Extensiones → Apps Script.
- *   2) Pegar este archivo. Guardar.
- *   3) Editar las constantes DESTINATARIOS al inicio si hace falta.
- *   4) Ejecutar `chequearAlertasService` una vez desde el editor → autorizar
- *      permisos (acceso al Sheet + envío de mail desde tu cuenta).
- *   5) Triggers (reloj a la izquierda) → Agregar trigger:
- *      - Función: chequearAlertasService
- *      - Fuente: temporizada
- *      - Tipo: "Día" → "Entre las 8 a.m. y las 9 a.m." (o el horario que prefieras).
- *   6) Listo. Cada mañana revisa el panel y manda mail si hay nuevos críticos.
+ * Setup: ver apps-scripts/README.md
  */
 
 // ╔══════════════════════════════════════════════════════════════════════╗
-// ║ CONFIGURACIÓN                                                        ║
+// ║ CONFIGURACIÓN — solo cambia si sabés qué hacés.                      ║
+// ║ Los DESTINATARIOS y otros parámetros editables se guardan en la      ║
+// ║ pestaña CONFIG_ALERTAS del Sheet — NO acá.                           ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 
-var DESTINATARIOS = [
-  'marcoskatz@grupoingeco.com.ar',
-  'nicobdallagata@gmail.com'
-];
-
-var PANEL_URL = 'https://marcoskatz-cmd.github.io/ingecov/';
+// Defaults usados solo la primera vez que se crea la pestaña CONFIG_ALERTAS.
+// Después, lo que está en la pestaña manda.
+var DEFAULT_DESTINATARIOS = 'marcoskatz@grupoingeco.com.ar, nicobdallagata@gmail.com';
+var DEFAULT_PANEL_URL     = 'https://marcoskatz-cmd.github.io/ingecov/';
 
 var PANEL_SHEET_NAME = 'PANEL_PROGRAMA';
+var CONFIG_SHEET_NAME = 'CONFIG_ALERTAS';
+
+// ID y pestaña del Sheet de combustible — lo cruzamos para sacar la hr/km
+// más fresca de cada equipo. Si cambia, actualizar acá.
+var COMBUSTIBLE_SHEET_ID   = '19dqJ-tcdmXiOns99mJgMMmZNDT3kKS7EQXwHd7VDILc';
+var COMBUSTIBLE_SHEET_NAME = 'ENTREGA DE COMBUSTIBLE';
 
 // Días sin ver al equipo en el panel para resetear su entrada en el snapshot.
-// Si un equipo no aparece en 30 días, lo olvidamos (probablemente lo sacaron del parque).
 var RESET_DIAS = 30;
 
-// Defaults para umbrales (mismos que el HTML usa cuando faltan los del equipo)
+// Defaults para umbrales (mismos que el HTML cuando faltan en el panel)
 var DEFAULT_RANGO_CRITICA = 50;
 var DEFAULT_RANGO_INTERMEDIA = 150;
 
@@ -68,9 +69,73 @@ function onOpen() {
     .addItem('Chequear alertas service', 'chequearAlertasService')
     .addItem('Probar alerta (sin actualizar snapshot)', 'probarAlertaService')
     .addSeparator()
+    .addItem('Editar destinatarios (CONFIG_ALERTAS)', 'editarDestinatarios')
     .addItem('Ver snapshot actual', 'estadoSnapshotService')
     .addItem('Resetear snapshot', 'resetSnapshotService')
     .addToUi();
+}
+
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║ CONFIG · pestaña editable en el Sheet                                ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
+function asegurarConfigSheet_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(CONFIG_SHEET_NAME);
+  if (sh) return sh;
+
+  // No existe: la creamos con defaults
+  sh = ss.insertSheet(CONFIG_SHEET_NAME);
+  sh.getRange('A1:B1').setValues([['Parámetro', 'Valor']]).setFontWeight('bold').setBackground('#e8eaed');
+  sh.getRange('A2').setValue('Destinatarios (separados por coma)');
+  sh.getRange('B2').setValue(DEFAULT_DESTINATARIOS);
+  sh.getRange('A3').setValue('URL del panel');
+  sh.getRange('B3').setValue(DEFAULT_PANEL_URL);
+  sh.getRange('A4').setValue('Activado (TRUE/FALSE)');
+  sh.getRange('B4').setValue('TRUE');
+  sh.getRange('A6').setValue('— Notas —');
+  sh.getRange('A6').setFontWeight('bold').setFontStyle('italic');
+  sh.getRange('A7').setValue('• Destinatarios: separá emails con coma. Ejemplo: a@b.com, c@d.com');
+  sh.getRange('A8').setValue('• Si Activado = FALSE, el trigger sigue corriendo pero NO manda mail.');
+  sh.getRange('A9').setValue('• Cambios toman efecto en la PRÓXIMA corrida (no hace falta volver al script).');
+  sh.setColumnWidth(1, 280);
+  sh.setColumnWidth(2, 380);
+  return sh;
+}
+
+function leerConfig_() {
+  var sh = asegurarConfigSheet_();
+  var rows = sh.getRange('A2:B4').getValues();
+  var cfg = {};
+  for (var i = 0; i < rows.length; i++) {
+    var k = String(rows[i][0] || '').toLowerCase();
+    var v = String(rows[i][1] || '').trim();
+    if (k.indexOf('destinatarios') >= 0) cfg.destinatarios = v;
+    else if (k.indexOf('url') >= 0)      cfg.panelUrl = v;
+    else if (k.indexOf('activado') >= 0) cfg.activado = /^true$/i.test(v) || /^si$|^sí$/i.test(v) || v === '1';
+  }
+  // Parsear destinatarios → array
+  cfg.destinatariosArr = (cfg.destinatarios || DEFAULT_DESTINATARIOS)
+    .split(/[,;]+/)
+    .map(function(s) { return s.trim(); })
+    .filter(function(s) { return s && s.indexOf('@') > 0; });
+  cfg.panelUrl = cfg.panelUrl || DEFAULT_PANEL_URL;
+  if (cfg.activado == null) cfg.activado = true;
+  return cfg;
+}
+
+function editarDestinatarios() {
+  var sh = asegurarConfigSheet_();
+  SpreadsheetApp.getActiveSpreadsheet().setActiveSheet(sh);
+  sh.setActiveRange(sh.getRange('B2'));
+  SpreadsheetApp.getUi().alert(
+    'Editar destinatarios',
+    'Estás en la celda B2 de CONFIG_ALERTAS.\n\n' +
+    'Pegá los emails separados por coma. Ejemplo:\n' +
+    '   marcoskatz@grupoingeco.com.ar, nicobdallagata@gmail.com\n\n' +
+    'Los cambios toman efecto en la próxima corrida.',
+    SpreadsheetApp.getUi().ButtonSet.OK
+  );
 }
 
 // ╔══════════════════════════════════════════════════════════════════════╗
@@ -78,11 +143,18 @@ function onOpen() {
 // ╚══════════════════════════════════════════════════════════════════════╝
 
 function chequearAlertasService() {
+  var cfg = leerConfig_();
+  if (!cfg.activado) { Logger.log('Alertas desactivadas en CONFIG_ALERTAS. Saliendo.'); return; }
+  if (!cfg.destinatariosArr.length) { Logger.log('Sin destinatarios en CONFIG_ALERTAS. Saliendo.'); return; }
+
   var rows = leerPanelPrograma_();
   if (!rows.length) {
     Logger.log('PANEL_PROGRAMA vacío o no encontrado. Nada que chequear.');
     return;
   }
+
+  // Cruzamos con combustible para obtener la hr/km más fresca por equipo.
+  var ultCombPorEquipo = leerUltimaCombustiblePorEquipo_();
 
   var snapshot = leerSnapshot_();
   var hoy = new Date().toISOString().slice(0, 10);
@@ -96,10 +168,23 @@ function chequearAlertasService() {
     if (!codN) continue;
     vistos[codN] = true;
 
-    var clasif = clasificarServicio_(sp);
+    // ── Determinar hr/km actual: combustible si es más reciente que service ──
+    var ultServiceTs = parseFechaTs_(sp.ultFecha);
+    var ultComb = ultCombPorEquipo[codN]; // {hr, fechaTs, fechaStr} | undefined
+    var hrActual, hrFuente, hrFechaStr;
+    if (ultComb && ultComb.hr != null && (ultComb.fechaTs || 0) > (ultServiceTs || 0)) {
+      hrActual = ultComb.hr;
+      hrFuente = 'combustible';
+      hrFechaStr = ultComb.fechaStr;
+    } else {
+      hrActual = num_(sp.ultHrKm);
+      hrFuente = 'service';
+      hrFechaStr = sp.ultFecha || '';
+    }
+
+    var clasif = clasificarServicio_(sp, hrActual);
     var anterior = snapshot[codN] || {};
 
-    // Snapshot actualizado: clasificación + fecha de última vez visto
     snapshot[codN] = {
       clasif: clasif,
       lastSeen: hoy,
@@ -107,16 +192,16 @@ function chequearAlertasService() {
     };
 
     if (clasif === 'red') {
-      // ¿Era rojo en la corrida anterior?
-      if (anterior.clasif === 'red') {
-        aunCriticos.push(sp); // sigue rojo, no notifica
-      } else {
-        nuevosCriticos.push(sp); // recién cruzó a rojo
-      }
+      // Anotamos en el objeto los datos derivados, para usar en el email
+      sp._hrActual = hrActual;
+      sp._hrFuente = hrFuente;
+      sp._hrFechaStr = hrFechaStr;
+      if (anterior.clasif === 'red') aunCriticos.push(sp);
+      else                            nuevosCriticos.push(sp);
     }
   }
 
-  // Limpieza: borrar entradas que no se vieron hoy y que llevan más de RESET_DIAS sin verse
+  // Limpieza de equipos no vistos hace mucho
   var corte = new Date();
   corte.setDate(corte.getDate() - RESET_DIAS);
   var corteStr = corte.toISOString().slice(0, 10);
@@ -132,23 +217,48 @@ function chequearAlertasService() {
     aunCriticos.length);
 
   if (nuevosCriticos.length) {
-    enviarEmail_(nuevosCriticos, aunCriticos);
+    enviarEmail_(cfg, nuevosCriticos, aunCriticos, false);
   }
 }
 
 function probarAlertaService() {
-  var rows = leerPanelPrograma_();
-  var todosCriticos = rows.filter(function(sp) {
-    return clasificarServicio_(sp) === 'red';
-  });
-  if (!todosCriticos.length) {
-    SpreadsheetApp.getUi().alert('No hay equipos en service crítico actualmente.');
+  var cfg = leerConfig_();
+  if (!cfg.destinatariosArr.length) {
+    SpreadsheetApp.getUi().alert('Sin destinatarios configurados. Ejecutá "Editar destinatarios" primero.');
     return;
   }
-  enviarEmail_(todosCriticos, [], true);
+  var rows = leerPanelPrograma_();
+  var ultCombPorEquipo = leerUltimaCombustiblePorEquipo_();
+  var todosCriticos = [];
+  for (var i = 0; i < rows.length; i++) {
+    var sp = rows[i];
+    var codN = normCod_(sp.codigo);
+    if (!codN) continue;
+    var ultServiceTs = parseFechaTs_(sp.ultFecha);
+    var ultComb = ultCombPorEquipo[codN];
+    var hrActual, hrFuente, hrFechaStr;
+    if (ultComb && ultComb.hr != null && (ultComb.fechaTs || 0) > (ultServiceTs || 0)) {
+      hrActual = ultComb.hr;
+      hrFuente = 'combustible';
+      hrFechaStr = ultComb.fechaStr;
+    } else {
+      hrActual = num_(sp.ultHrKm);
+      hrFuente = 'service';
+      hrFechaStr = sp.ultFecha || '';
+    }
+    if (clasificarServicio_(sp, hrActual) === 'red') {
+      sp._hrActual = hrActual; sp._hrFuente = hrFuente; sp._hrFechaStr = hrFechaStr;
+      todosCriticos.push(sp);
+    }
+  }
+  if (!todosCriticos.length) {
+    SpreadsheetApp.getUi().alert('No hay equipos en service crítico (cruzado con combustible).');
+    return;
+  }
+  enviarEmail_(cfg, todosCriticos, [], true);
   SpreadsheetApp.getUi().alert(
-    'Email de prueba enviado a: ' + DESTINATARIOS.join(', ') +
-    '\n\nLista: ' + todosCriticos.length + ' equipo(s) en rojo.'
+    'Email de prueba enviado a:\n' + cfg.destinatariosArr.join(', ') +
+    '\n\n' + todosCriticos.length + ' equipo(s) en rojo.'
   );
 }
 
@@ -172,11 +282,11 @@ function estadoSnapshotService() {
   for (var k in snapshot) Logger.log('  %s → %s (desde %s, last %s)',
     k, snapshot[k].clasif, snapshot[k].desde, snapshot[k].lastSeen);
   SpreadsheetApp.getUi().alert('Snapshot tiene ' + n +
-    ' entradas. Mirá Ver → Registros (Apps Script editor) para detalle.');
+    ' entradas. Detalle en Apps Script → Ejecuciones → Registros.');
 }
 
 // ╔══════════════════════════════════════════════════════════════════════╗
-// ║ DATA                                                                 ║
+// ║ DATA · PANEL_PROGRAMA                                                ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 
 function leerPanelPrograma_() {
@@ -187,7 +297,6 @@ function leerPanelPrograma_() {
   if (values.length < 2) return [];
   var headers = values[0].map(function(h) { return normHead_(h); });
 
-  // Mapeo de sinónimos (espejo del HTML)
   var SIN = {
     codigo:          ['CODIGO','COD'],
     descripcion:     ['DESCRIPCION','DESCRIPCIÓN','EQUIPO'],
@@ -221,6 +330,76 @@ function leerPanelPrograma_() {
   return out;
 }
 
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║ DATA · COMBUSTIBLE — última hr/km funcional por equipo               ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
+function leerUltimaCombustiblePorEquipo_() {
+  try {
+    var ss = SpreadsheetApp.openById(COMBUSTIBLE_SHEET_ID);
+    var sh = ss.getSheetByName(COMBUSTIBLE_SHEET_NAME);
+    if (!sh) {
+      Logger.log('Combustible: pestaña ' + COMBUSTIBLE_SHEET_NAME + ' no encontrada. Skipping.');
+      return {};
+    }
+    var values = sh.getDataRange().getValues();
+    if (values.length < 2) return {};
+    var headers = values[0].map(function(h) { return normHead_(h); });
+
+    var SIN = {
+      codigo:   ['CODIGO INTERNO DE EQUIPO NUMERO DE PATENTE DE EQUIPO',
+                 'CODIGO INTERNO DE EQUIPO','CODIGO INTERNO','CODIGO EQUIPO','CODIGO'],
+      fecha:    ['FECHA'],
+      estado:   ['ESTADO DE HOROMETRO U ODOMETRO DE EQUIPO','ESTADO HOROMETRO','ESTADO ODOMETRO','ESTADO'],
+      hr:       ['HOROMETRO U ODOMETRO ACTUAL DE EQUIPO HORAS MAQUINA O KILOMETROS',
+                 'HOROMETRO U ODOMETRO ACTUAL DE EQUIPO','HOROMETRO U ODOMETRO ACTUAL',
+                 'HOROMETRO ACTUAL','ODOMETRO ACTUAL']
+    };
+
+    var colIdx = {};
+    for (var k in SIN) {
+      for (var i = 0; i < SIN[k].length; i++) {
+        var pos = headers.indexOf(SIN[k][i]);
+        if (pos >= 0) { colIdx[k] = pos; break; }
+      }
+    }
+    if (colIdx.codigo == null || colIdx.hr == null) {
+      Logger.log('Combustible: faltan columnas clave (codigo/hr). Headers vistos: ' + headers.join('|'));
+      return {};
+    }
+
+    var out = {};
+    for (var r = 1; r < values.length; r++) {
+      var row = values[r];
+      var codN = normCod_(row[colIdx.codigo]);
+      if (!codN) continue;
+      var estado = String(row[colIdx.estado] || '').toLowerCase();
+      var hrFunc = estado.indexOf('sí') === 0 || estado.indexOf('si') === 0;
+      var hrNum = num_(row[colIdx.hr]);
+      if (!hrFunc || hrNum == null || hrNum <= 0) continue;
+
+      var fechaRaw = row[colIdx.fecha];
+      var fechaTs = parseFechaTs_(fechaRaw);
+      var fechaStr = fechaRaw instanceof Date
+        ? Utilities.formatDate(fechaRaw, Session.getScriptTimeZone(), 'dd/MM/yyyy')
+        : String(fechaRaw || '');
+
+      if (!out[codN] || (fechaTs || 0) > (out[codN].fechaTs || 0)) {
+        out[codN] = { hr: hrNum, fechaTs: fechaTs, fechaStr: fechaStr };
+      }
+    }
+    Logger.log('Combustible: leyó ' + Object.keys(out).length + ' equipos con última hr/km.');
+    return out;
+  } catch (e) {
+    Logger.log('Combustible: error leyendo Sheet — ' + e.message);
+    return {};
+  }
+}
+
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║ SNAPSHOT                                                             ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
 function leerSnapshot_() {
   var raw = PropertiesService.getScriptProperties().getProperty('snapshot');
   if (!raw) return {};
@@ -231,29 +410,50 @@ function guardarSnapshot_(snapshot) {
 }
 
 // ╔══════════════════════════════════════════════════════════════════════╗
-// ║ CLASIFICACIÓN (espejo del HTML)                                      ║
+// ║ CLASIFICACIÓN — espejo exacto de clasificarServicio() del HTML       ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 
-function clasificarServicio_(sp) {
+// hrActualParam = hr/km derivado del cruce con combustible (o ULT_HRKM del
+// panel si no hay carga más reciente). Es lo que decide rojo/amber/verde.
+function clasificarServicio_(sp, hrActualParam) {
   var est = num_(sp.estHrKm);
-  var hr = num_(sp.ultHrKm);
+  var hr  = hrActualParam != null ? hrActualParam : num_(sp.ultHrKm);
   if (est == null || hr == null) return 'gray';
   var restantes = est - hr;
   if (restantes <= 0) return 'red';
-  var rCrit = num_(sp.rangoCritica);
-  if (rCrit == null) rCrit = DEFAULT_RANGO_CRITICA;
-  var rInt = num_(sp.rangoIntermedia);
-  if (rInt == null) rInt = DEFAULT_RANGO_INTERMEDIA;
+  var rCrit = num_(sp.rangoCritica); if (rCrit == null) rCrit = DEFAULT_RANGO_CRITICA;
+  var rInt  = num_(sp.rangoIntermedia); if (rInt == null) rInt = DEFAULT_RANGO_INTERMEDIA;
   if (restantes <= rCrit) return 'red';
-  if (restantes <= rInt) return 'amber';
+  if (restantes <= rInt)  return 'amber';
   return 'green';
 }
 
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║ HELPERS                                                              ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
 function num_(v) {
   if (v == null) return null;
+  if (typeof v === 'number') return isFinite(v) ? v : null;
   var s = String(v).replace(/[^\d.,-]/g, '').replace(',', '.');
   var n = parseFloat(s);
   return isFinite(n) ? n : null;
+}
+
+function parseFechaTs_(v) {
+  if (v == null || v === '') return 0;
+  if (v instanceof Date) return v.getTime();
+  // Intentamos dd/mm/yyyy
+  var s = String(v).trim();
+  var m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  if (m) {
+    var d = +m[1], mo = +m[2] - 1, y = +m[3];
+    if (y < 100) y += 2000;
+    var dt = new Date(y, mo, d);
+    return isFinite(dt.getTime()) ? dt.getTime() : 0;
+  }
+  var dt2 = new Date(s);
+  return isFinite(dt2.getTime()) ? dt2.getTime() : 0;
 }
 
 function normHead_(s) {
@@ -275,14 +475,14 @@ function normCod_(s) {
 // ║ EMAIL                                                                ║
 // ╚══════════════════════════════════════════════════════════════════════╝
 
-function enviarEmail_(nuevos, otros, esPrueba) {
+function enviarEmail_(cfg, nuevos, otros, esPrueba) {
   var subject = (esPrueba ? '[PRUEBA] ' : '') +
-    '[INGECOV] ' + nuevos.length + ' equipo(s) cruzó(aron) a service crítico';
-  var html = construirHtml_(nuevos, otros, esPrueba);
-  var plain = construirTexto_(nuevos, otros, esPrueba);
+    '[INGECOV] ' + nuevos.length + ' equipo(s) en service crítico';
+  var html  = construirHtml_(cfg, nuevos, otros, esPrueba);
+  var plain = construirTexto_(cfg, nuevos, otros, esPrueba);
 
   MailApp.sendEmail({
-    to: DESTINATARIOS.join(','),
+    to: cfg.destinatariosArr.join(','),
     subject: subject,
     body: plain,
     htmlBody: html,
@@ -290,14 +490,18 @@ function enviarEmail_(nuevos, otros, esPrueba) {
   });
 }
 
-function construirHtml_(nuevos, otros, esPrueba) {
+function construirHtml_(cfg, nuevos, otros, esPrueba) {
   function filaEquipo(sp, esNuevo) {
-    var est = num_(sp.estHrKm), hr = num_(sp.ultHrKm);
+    var est = num_(sp.estHrKm);
+    var hr  = sp._hrActual != null ? sp._hrActual : num_(sp.ultHrKm);
     var restantes = (est != null && hr != null) ? (est - hr) : null;
     var restTxt = restantes == null ? '—'
       : restantes >= 0 ? ('faltan ' + formatNum_(restantes))
       : ('VENCIDO ' + formatNum_(Math.abs(restantes)));
     var color = esNuevo ? '#b91c1c' : '#92520a';
+    var fuenteTag = sp._hrFuente === 'combustible'
+      ? '<span style="font-size:9px;background:#fbeed0;color:#92520a;padding:1px 6px;margin-left:6px;letter-spacing:.04em">vía combustible</span>'
+      : '';
     return '' +
       '<tr style="border-bottom:1px solid #e0e0e0">' +
       '<td style="padding:10px 12px;font-family:monospace;font-weight:600;color:#0f1318;width:90px">' + esc_(sp.codigo) + '</td>' +
@@ -305,8 +509,8 @@ function construirHtml_(nuevos, otros, esPrueba) {
         (sp.patente ? '<br><span style="font-size:11px;color:#888;font-family:monospace">' + esc_(sp.patente) + '</span>' : '') +
       '</td>' +
       '<td style="padding:10px 12px;font-family:monospace;font-size:13px;color:#444">' +
-        (sp.ultHrKm || '—') +
-        (sp.ultFecha ? '<br><span style="font-size:10px;color:#888">' + esc_(sp.ultFecha) + '</span>' : '') +
+        (hr != null ? formatNum_(hr) : '—') + fuenteTag +
+        (sp._hrFechaStr ? '<br><span style="font-size:10px;color:#888">' + esc_(sp._hrFechaStr) + '</span>' : '') +
       '</td>' +
       '<td style="padding:10px 12px;font-family:monospace;font-size:13px;color:#444">' + (sp.estHrKm || '—') + '</td>' +
       '<td style="padding:10px 12px;font-family:monospace;font-size:12px;font-weight:600;color:' + color + ';text-align:right">' +
@@ -333,7 +537,7 @@ function construirHtml_(nuevos, otros, esPrueba) {
           '<th style="padding:8px 12px;text-align:left;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.06em">Código</th>' +
           '<th style="padding:8px 12px;text-align:left;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.06em">Equipo</th>' +
           '<th style="padding:8px 12px;text-align:left;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.06em">Última hr/km</th>' +
-          '<th style="padding:8px 12px;text-align:left;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.06em">Próximo service</th>' +
+          '<th style="padding:8px 12px;text-align:left;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.06em">Próximo</th>' +
           '<th style="padding:8px 12px;text-align:right;font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.06em">Restantes</th>' +
         '</tr></thead><tbody>' + rows1 + '</tbody></table>'
         : '') +
@@ -343,33 +547,35 @@ function construirHtml_(nuevos, otros, esPrueba) {
         '<tbody>' + rows2 + '</tbody></table>'
         : '') +
       '<p style="margin:24px 0 0;font-size:12px;color:#888">' +
-        '<a href="' + PANEL_URL + '" style="color:#2a48a5">Abrir panel completo →</a>' +
+        '<a href="' + cfg.panelUrl + '" style="color:#2a48a5">Abrir panel completo →</a>' +
       '</p>' +
       '<hr style="border:none;border-top:1px solid #eee;margin:20px 0">' +
-      '<p style="margin:0;font-size:11px;color:#aaa">Generado automáticamente por el script de alertas del Sheet PANEL_PROGRAMA. Para dejar de recibirlo, ajustá DESTINATARIOS en el script o pausá el trigger desde el editor de Apps Script.</p>' +
+      '<p style="margin:0;font-size:11px;color:#aaa">Generado automáticamente. Para cambiar destinatarios o desactivar las alertas, editá la pestaña CONFIG_ALERTAS del Sheet de service.</p>' +
     '</div>';
 }
 
-function construirTexto_(nuevos, otros, esPrueba) {
-  function lineaEquipo(sp) {
-    var est = num_(sp.estHrKm), hr = num_(sp.ultHrKm);
+function construirTexto_(cfg, nuevos, otros, esPrueba) {
+  function linea(sp) {
+    var est = num_(sp.estHrKm);
+    var hr  = sp._hrActual != null ? sp._hrActual : num_(sp.ultHrKm);
     var restantes = (est != null && hr != null) ? (est - hr) : null;
     var restTxt = restantes == null ? '—'
       : restantes >= 0 ? ('faltan ' + formatNum_(restantes))
       : ('VENCIDO ' + formatNum_(Math.abs(restantes)));
+    var fuente = sp._hrFuente === 'combustible' ? ' [vía combustible]' : '';
     return '  - ' + (sp.codigo || '?') + '  ' + (sp.descripcion || '—') +
-      '\n      Última: ' + (sp.ultHrKm || '—') + ' (' + (sp.ultFecha || '?') + ')' +
+      '\n      Última hr: ' + (hr != null ? formatNum_(hr) : '—') + fuente + ' (' + (sp._hrFechaStr || '?') + ')' +
       '   Próx: ' + (sp.estHrKm || '—') + '   → ' + restTxt;
   }
   var out = (esPrueba ? '[PRUEBA] ' : '') +
     'INGECOV · ' + nuevos.length + ' nuevo(s) equipo(s) en service crítico.\n\n';
   if (nuevos.length) {
-    out += 'NUEVOS:\n' + nuevos.map(lineaEquipo).join('\n') + '\n';
+    out += 'NUEVOS:\n' + nuevos.map(linea).join('\n') + '\n';
   }
   if (otros.length) {
-    out += '\nSIGUEN EN CRÍTICO (ya notificados):\n' + otros.map(lineaEquipo).join('\n') + '\n';
+    out += '\nSIGUEN EN CRÍTICO (ya notificados):\n' + otros.map(linea).join('\n') + '\n';
   }
-  out += '\nPanel: ' + PANEL_URL + '\n';
+  out += '\nPanel: ' + cfg.panelUrl + '\n';
   return out;
 }
 
