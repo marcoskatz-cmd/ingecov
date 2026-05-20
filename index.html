@@ -1055,6 +1055,262 @@
 
   [title]{cursor:help;}
 
+  /* ═══════════════════════════════════════════════════════════════
+     MOBILE UX · ajustes integrales para teléfonos / tablets
+     - Tap targets ≥ 40px
+     - Sin overflow horizontal
+     - Tipografía y paddings recalibrados
+     - Tablas con scroll horizontal nativo
+  ═══════════════════════════════════════════════════════════════ */
+  @media (max-width:768px){
+    /* HEADER */
+    .header-top{
+      padding:9px 12px;gap:8px;
+      grid-template-columns:auto 1fr auto;
+    }
+    .logo{gap:9px;}
+    .logo-img{height:30px;}
+    .logo-divider{height:24px;}
+    .logo-sub{font-size:12px;}
+    .logo-sub-small{font-size:9px;letter-spacing:.08em;}
+    .header-actions{gap:6px;}
+    .icon-btn{width:40px;height:40px;}
+    .icon-btn svg{width:18px;height:18px;}
+    .refresh-btn{
+      padding:0 14px;height:40px;font-size:10.5px;letter-spacing:.06em;
+    }
+
+    /* STATUS BAR — densidad reducida, scroll horizontal suave */
+    .status-bar{height:36px;font-size:10px;scroll-snap-type:x mandatory;}
+    .stat-cell{padding:0 13px;gap:7px;scroll-snap-align:start;}
+    .stat-cell:first-child{padding-left:14px;}
+    .stat-cell .stat-k{font-size:8.5px;letter-spacing:.14em;}
+    .stat-cell.live::before{width:6px;height:6px;}
+
+    /* MAIN */
+    .main{padding:14px 12px 4rem;}
+
+    /* SECTIONS */
+    .section{margin-bottom:1.75rem;}
+    .section-label{
+      font-size:10.5px;letter-spacing:.14em;
+      padding:6px 0 10px;gap:10px;
+    }
+    .section-badge{font-size:9.5px;padding:2px 7px;}
+    .section-chevron{width:20px;height:20px;}
+
+    /* KPI GRID */
+    .kpi-grid{grid-template-columns:repeat(2,1fr);}
+    .kpi{padding:12px 12px 11px;min-height:90px;}
+    .kpi-label{font-size:9.5px;letter-spacing:.08em;}
+    .kpi-val{font-size:23px;margin-top:8px;}
+    .kpi-sub{font-size:10.5px;margin-top:5px;}
+
+    /* CONTROLES (búsqueda + view) */
+    .controls-bar{gap:6px;}
+    .search-wrap{min-width:0;flex:1 1 100%;order:-1;}
+    .search-wrap input{
+      font-size:15px; /* evita zoom iOS */
+      padding:11px 36px 11px 36px;height:44px;
+    }
+    .search-wrap::before{left:12px;font-size:15px;}
+    .search-clear{width:28px;height:28px;font-size:22px;}
+    .view-btn{
+      padding:0 12px;font-size:15px;
+      min-width:44px;height:44px;
+    }
+
+    /* FILTROS — scrollables horizontalmente sin romper layout */
+    .filter-bar{
+      gap:5px;margin-bottom:8px;
+      overflow-x:auto;flex-wrap:nowrap;
+      -webkit-overflow-scrolling:touch;
+      padding-bottom:2px;
+      scrollbar-width:none;
+    }
+    .filter-bar::-webkit-scrollbar{display:none;}
+    .filter-btn{
+      font-size:10px;padding:7px 10px;letter-spacing:.06em;
+      flex-shrink:0;min-height:32px;
+    }
+    .filter-btn .f-count{padding:2px 6px;font-size:8.5px;}
+
+    /* SUMMARY BAR */
+    .summary-bar{font-size:10px;gap:14px;padding:10px 12px;}
+
+    /* GRID DE EQUIPOS */
+    .equipo-grid{grid-template-columns:repeat(2,1fr);}
+    .equipo-card{padding:11px 12px 11px 18px;min-height:86px;}
+    .equipo-card:hover{background:var(--bg-elev);}
+    .eq-status-strip{width:4px;}
+    .eq-code{font-size:9.5px;margin-bottom:3px;}
+    .eq-name{font-size:12px;margin-bottom:6px;line-height:1.25;}
+    .eq-meta{font-size:9px;gap:5px;}
+    .eq-patente{font-size:9px;padding:1px 6px;}
+    .eq-tenencia{font-size:8.5px;padding:1px 5px;}
+    .equipo-card.has-pending::before{top:9px;right:10px;width:6px;height:6px;}
+
+    /* LISTA DE EQUIPOS */
+    .equipo-list-row{
+      padding:12px 14px 12px 18px;gap:10px;
+    }
+    .equipo-list-row:hover{padding-left:22px;}
+    .eq-list-code{width:62px;font-size:10px;letter-spacing:.06em;}
+    .eq-list-name{font-size:12px;}
+    .eq-list-meta{display:none;} /* no entra en pantallas chicas */
+
+    /* TELEMETRÍA */
+    .telemetria-grid{grid-template-columns:1fr;}
+    .telemetria-card{padding:16px 14px;}
+    .telemetria-combo{padding:18px 14px;}
+    .telemetria-card-title{font-size:10.5px;letter-spacing:.08em;margin-bottom:12px;}
+    .combo-header{gap:8px;}
+    .combo-legend{gap:12px;font-size:10px;}
+    .combo-totals{
+      font-size:9.5px;letter-spacing:.04em;
+      margin-bottom:12px;line-height:1.4;
+    }
+    .combo-totals .sep{margin:0 6px;}
+    .combo-chart-wrap{height:230px;}
+    .telemetria-chart-wrap{height:170px;}
+
+    /* RANKINGS */
+    .rank-row{gap:10px;padding:9px 0;font-size:11px;}
+    .rank-pos{font-size:10px;width:22px;}
+    .rank-cod{font-size:11px;min-width:68px;letter-spacing:.04em;}
+    .rank-val{font-size:10.5px;min-width:74px;}
+
+    /* PANEL DE DETALLE DEL EQUIPO */
+    .equipo-detail-header{
+      padding:14px 14px 12px;gap:10px;
+    }
+    .equipo-detail-title{font-size:14px;line-height:1.25;}
+    .equipo-detail-sub{font-size:9.5px;gap:8px;margin-top:7px;}
+    .equipo-detail-close{
+      width:38px;height:38px;font-size:22px;
+    }
+    .equipo-detail-body{padding:14px 12px 20px;}
+    .eq-detail-tag{font-size:9px;padding:2px 7px;letter-spacing:.08em;}
+
+    /* KPIs del detalle: 2 columnas obligatorias */
+    .eq-kpis{
+      grid-template-columns:repeat(2,1fr);
+      margin-bottom:16px;
+    }
+    .eq-kpi{padding:13px 10px;}
+    .eq-kpi-val{font-size:18px;}
+    .eq-kpi-label{font-size:8.5px;letter-spacing:.12em;margin-top:6px;}
+
+    .eq-sub-label{font-size:10.5px;padding:10px 0;letter-spacing:.08em;}
+    .eq-sec-body{padding-top:12px;}
+
+    /* Bloque inline de Service / Horómetro — items 2 por fila */
+    .equipo-detail-body [style*="min-width:140px"]{
+      min-width:0 !important;flex:1 1 calc(50% - 1px) !important;
+    }
+    .equipo-detail-body [style*="min-width:120px"]{
+      min-width:0 !important;flex:1 1 100% !important;
+      border-right:none !important;
+    }
+
+    /* TABLAS — habilitar scroll horizontal cuando no entran */
+    .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+    thead th{padding:10px 10px;font-size:9px;letter-spacing:.1em;}
+    tbody td{padding:11px 12px;font-size:12px;}
+    .eq-inner-table th{padding:9px 9px;font-size:9px;}
+    .eq-inner-table td{padding:10px 9px;font-size:11.5px;}
+
+    /* PEDIDOS PENDIENTES — controles apilados, full width */
+    .pend-controls{gap:6px;}
+    .pend-controls select,
+    .pend-controls input{
+      flex:1 1 100%;min-width:0;
+      font-size:15px;padding:10px 12px;height:44px;
+    }
+    .pend-summary{font-size:10px;}
+
+    /* MODAL SERVICE CRÍTICO */
+    .sv-modal{max-height:88vh;width:96%;}
+    .sv-row{
+      grid-template-columns:60px 1fr auto;
+      gap:8px;padding:10px 12px;
+    }
+    .sv-row .sv-hr,.sv-row .sv-fuente{display:none;}
+    .sv-cod{font-size:12px;}
+    .sv-nom{font-size:12px;line-height:1.3;}
+    .sv-rest{font-size:12px;}
+    .sv-modal-head{padding:12px 14px 10px;}
+    .sv-modal-title{font-size:11px;letter-spacing:.1em;}
+
+    /* LOADING SKELETON */
+    .sk-loading-wrap{padding:14px 12px;}
+    .sk-kpi-grid{grid-template-columns:repeat(2,1fr);}
+    .sk-chart{height:230px;padding:14px;}
+    .sk-block{padding:12px;min-height:90px;}
+  }
+
+  /* Phones angostos (≤ 420px) */
+  @media (max-width:420px){
+    .header-top{grid-template-columns:1fr auto;gap:6px;}
+    .logo-sub-small{display:none;}
+    .auto-wrap{display:none;}
+    .refresh-btn{padding:0 11px;height:38px;font-size:10px;}
+    .icon-btn{width:38px;height:38px;}
+
+    /* Status bar — menos espacio aún */
+    .stat-cell{padding:0 11px;gap:6px;}
+    .stat-cell:first-child{padding-left:12px;}
+
+    /* KPI val más chico */
+    .kpi{padding:11px 11px 10px;min-height:84px;}
+    .kpi-val{font-size:21px;}
+    .kpi-label{font-size:9px;}
+
+    /* Equipos: 1 columna ancha para que se lean bien */
+    .equipo-grid{grid-template-columns:1fr;}
+    .equipo-card{padding:12px 14px 12px 18px;min-height:72px;}
+    .eq-name{-webkit-line-clamp:1;font-size:13px;}
+    .eq-meta{font-size:9.5px;}
+
+    /* Eq kpis del detalle */
+    .eq-kpi{padding:11px 8px;}
+    .eq-kpi-val{font-size:16px;}
+
+    /* Detalle */
+    .equipo-detail-header{padding:12px 12px 10px;}
+    .equipo-detail-title{font-size:13px;}
+    .equipo-detail-close{width:36px;height:36px;font-size:20px;}
+    .equipo-detail-body{padding:12px 10px 18px;}
+
+    /* Filtros aún más compactos */
+    .filter-btn{padding:6px 9px;font-size:9.5px;}
+    .filter-btn .f-count{padding:1px 5px;font-size:8.5px;}
+
+    /* Telemetría */
+    .telemetria-card{padding:14px 12px;}
+    .telemetria-combo{padding:14px 12px;}
+    .combo-chart-wrap{height:200px;}
+    .combo-legend{font-size:9.5px;gap:10px;}
+
+    /* Ranking — barra mínima, valor compacto */
+    .rank-bar-wrap{min-width:18px;}
+    .rank-val{min-width:64px;font-size:10px;}
+    .rank-cod{min-width:60px;font-size:10.5px;}
+
+    /* Modal */
+    .sv-modal{width:98%;max-height:92vh;}
+    .sv-row{grid-template-columns:54px 1fr auto;gap:6px;padding:9px 10px;}
+
+    /* Botón de cerrar en panel: tap area más amplia */
+    .equipo-detail-close:active{transform:scale(.94);}
+  }
+
+  /* Landscape muy bajo: priorizar contenido sobre header */
+  @media (max-height:480px) and (orientation:landscape){
+    .header{position:relative;}
+    .status-bar{display:none;}
+  }
+
   @media (prefers-reduced-motion: reduce){
     *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;}
   }
