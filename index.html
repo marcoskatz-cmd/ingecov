@@ -782,6 +782,47 @@
   .eq-tenencia.propio{color:var(--green);border-color:var(--green-bg);background:var(--green-bg);}
   .eq-tenencia.alquilado{color:var(--amber);border-color:var(--amber-bg);background:var(--amber-bg);}
 
+  /* ═══════════════════════════════════════════════════════
+     INACTIVOS · divisor + grupo colapsable
+     Por defecto los equipos inactivos están ocultos en ambos modos.
+     Si el contenedor tiene .show-inactivos, se muestran (atenuados).
+  ═══════════════════════════════════════════════════════ */
+  .equipo-grid:not(.show-inactivos) .equipo-card.inactivo,
+  .equipo-list-wrap:not(.show-inactivos) .equipo-list-row.inactivo{
+    display:none;
+  }
+  /* Inactivos visibles: dim por defecto, full opacity al hover */
+  .equipo-grid.show-inactivos .equipo-card.inactivo,
+  .equipo-list-wrap.show-inactivos .equipo-list-row.inactivo{
+    opacity:.55;
+  }
+  .equipo-grid.show-inactivos .equipo-card.inactivo:hover,
+  .equipo-list-wrap.show-inactivos .equipo-list-row.inactivo:hover{
+    opacity:1;
+  }
+
+  .inactivos-divider{
+    grid-column:1 / -1;
+    display:flex;align-items:center;gap:10px;
+    padding:11px 16px;background:var(--bg2);
+    border-top:1px dashed var(--border2);
+    border-bottom:1px dashed var(--border2);
+    cursor:pointer;user-select:none;
+    font-family:'JetBrains Mono',monospace;font-size:11px;
+    color:var(--text2);letter-spacing:.04em;
+    transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+  }
+  .inactivos-divider:hover{background:var(--bg3);color:var(--text);}
+  .inactivos-divider .div-chevron{
+    display:inline-block;width:14px;color:var(--text3);
+    transition: transform var(--t-fast) var(--ease);
+  }
+  .inactivos-divider.open .div-chevron{transform:rotate(90deg);color:var(--accent);}
+  .inactivos-divider .div-label b{color:var(--text2);font-weight:700;}
+  .inactivos-divider:hover .div-label b{color:var(--text);}
+  .inactivos-divider .div-hint{color:var(--text3);font-size:10px;}
+  .inactivos-divider:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+
   /* Indicador de última actividad por equipo (entregas / service / combustible) */
   .eq-act{
     font-family:'JetBrains Mono',monospace;font-size:9px;
@@ -1321,6 +1362,10 @@
     .eq-inner-table-trabajos tbody td:nth-child(5){
       display:none;
     }
+
+    /* INACTIVOS divisor — mobile */
+    .inactivos-divider{padding:10px 12px;gap:8px;font-size:10.5px;}
+    .inactivos-divider .div-hint{display:none;} /* en mobile solo el label */
 
     /* RANGE BAR — mobile */
     .range-bar{padding:7px 10px;gap:8px;flex-wrap:wrap;}
@@ -2843,6 +2888,20 @@ let _filtroEstado='todos';
 let _filtroBtn=null;
 function setFiltroEstado(est,btn){
   _filtroEstado=est;
+  // Auto-expand del grupo de inactivos cuando el usuario filtra por estados
+  // que solo viven entre los inactivos. Sin esto, click en "No operativo"
+  // mostraba 0 cards porque todos están en el grupo colapsado.
+  if(est==='parado'||est==='sin-estado'){
+    const grid=document.getElementById('equipoGrid');
+    if(grid&&!grid.classList.contains('show-inactivos')){
+      // Forzamos abierto sin persistir (es contextual al filtro)
+      const wrap=grid.querySelector('.equipo-list-wrap');
+      grid.classList.add('show-inactivos');
+      if(wrap)wrap.classList.add('show-inactivos');
+      const div=grid.querySelector('.inactivos-divider');
+      if(div){div.classList.add('open');div.setAttribute('aria-expanded','true');}
+    }
+  }
   // Scope: limpiar .active solo en el bar de estado, no afectar al bar de categoría
   document.querySelectorAll('#filterBar .filter-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');_filtroBtn=btn;
@@ -3052,41 +3111,71 @@ function renderEquipoIndex(equipos){
     return info?.patente||null;
   };
 
+  // Partición activos / inactivos. Inactivos van al final, dentro de un
+  // grupo colapsable. Por defecto colapsado (se respeta la preferencia del
+  // usuario guardada en localStorage si existe).
+  const activos=[], inactivos=[];
+  for(const e of eq) (_esEquipoInactivo(e)?inactivos:activos).push(e);
+  const showInactivos = (function(){
+    try{ return localStorage.getItem('ingecov-show-inactivos')==='1'; }catch{ return false; }
+  })();
+
+  // Helpers de render — el segundo arg `inactivoCls` agrega la clase 'inactivo'
+  // cuando se renderiza dentro del grupo colapsable.
+  const renderListRow=(e,inactivoCls)=>{
+    const info=(window._estadoEquipos||{})[normCod(e.codigo)];
+    const hor=(window._horometros||{})[normCod(e.codigo)];
+    const est=ESTADO_COLOR(info?.estado);const estCss=ESTADO_CSS[est];
+    const patente=getPatente(e.codigo);
+    const titulo=buildEquipoNombre(e.clasificacion,e.marca,e.modelo,e.nombre);
+    const ce=e.codigo.replace(/'/g,"\\'");
+    const tienePend=(window._equiposConPendientes||new Set()).has(normCod(e.codigo));
+    const ten=info?.tenencia;
+    const tenLabel=info?.observacion||(ten==='propio'?'Propio':ten==='alquilado'?'Alquilado':'');
+    const tenBadge=(ten==='propio'||ten==='alquilado')?`<span class="eq-tenencia ${ten}" title="Tenencia: ${tenLabel}">${tenLabel}</span>`:'';
+    const _dim = !(e.costoTotal>0) && !tienePend;
+    return`<div class="equipo-list-row${tienePend?' has-pending':''}${_dim?' dim':''}${inactivoCls}" id="eqcard_${e.codigo.replace(/[^a-z0-9]/gi,'_')}"
+      data-cod="${e.codigo}" data-nom="${e.nombre}" data-est="${est==='green'?'operativo':est==='amber'?'reparacion':est==='red'?'parado':'sin-estado'}"
+      title="${tienePend?'Tiene pedidos pendientes':''}"
+      onclick="toggleEquipoDetail('${ce}',this)">
+      <span class="eq-list-dot" style="background:${estCss}" title="${info?.estado||'Sin estado'}"></span>
+      <span class="eq-list-code">${e.codigo}</span>
+      <span class="eq-list-name">${titulo}</span>
+      <div class="eq-list-meta">
+        ${tienePend?'<span class="pending-dot" title="Pedidos pendientes"></span>':''}
+        ${tenBadge}
+        ${patente?`<span class="eq-patente">${patente}</span>`:''}
+        ${info?.ubicacion?`<span>${info.ubicacion}</span>`:''}
+        ${e.costoTotal>0?`<span style="color:var(--amber)">${formatMoney(e.costoTotal)}</span>`:''}
+        ${hor?.actual?`<span style="color:var(--blue)">${hor.actual}</span>`:''}
+        ${(()=>{const a=fmtUltActividad(normCod(e.codigo));return `<span class="eq-act ${a.cls}" title="${a.title}">${a.txt}</span>`;})()}
+      </div>
+    </div>`;
+  };
+
+  // Divisor entre activos e inactivos (mismo HTML para ambos modos).
+  const dividerHTML=(n,open)=>`<div class="inactivos-divider${open?' open':''}" onclick="toggleInactivos()" role="button" tabindex="0" aria-expanded="${open?'true':'false'}">
+    <span class="div-chevron">▸</span>
+    <span class="div-label"><b>Inactivos (${n})</b></span>
+    <span class="div-hint">sin movimiento reciente ni operatividad — click para ${open?'ocultar':'ver'}</span>
+  </div>`;
+
   if(_viewMode==='list'){
     grid.className='';
-    grid.innerHTML=eq.length?`<div class="equipo-list-wrap">${eq.map(e=>{
-      const info=(window._estadoEquipos||{})[normCod(e.codigo)];
-      const hor=(window._horometros||{})[normCod(e.codigo)];
-      const est=ESTADO_COLOR(info?.estado);const estCss=ESTADO_CSS[est];
-      const patente=getPatente(e.codigo);
-      const titulo=buildEquipoNombre(e.clasificacion,e.marca,e.modelo,e.nombre);
-      const ce=e.codigo.replace(/'/g,"\\'");
-      const tienePend=(window._equiposConPendientes||new Set()).has(normCod(e.codigo));
-      const ten=info?.tenencia;
-      const tenLabel=info?.observacion||(ten==='propio'?'Propio':ten==='alquilado'?'Alquilado':'');
-      const tenBadge=(ten==='propio'||ten==='alquilado')?`<span class="eq-tenencia ${ten}" title="Tenencia: ${tenLabel}">${tenLabel}</span>`:'';
-      const _dim = !(e.costoTotal>0) && !tienePend;
-      return`<div class="equipo-list-row${tienePend?' has-pending':''}${_dim?' dim':''}" id="eqcard_${e.codigo.replace(/[^a-z0-9]/gi,'_')}"
-        data-cod="${e.codigo}" data-nom="${e.nombre}" data-est="${est==='green'?'operativo':est==='amber'?'reparacion':est==='red'?'parado':'sin-estado'}"
-        title="${tienePend?'Tiene pedidos pendientes':''}"
-        onclick="toggleEquipoDetail('${ce}',this)">
-        <span class="eq-list-dot" style="background:${estCss}" title="${info?.estado||'Sin estado'}"></span>
-        <span class="eq-list-code">${e.codigo}</span>
-        <span class="eq-list-name">${titulo}</span>
-        <div class="eq-list-meta">
-          ${tienePend?'<span class="pending-dot" title="Pedidos pendientes"></span>':''}
-          ${tenBadge}
-          ${patente?`<span class="eq-patente">${patente}</span>`:''}
-          ${info?.ubicacion?`<span>${info.ubicacion}</span>`:''}
-          ${e.costoTotal>0?`<span style="color:var(--amber)">${formatMoney(e.costoTotal)}</span>`:''}
-          ${hor?.actual?`<span style="color:var(--blue)">${hor.actual}</span>`:''}
-          ${(()=>{const a=fmtUltActividad(normCod(e.codigo));return `<span class="eq-act ${a.cls}" title="${a.title}">${a.txt}</span>`;})()}
-        </div>
-      </div>`;
-    }).join('')}</div>`:'<div class="no-data">Sin equipos</div>';
+    if(!eq.length){grid.innerHTML='<div class="no-data">Sin equipos</div>';}
+    else{
+      const partes=[`<div class="equipo-list-wrap${showInactivos?' show-inactivos':''}">`];
+      partes.push(activos.map(e=>renderListRow(e,'')).join(''));
+      if(inactivos.length){
+        partes.push(dividerHTML(inactivos.length,showInactivos));
+        partes.push(inactivos.map(e=>renderListRow(e,' inactivo')).join(''));
+      }
+      partes.push('</div>');
+      grid.innerHTML=partes.join('');
+    }
   }else{
-    grid.className='equipo-grid';
-    grid.innerHTML=eq.length?eq.map(e=>{
+    grid.className=`equipo-grid${showInactivos?' show-inactivos':''}`;
+    const renderCard=(e,inactivoCls)=>{
       const info=(window._estadoEquipos||{})[normCod(e.codigo)];
       const hor=(window._horometros||{})[normCod(e.codigo)];
       const est=ESTADO_COLOR(info?.estado);
@@ -3098,7 +3187,7 @@ function renderEquipoIndex(equipos){
       const tenLabel=info?.observacion||(ten==='propio'?'Propio':ten==='alquilado'?'Alquilado':'');
       const tenBadge=(ten==='propio'||ten==='alquilado')?`<span class="eq-tenencia ${ten}" title="Tenencia: ${tenLabel}">${tenLabel}</span>`:'';
       const _dim = !(e.costoTotal>0) && !tienePend;
-      return`<div class="equipo-card${tienePend?' has-pending':''}${_dim?' dim':''}" id="eqcard_${e.codigo.replace(/[^a-z0-9]/gi,'_')}"
+      return`<div class="equipo-card${tienePend?' has-pending':''}${_dim?' dim':''}${inactivoCls}" id="eqcard_${e.codigo.replace(/[^a-z0-9]/gi,'_')}"
         data-cod="${e.codigo}" data-nom="${e.nombre}" data-est="${est==='green'?'operativo':est==='amber'?'reparacion':est==='red'?'parado':'sin-estado'}"
         title="${tienePend?'Tiene pedidos pendientes':''}"
         onclick="toggleEquipoDetail('${ce}',this)">
@@ -3114,9 +3203,33 @@ function renderEquipoIndex(equipos){
           ${(()=>{const a=fmtUltActividad(normCod(e.codigo));return `<span class="eq-act ${a.cls}" title="${a.title}">${a.txt}</span>`;})()}
         </div>
       </div>`;
-    }).join(''):'<div class="no-data">Sin equipos</div>';
+    };
+    if(!eq.length){grid.innerHTML='<div class="no-data">Sin equipos</div>';}
+    else{
+      const partes=[activos.map(e=>renderCard(e,'')).join('')];
+      if(inactivos.length){
+        partes.push(dividerHTML(inactivos.length,showInactivos));
+        partes.push(inactivos.map(e=>renderCard(e,' inactivo')).join(''));
+      }
+      grid.innerHTML=partes.join('');
+    }
   }
   aplicarFiltros();
+}
+
+// Toggle del grupo de inactivos. Persiste la preferencia en localStorage.
+// Auto-expand también lo dispara aplicarFiltros() cuando el usuario filtra
+// por estados que solo viven entre los inactivos (parado / sin estado).
+function toggleInactivos(){
+  const grid=document.getElementById('equipoGrid');if(!grid)return;
+  const containers=[grid, grid.querySelector('.equipo-list-wrap')].filter(Boolean);
+  const willOpen=!containers[0].classList.contains('show-inactivos');
+  containers.forEach(c=>c.classList.toggle('show-inactivos',willOpen));
+  const div=grid.querySelector('.inactivos-divider');
+  if(div){div.classList.toggle('open',willOpen);div.setAttribute('aria-expanded',willOpen?'true':'false');
+    const hint=div.querySelector('.div-hint');
+    if(hint)hint.textContent=`sin movimiento reciente ni operatividad — click para ${willOpen?'ocultar':'ver'}`;}
+  try{ localStorage.setItem('ingecov-show-inactivos', willOpen?'1':'0'); }catch{}
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -4085,6 +4198,28 @@ function computarUltimaActividad(){
     else set(codN,_parseDate(c.ultimaFecha));
   }
   return out;
+}
+
+// Criterio "equipo inactivo" para separación visual del índice.
+// La definición es deliberadamente conservadora: marcamos como inactivo solo a
+// equipos que NO estén siendo usados ni reparados ni esperando repuestos.
+// Esto evita que algo legítimamente operativo se "esconda" por accidente.
+// Estado:
+//   activo = operativo OR en reparación OR tiene pedidos pendientes OR
+//            tuvo movimiento (entregas/service/combustible) en los últimos
+//            INACTIVE_THRESHOLD_DIAS días.
+//   inactivo = el resto (parado + sin actividad ni pendientes, o sin estado
+//              y sin actividad).
+const INACTIVE_THRESHOLD_DIAS=90;
+function _esEquipoInactivo(e){
+  const codN=normCod(e.codigo);
+  const info=(window._estadoEquipos||{})[codN]||{};
+  const est=ESTADO_COLOR(info.estado);
+  if(est==='green'||est==='amber')return false;
+  if((window._equiposConPendientes||new Set()).has(codN))return false;
+  const ts=(window._ultActividadPorEquipo||{})[codN];
+  if(ts&&(Date.now()-ts)/86400000<=INACTIVE_THRESHOLD_DIAS)return false;
+  return true;
 }
 
 // Formatea "hace Xd" + clase de color según antigüedad.
