@@ -782,6 +782,17 @@
   .eq-tenencia.propio{color:var(--green);border-color:var(--green-bg);background:var(--green-bg);}
   .eq-tenencia.alquilado{color:var(--amber);border-color:var(--amber-bg);background:var(--amber-bg);}
 
+  /* Indicador de última actividad por equipo (entregas / service / combustible) */
+  .eq-act{
+    font-family:'JetBrains Mono',monospace;font-size:9px;
+    color:var(--text3);letter-spacing:.06em;
+    padding:1px 5px;border-radius:0;font-weight:500;
+    border:1px solid transparent;
+  }
+  .eq-act.green{color:var(--green);border-color:var(--green-bg);background:var(--green-bg);}
+  .eq-act.amber{color:var(--amber);border-color:var(--amber-bg);background:var(--amber-bg);}
+  .eq-act.red{color:var(--red);border-color:var(--red-bg);background:var(--red-bg);}
+
   /* Indicador equipos con pedidos pendientes */
   .equipo-card.has-pending::before{
     content:'';position:absolute;top:11px;right:12px;
@@ -1064,6 +1075,34 @@
 
   [title]{cursor:help;}
 
+  /* ═══════════════════════════════════════════════════════
+     RANGE BAR — selector de período para rankings
+  ═══════════════════════════════════════════════════════ */
+  .range-bar{
+    display:flex;align-items:center;gap:10px;
+    padding:8px 14px;background:var(--bg2);border:1px solid var(--border);
+    border-left:3px solid var(--accent);
+  }
+  .range-bar-label{
+    font-family:'JetBrains Mono',monospace;font-size:10px;
+    color:var(--text3);letter-spacing:.14em;text-transform:uppercase;
+    font-weight:600;
+  }
+  .range-select{
+    background:var(--bg3);border:1px solid var(--border);color:var(--text);
+    font-family:'IBM Plex Sans','Inter',sans-serif;font-size:13px;
+    padding:6px 10px;outline:none;border-radius:0;cursor:pointer;
+    transition:border-color var(--t-fast) var(--ease);
+  }
+  .range-select:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-tint);}
+  .range-pill{
+    display:inline-block;
+    margin-left:4px;padding:2px 8px;font-size:10px;
+    font-family:'JetBrains Mono',monospace;letter-spacing:.08em;
+    color:var(--accent);background:var(--accent-bg);
+    border:1px solid var(--accent-tint);text-transform:none;
+  }
+
   /* ═══════════════════════════════════════════════════════════════
      MOBILE UX · ajustes integrales para teléfonos / tablets
      - Tap targets ≥ 40px
@@ -1282,6 +1321,12 @@
     .eq-inner-table-trabajos tbody td:nth-child(5){
       display:none;
     }
+
+    /* RANGE BAR — mobile */
+    .range-bar{padding:7px 10px;gap:8px;flex-wrap:wrap;}
+    .range-bar-label{font-size:9.5px;letter-spacing:.1em;}
+    .range-select{font-size:14px;padding:8px 10px;height:40px;flex:1;min-width:0;}
+    .range-pill{font-size:9px;padding:1px 6px;margin-left:3px;}
 
     /* PEDIDOS PENDIENTES — controles apilados, full width */
     .pend-controls{gap:6px;}
@@ -1526,13 +1571,28 @@
           <div class="combo-totals" id="comboTotals">—</div>
           <div class="combo-chart-wrap"><canvas id="chartComboFlota"></canvas></div>
         </div>
-        <div class="telemetria-grid" style="margin-top:12px">
+        <!-- Selector de rango: aplica a rankings + highlight del chart de arriba -->
+        <div class="range-bar" style="margin-top:14px">
+          <span class="range-bar-label">Rango:</span>
+          <select id="rangeSelect" class="range-select" onchange="setRangeFilter(this.value)">
+            <option value="mesActual">Mes actual</option>
+            <option value="ult3">Últimos 3 meses</option>
+            <option value="ult6">Últimos 6 meses</option>
+            <option value="ano" selected>Año actual</option>
+            <option value="q1">Q1</option>
+            <option value="q2">Q2</option>
+            <option value="q3">Q3</option>
+            <option value="q4">Q4</option>
+            <option value="all">Histórico (todo)</option>
+          </select>
+        </div>
+        <div class="telemetria-grid" style="margin-top:8px">
           <div class="telemetria-card">
-            <div class="telemetria-card-title">top 10 — equipos más costosos en repuestos 2026</div>
+            <div class="telemetria-card-title">top 10 — equipos más costosos en repuestos <span id="rankCostoSub" class="range-pill">2026</span></div>
             <div id="rankCosto"></div>
           </div>
           <div class="telemetria-card">
-            <div class="telemetria-card-title">top 10 — equipos con más horas en taller 2026</div>
+            <div class="telemetria-card-title">top 10 — equipos con más horas en taller <span id="rankHorasSub" class="range-pill">2026</span></div>
             <div id="rankHoras"></div>
           </div>
         </div>
@@ -1557,6 +1617,7 @@
           </div>
           <button class="view-btn active" id="btnGrid" onclick="setViewMode('grid')" title="Vista cuadros">⊞</button>
           <button class="view-btn" id="btnList" onclick="setViewMode('list')" title="Vista lista">☰</button>
+          <button class="view-btn" onclick="exportarFlotaCsv()" title="Descargar CSV del estado de flota (filtrado por rango activo)" aria-label="Exportar CSV">⇩</button>
         </div>
 
         <!-- Filtros por categoría (hoja de origen) -->
@@ -2321,11 +2382,12 @@ function parseIndicadores(rows){
    PROCESAMIENTO PANEL_TRABAJOS · agregados a nivel flota
 ═══════════════════════════════════════════════════════ */
 // Toma las filas de PANEL_TRABAJOS (formato fetchGvizObj) y produce:
-//   _horasPorEquipo  : { codN: totalHoras }
-//   _horasPorMesFlota: { ym: totalHorasFlota }
+//   _horasPorEquipo       : { codN: totalHoras }                 (agregado año)
+//   _horasPorMesFlota     : { ym: totalHorasFlota }
+//   _horasPorMesPorEquipo : { ym: { codN: horas } }              (para filtros de rango)
 // Tolera nombres de columna variantes (igual que loadTrabajosRegistro).
 function procesarPanelTrabajos(rawRows){
-  const out={horasPorEquipo:{},horasPorMesFlota:{},totalFilas:0};
+  const out={horasPorEquipo:{},horasPorMesFlota:{},horasPorMesPorEquipo:{},totalFilas:0};
   if(!rawRows||!rawRows.length)return out;
   const SINONIMOS={
     codigo:['CODIGO','COD','CODIGO EQUIPO'],
@@ -2363,11 +2425,15 @@ function procesarPanelTrabajos(rawRows){
     if(codN){
       out.horasPorEquipo[codN]=(out.horasPorEquipo[codN]||0)+tNum;
     }
-    // horas por mes a nivel flota
+    // horas por mes a nivel flota + por equipo por mes (para filtros de rango)
     const d=_parseDate(fecha);
     if(d){
       const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
       out.horasPorMesFlota[ym]=(out.horasPorMesFlota[ym]||0)+tNum;
+      if(codN){
+        (out.horasPorMesPorEquipo[ym]=out.horasPorMesPorEquipo[ym]||{});
+        out.horasPorMesPorEquipo[ym][codN]=(out.horasPorMesPorEquipo[ym][codN]||0)+tNum;
+      }
     }
   }
   out.totalFilas=totalFilas;
@@ -3014,6 +3080,7 @@ function renderEquipoIndex(equipos){
           ${info?.ubicacion?`<span>${info.ubicacion}</span>`:''}
           ${e.costoTotal>0?`<span style="color:var(--amber)">${formatMoney(e.costoTotal)}</span>`:''}
           ${hor?.actual?`<span style="color:var(--blue)">${hor.actual}</span>`:''}
+          ${(()=>{const a=fmtUltActividad(normCod(e.codigo));return `<span class="eq-act ${a.cls}" title="${a.title}">${a.txt}</span>`;})()}
         </div>
       </div>`;
     }).join('')}</div>`:'<div class="no-data">Sin equipos</div>';
@@ -3044,6 +3111,7 @@ function renderEquipoIndex(equipos){
           ${info?.estado?`<span style="color:${ESTADO_CSS[est]}">${info.estado}</span>`:''}
           ${e.costoTotal>0?`<span style="color:var(--amber)">${formatMoney(e.costoTotal)}</span>`:''}
           ${hor?.actual?`<span style="color:var(--blue)" title="Horómetro actual">${hor.actual}</span>`:''}
+          ${(()=>{const a=fmtUltActividad(normCod(e.codigo));return `<span class="eq-act ${a.cls}" title="${a.title}">${a.txt}</span>`;})()}
         </div>
       </div>`;
     }).join(''):'<div class="no-data">Sin equipos</div>';
@@ -3107,7 +3175,8 @@ async function loadAll(){
     // Cacheamos el raw para que loadTrabajosRegistro (modal de equipo) no re-descargue.
     window._panelTrabajosRaw = panelTrabajosObj;
     const tctx=procesarPanelTrabajos(panelTrabajosObj);
-    window._horasPorEquipo  = tctx.horasPorEquipo;
+    window._horasPorEquipo      = tctx.horasPorEquipo;
+    window._horasPorMesPorEquipo= tctx.horasPorMesPorEquipo||{};
     window._horasPorMesFlota= tctx.horasPorMesFlota;
     window._panelTrabajosTotal = tctx.totalFilas;
 
@@ -3139,6 +3208,10 @@ async function loadAll(){
       }
       eq.costoTotal=total;
     }
+    // Última actividad por equipo: max date entre entregas, service, combustible.
+    // Trabajos no aporta (no se guarda fecha por equipo en _horasPorMesPorEquipo,
+    // solo por mes). Lo importante es identificar equipos "olvidados".
+    window._ultActividadPorEquipo = computarUltimaActividad();
     renderEquipoIndex();
 
     // Telemetría de flota y pedidos pendientes global — agregados que cruzan todo
@@ -3905,12 +3978,145 @@ function closeEquipoDetail(){
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeEquipoDetail();});
 
 /* ═══════════════════════════════════════════════════════════════════
+   FILTRO DE RANGO DE FECHA
+   Estado global usado por los rankings y el chart de telemetría.
+   - `key` identifica el preset (ano/ult3/ult6/q1..q4/all + mesActual)
+   - `yms` se recalcula on-demand desde el preset, usando los YMs presentes
+     en los datos cargados (no se inventan meses sin datos).
+═══════════════════════════════════════════════════════════════════ */
+window._rangeFilter={key:'ano',label:'2026'};
+
+function _allYMsDisponibles(){
+  // Union de meses que existen en costos o trabajos. Eso define el universo.
+  const c=window._costosPorMes||{};
+  const h=window._horasPorMesFlota||{};
+  return [...new Set([...Object.keys(c),...Object.keys(h)])].sort();
+}
+
+// Devuelve los YMs que corresponden al preset, intersectados con los disponibles.
+function rangeYMs(key){
+  const all=_allYMsDisponibles();
+  if(!all.length)return [];
+  const now=new Date();
+  const yNow=now.getFullYear();
+  const mNow=now.getMonth()+1;
+  const fmtYm=(y,m)=>`${y}-${String(m).padStart(2,'0')}`;
+  const ymNow=fmtYm(yNow,mNow);
+
+  if(key==='all')return all;
+  if(key==='ano'){
+    return all.filter(ym=>ym.startsWith(`${yNow}-`));
+  }
+  if(key==='mesActual'){
+    return all.filter(ym=>ym===ymNow);
+  }
+  if(key==='ult3'||key==='ult6'){
+    const N=key==='ult3'?3:6;
+    // Genera los últimos N YMs incluyendo el actual
+    const want=new Set();
+    let y=yNow,m=mNow;
+    for(let i=0;i<N;i++){
+      want.add(fmtYm(y,m));
+      m--;if(m<1){m=12;y--;}
+    }
+    return all.filter(ym=>want.has(ym));
+  }
+  if(/^q[1-4]$/.test(key)){
+    const q=+key.slice(1);
+    const start=(q-1)*3+1, end=start+2;
+    return all.filter(ym=>{
+      const[y,mm]=ym.split('-').map(Number);
+      return y===yNow&&mm>=start&&mm<=end;
+    });
+  }
+  return all;
+}
+
+function rangeLabel(key){
+  const map={
+    mesActual:'Mes actual',
+    ult3:'Últimos 3 meses',
+    ult6:'Últimos 6 meses',
+    ano:`${new Date().getFullYear()}`,
+    q1:`Q1 ${new Date().getFullYear()}`,
+    q2:`Q2 ${new Date().getFullYear()}`,
+    q3:`Q3 ${new Date().getFullYear()}`,
+    q4:`Q4 ${new Date().getFullYear()}`,
+    all:'Histórico',
+  };
+  return map[key]||key;
+}
+
+function setRangeFilter(key){
+  window._rangeFilter={key,label:rangeLabel(key)};
+  // Solo afecta a la sección telemetría (rankings + chart highlight)
+  renderTelemetriaFlota();
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ÚLTIMA ACTIVIDAD POR EQUIPO
+   Devuelve { codN: timestampMs } con la fecha más reciente registrada.
+   Cruza fuentes: entregas de repuestos, service (PANEL_PROGRAMA),
+   combustible. Trabajos en taller no aporta (no se guarda fecha por
+   equipo individualmente en el agregado actual).
+═══════════════════════════════════════════════════════════════════ */
+function computarUltimaActividad(){
+  const out={};
+  const set=(codN,d)=>{
+    if(!d)return;
+    const t=d.getTime();
+    if(!out[codN]||t>out[codN])out[codN]=t;
+  };
+  // Entregas: _entregasPorEquipo[codN] = [{nro, fecha, items, costo}, ...]
+  const epe=window._entregasPorEquipo||{};
+  for(const codN of Object.keys(epe)){
+    for(const e of epe[codN]||[]) set(codN, _parseDate(e.fecha));
+  }
+  // Service: _servicePanel[codN].ultFecha
+  const sp=window._servicePanel||{};
+  for(const codN of Object.keys(sp)){
+    set(codN, _parseDate((sp[codN]||{}).ultFecha));
+  }
+  // Combustible: _combustiblePorEquipo[codN].ultimaFecha o ultimaFechaSort
+  const comb=window._combustiblePorEquipo||{};
+  for(const codN of Object.keys(comb)){
+    const c=comb[codN]||{};
+    if(c.ultimaFechaSort)set(codN,new Date(c.ultimaFechaSort));
+    else set(codN,_parseDate(c.ultimaFecha));
+  }
+  return out;
+}
+
+// Formatea "hace Xd" + clase de color según antigüedad.
+// >90d / sin datos: rojo (equipo olvidado)
+// 31-90d: amber
+// 8-30d: gris (normal)
+// 0-7d: green (reciente)
+function fmtUltActividad(codN){
+  const ts=(window._ultActividadPorEquipo||{})[codN];
+  if(!ts)return{txt:'sin act.',cls:'red',title:'No hay actividad registrada en entregas, service o combustible'};
+  const dias=Math.floor((Date.now()-ts)/86400000);
+  let cls='';
+  if(dias<=7)cls='green';
+  else if(dias<=30)cls='';
+  else if(dias<=90)cls='amber';
+  else cls='red';
+  const txt = dias===0?'hoy' : dias===1?'ayer' : dias<30?`hace ${dias}d` : dias<365?`hace ${Math.round(dias/30)}m` : `hace ${Math.round(dias/365)}a`;
+  const fecha=new Date(ts).toLocaleDateString('es-AR');
+  return{txt, cls, title:`Última actividad registrada: ${fecha}`};
+}
+
+/* ═══════════════════════════════════════════════════════════════════
    TELEMETRÍA DE FLOTA · 2 gráficos + 2 rankings
 ═══════════════════════════════════════════════════════════════════ */
 let _chartComboFlota=null;
 
 function renderTelemetriaFlota(){
   if(typeof Chart==='undefined')return;
+  // Mantener los pill labels de los rankings sincronizados con el rango activo
+  const _rl=window._rangeFilter.label;
+  const _p1=document.getElementById('rankCostoSub');if(_p1)_p1.textContent=_rl;
+  const _p2=document.getElementById('rankHorasSub');if(_p2)_p2.textContent=_rl;
   const AMBER=_cssVar('--amber','#ffa030');
   const ACCENT=_cssVar('--accent','#3a5fc8');
   const CORP =_cssVar('--corp','#5d80e8');
@@ -3947,6 +4153,13 @@ function renderTelemetriaFlota(){
       :'sin datos para graficar';
   }
 
+  // Highlight: barras dentro del rango con color pleno; fuera del rango atenuadas.
+  // Si el filtro es 'all' no atenuamos nada.
+  const rngBarSet=new Set(rangeYMs(window._rangeFilter.key));
+  const isHighlight=window._rangeFilter.key!=='all';
+  const bgColors=ymsAll.map(ym=>(!isHighlight||rngBarSet.has(ym))?AMBER+'cc':AMBER+'33');
+  const bdColors=ymsAll.map(ym=>(!isHighlight||rngBarSet.has(ym))?AMBER:AMBER+'55');
+
   if(_chartComboFlota){_chartComboFlota.destroy();_chartComboFlota=null;}
   const elCombo=document.getElementById('chartComboFlota');
   if(elCombo&&ymsAll.length){
@@ -3959,8 +4172,8 @@ function renderTelemetriaFlota(){
             type:'bar',
             label:'Costo en repuestos',
             data:dataCosto,
-            backgroundColor:AMBER+'cc',
-            borderColor:AMBER,
+            backgroundColor:bgColors,
+            borderColor:bdColors,
             borderWidth:1,
             maxBarThickness:48,
             yAxisID:'yCosto',
@@ -4039,10 +4252,13 @@ function renderTelemetriaFlota(){
     });
   }
 
-  // ─── Ranking 1: top 10 más costosos ───────────────────────────────
-  // Suma costo total por equipo desde _costosPorMes
+  // ─── Ranking 1: top 10 más costosos (filtrado por rango) ──────────
+  // Suma costo total por equipo desde _costosPorMes, restringido a los YMs
+  // que pertenecen al rango seleccionado.
+  const rngYMs=new Set(rangeYMs(window._rangeFilter.key));
   const costoPorEquipo={};
   for(const ym of Object.keys(costosPorMes)){
+    if(!rngYMs.has(ym))continue;
     for(const[codN,v]of Object.entries(costosPorMes[ym]||{})){
       costoPorEquipo[codN]=(costoPorEquipo[codN]||0)+(v||0);
     }
@@ -4066,8 +4282,22 @@ function renderTelemetriaFlota(){
     }).join('')
     :'<div class="no-data">Sin datos de costos.</div>';
 
-  // ─── Ranking 2: top 10 más horas en taller ───────────────────────
-  const horasPorEq=window._horasPorEquipo||{};
+  // ─── Ranking 2: top 10 más horas en taller (filtrado por rango) ──
+  // Si el filtro es 'all', usamos el agregado precomputado por velocidad.
+  // En cualquier otro caso, sumamos solo los YMs del rango.
+  let horasPorEq;
+  if(window._rangeFilter.key==='all'){
+    horasPorEq=window._horasPorEquipo||{};
+  }else{
+    const hpme=window._horasPorMesPorEquipo||{};
+    horasPorEq={};
+    for(const ym of Object.keys(hpme)){
+      if(!rngYMs.has(ym))continue;
+      for(const[codN,v]of Object.entries(hpme[ym]||{})){
+        horasPorEq[codN]=(horasPorEq[codN]||0)+(v||0);
+      }
+    }
+  }
   const topHoras=Object.entries(horasPorEq)
     .filter(([,v])=>v>0)
     .sort((a,b)=>b[1]-a[1])
@@ -4096,7 +4326,13 @@ function renderTelemetriaFlota(){
 }
 
 // Click en una fila del ranking → scroll al equipo y abrir su detalle
-function scrollToEquipo(codigo){
+// scrollToEquipo:
+// - scrolla al card del equipo y le hace un highlight breve
+// - opcionalmente abre el panel de detalle (default: true)
+// Llamado por: filas de los rankings (drill-down → detalle) y por links que
+// solo quieren llevar el foco visual al card (ej. cross-link de pedidos).
+function scrollToEquipo(codigo, opts){
+  const openDetail = (opts==null||opts.openDetail!==false);
   const id='eqcard_'+codigo.replace(/[^a-z0-9]/gi,'_');
   const el=document.getElementById(id);
   if(!el)return;
@@ -4105,6 +4341,128 @@ function scrollToEquipo(codigo){
   el.style.transition='box-shadow .3s ease';
   el.style.boxShadow='0 0 0 2px var(--accent), 0 0 20px var(--accent-tint)';
   setTimeout(()=>{el.style.boxShadow='';setTimeout(()=>{el.style.transition='';},300);},900);
+  // Abrir el detalle: esperamos que termine el scroll antes de expandir para
+  // que la animación de detail (height/opacity) no compita con el scroll.
+  if(openDetail){
+    setTimeout(()=>{
+      // Si el panel ya está abierto en ESTE equipo, toggleEquipoDetail cerraría;
+      // por eso forzamos: si no está activo, abrimos.
+      const panel=document.getElementById('equipoDetailPanel');
+      const yaAbiertoAcá = panel?.classList.contains('open') && (_activeEqCard===el);
+      if(!yaAbiertoAcá) toggleEquipoDetail(codigo,el);
+    },420);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   EXPORT CSV
+   Vuelca un snapshot de la flota a CSV. Una fila por equipo, con datos
+   resumidos: estado, ubicación, último service, próximo service, costo
+   en repuestos en el rango seleccionado, horas en taller en el rango,
+   pedidos pendientes y entregas en el rango.
+═══════════════════════════════════════════════════════════════════ */
+function _csvEscape(v){
+  if(v==null)return'';
+  const s=String(v);
+  // Escapar comillas y envolver si tiene coma, salto de línea o comillas
+  if(/[",\n\r]/.test(s)) return '"'+s.replace(/"/g,'""')+'"';
+  return s;
+}
+function _csvLine(arr){return arr.map(_csvEscape).join(',');}
+
+function exportarFlotaCsv(){
+  const rng = window._rangeFilter || {key:'ano',label:'2026'};
+  const yms = new Set(rangeYMs(rng.key));
+
+  const equipos = window._equiposOrdenados || [];
+  const estado  = window._estadoEquipos   || {};
+  const cpm     = window._costosPorMes    || {};
+  const hpme    = window._horasPorMesPorEquipo || {};
+  const epe     = window._entregasPorEquipo|| {};
+  const pedAll  = window._pedidosAll      || [];
+  const sp      = window._servicePanel    || {};
+
+  // Helper: agregar costo/horas para un equipo según los YMs activos
+  function sumByYM(map, codN){
+    let s=0;
+    for(const ym of Object.keys(map)){
+      if(!yms.has(ym))continue;
+      const v=(map[ym]||{})[codN];
+      if(v)s+=v;
+    }
+    return s;
+  }
+  // Helper: contar entregas del equipo dentro del rango
+  function entregasEnRange(codN){
+    const list=epe[codN]||[];
+    return list.filter(e=>{
+      // e.fecha viene en string; el panel guarda en el mismo formato la 'mes'
+      // dentro de _entregaCostos. Para filtrar por rango, parseamos a ym.
+      const d=_parseDate(e.fecha);
+      if(!d)return false;
+      const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      return yms.has(ym);
+    });
+  }
+  // Helper: pedidos pendientes activos del equipo
+  function pedidosActivos(codN){
+    return pedAll.filter(p=>{
+      const cod=normCod(p.codigo||p['CÓDIGO']||p['CODIGO']||'');
+      if(cod!==codN)return false;
+      const e=(p.estado||'').toLowerCase();
+      return e.includes('pendiente')||e.includes('parcial')||e.includes('comprado');
+    }).length;
+  }
+
+  const headers=[
+    'CÓDIGO','EQUIPO','MARCA','MODELO','CATEGORÍA',
+    'ESTADO','UBICACIÓN','OPERARIO','TENENCIA','PATENTE',
+    'ÚLT_HR_KM','ÚLT_FECHA','PROX_HR_KM','PROX_FECHA','FRECUENCIA',
+    `COSTO_REPUESTOS_${rng.label.replace(/\s+/g,'_')}`,
+    `HORAS_TALLER_${rng.label.replace(/\s+/g,'_')}`,
+    `ENTREGAS_${rng.label.replace(/\s+/g,'_')}`,
+    'PEDIDOS_PENDIENTES'
+  ];
+
+  const rows=[headers];
+  for(const eq of equipos){
+    const codN=normCod(eq.codigo);
+    const info=estado[codN]||{};
+    const spE=sp[codN]||{};
+    const ents=entregasEnRange(codN);
+    rows.push([
+      eq.codigo,
+      eq.nombre||info.equipo||'',
+      eq.marca||info.marca||'',
+      eq.modelo||info.modelo||'',
+      eq.categoria||info.categoria||'',
+      info.estado||'',
+      info.ubicacion||'',
+      info.operario||'',
+      info.tenencia||'',
+      info.patente||spE.patente||'',
+      spE.ultHrKm||'',
+      spE.ultFecha||'',
+      spE.estHrKm||'',
+      spE.estFecha||'',
+      spE.frecuencia||'',
+      Math.round(sumByYM(cpm,codN)),
+      Math.round(sumByYM(hpme,codN)*10)/10,
+      ents.length,
+      pedidosActivos(codN),
+    ]);
+  }
+  const csv = rows.map(_csvLine).join('\r\n');
+  // BOM para que Excel abra como UTF-8
+  const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const stamp = new Date().toISOString().slice(0,10);
+  a.download = `ingecov-flota-${rng.key}-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},200);
 }
 
 /* ═══════════════════════════════════════════════════════════════════
