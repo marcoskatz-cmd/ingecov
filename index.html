@@ -1456,7 +1456,7 @@
         <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
       </button>
-      <button class="refresh-btn" id="refreshBtn" onclick="loadAll()">sync</button>
+      <button class="refresh-btn" id="refreshBtn" onclick="loadAllForce()" title="Forzar fetch (ignora cache)">sync</button>
     </div>
   </div>
   <div class="status-bar">
@@ -1467,7 +1467,7 @@
     <span class="stat-cell crit"><span class="stat-k">down</span><span class="stat-v" id="hsDown">—</span></span>
     <span class="stat-cell"><span class="stat-k">pedidos</span><span class="stat-v" id="hsPend">—</span></span>
     <span class="stat-cell spacer"></span>
-    <span class="stat-cell"><span class="stat-k">last</span><span class="stat-v" id="hsLast">—</span></span>
+    <span class="stat-cell" title="Edad y fuente del dato más viejo en pantalla. 'live' = fetch de red. 'cache' = de localStorage (TTL 30m). 'mix' = combinación."><span class="stat-k">datos</span><span class="stat-v" id="hsLast">—</span></span>
     <span class="stat-cell"><span class="stat-k">utc-3</span><span class="stat-v" id="hsClock">--:--:--</span></span>
   </div>
 </header>
@@ -1725,11 +1725,163 @@ const _cellStr=cell=>{
   return cell.f!=null?String(cell.f):String(cell.v);
 };
 
+/* ═══════════════════════════════════════════════════════
+   CACHE — localStorage con TTL sobre _fetchGvizJson
+   Estrategia: cache-first dentro del TTL. Botón refresh fuerza bypass.
+   - Subir CACHE_VERSION invalida todo el cache existente (usar cuando cambia
+     el shape de los datos esperados o el parser downstream).
+   - Si localStorage se llena (QuotaExceededError), purga la mitad más vieja
+     y reintenta una vez. Si vuelve a fallar, sigue sin cachear sin romper.
+═══════════════════════════════════════════════════════ */
+const CACHE = (function(){
+  const VERSION='v1';
+  const TTL_MS=30*60*1000;       // 30 min: balance entre frescura y velocidad
+  const MAX_AGE_MS=7*24*60*60*1000; // entradas más viejas que esto se purgan al inicio
+  const PREFIX='ingecov:cache:';
+
+  const _key=(id,sheet,range)=>`${PREFIX}${VERSION}:${id}:${sheet||'_'}:${range||'_'}`;
+
+  function get(id,sheet,range){
+    if(window._CACHE_BYPASS)return null;
+    try{
+      const raw=localStorage.getItem(_key(id,sheet,range));
+      if(!raw)return null;
+      const e=JSON.parse(raw);
+      if(Date.now()-e.ts>TTL_MS)return null;
+      return {data:e.data,ts:e.ts};
+    }catch{return null;}
+  }
+  function set(id,sheet,range,data){
+    const k=_key(id,sheet,range);
+    const payload=JSON.stringify({ts:Date.now(),data});
+    try{ localStorage.setItem(k,payload); }
+    catch(e){
+      // Quota exceeded: purgar mitad más vieja y reintentar una sola vez.
+      _purgeOldestHalf();
+      try{ localStorage.setItem(k,payload); }catch{/* dropped silently */}
+    }
+  }
+  function _entries(){
+    const out=[];
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);
+      if(!k||!k.startsWith(PREFIX))continue;
+      try{
+        const v=JSON.parse(localStorage.getItem(k));
+        out.push({k,ts:v.ts||0,size:(localStorage.getItem(k)||'').length});
+      }catch{out.push({k,ts:0,size:0});}
+    }
+    return out;
+  }
+  function _purgeOldestHalf(){
+    const es=_entries().sort((a,b)=>a.ts-b.ts);
+    es.slice(0,Math.ceil(es.length/2)).forEach(e=>localStorage.removeItem(e.k));
+  }
+  function purgeExpired(){
+    // Limpia entradas muy viejas y de versiones anteriores
+    for(let i=localStorage.length-1;i>=0;i--){
+      const k=localStorage.key(i);
+      if(!k||!k.startsWith(PREFIX))continue;
+      // Versiones distintas
+      if(!k.startsWith(`${PREFIX}${VERSION}:`)){localStorage.removeItem(k);continue;}
+      try{
+        const v=JSON.parse(localStorage.getItem(k));
+        if(Date.now()-(v.ts||0)>MAX_AGE_MS)localStorage.removeItem(k);
+      }catch{localStorage.removeItem(k);}
+    }
+  }
+  function clear(){
+    for(let i=localStorage.length-1;i>=0;i--){
+      const k=localStorage.key(i);
+      if(k&&k.startsWith(PREFIX))localStorage.removeItem(k);
+    }
+  }
+  function stats(){
+    const es=_entries();
+    return {
+      entries:es.length,
+      totalKB:Math.round(es.reduce((s,e)=>s+e.size,0)/1024),
+      oldestMin:es.length?Math.round((Date.now()-Math.min(...es.map(e=>e.ts)))/60000):null,
+      newestMin:es.length?Math.round((Date.now()-Math.max(...es.map(e=>e.ts)))/60000):null,
+      ttlMin:Math.round(TTL_MS/60000),
+    };
+  }
+  return {get,set,clear,purgeExpired,stats,_key};
+})();
+window._CACHE_BYPASS=false;
+// Exponer para debugging desde consola
+window.cacheStats=()=>CACHE.stats();
+window.cacheClear=()=>{CACHE.clear();console.log('Cache limpiado.');};
+
+// Limpieza al inicio: borra entradas muy viejas o de versiones previas
+CACHE.purgeExpired();
+
+// Estado para mostrar "datos: hace Xm · cache/live/mix" en la status bar.
+// _lastDataTs guarda el TIMESTAMP DEL DATO MÁS VIEJO renderizado.
+// Así, si la pantalla mezcla un fetch live (ts=ahora) con uno cacheado (ts=hace 10m),
+// el indicador muestra 10m (la edad real del dato más añejo).
+window._lastDataTs=null;             // ms
+window._lastDataHadCache=false;
+window._lastDataHadLive=false;
+function _trackFetchTs(ts){
+  if(window._lastDataTs==null||ts<window._lastDataTs)window._lastDataTs=ts;
+}
+
 async function _fetchGvizJson(id,sheet,range){
+  const cached=CACHE.get(id,sheet,range);
+  if(cached){
+    _trackFetchTs(cached.ts);
+    window._lastDataHadCache=true;
+    return cached.data;
+  }
   const r=await fetch(gvizUrl(id,sheet,range));
   if(!r.ok)throw new Error(`HTTP ${r.status} · ${sheet}`);
   const txt=await r.text();
-  return JSON.parse(txt.substring(txt.indexOf('{'),txt.lastIndexOf('}')+1));
+  const json=JSON.parse(txt.substring(txt.indexOf('{'),txt.lastIndexOf('}')+1));
+  CACHE.set(id,sheet,range,json);
+  _trackFetchTs(Date.now());
+  window._lastDataHadLive=true;
+  return json;
+}
+
+// Devuelve el resumen del estado actual: { ageMin, source }
+function dataFreshness(){
+  if(window._lastDataTs==null)return {ageMin:null,source:''};
+  const ageMin=Math.round((Date.now()-window._lastDataTs)/60000);
+  const c=window._lastDataHadCache,l=window._lastDataHadLive;
+  const source=c&&l?'mix':l?'live':c?'cache':'';
+  return {ageMin,source};
+}
+
+// Pinta el cell `hsLast` con la edad + fuente. Ejemplos:
+//   "live · ahora"           (todo fresco, < 1m)
+//   "live · 0m"              (todo fresco, redondeado)
+//   "cache · 12m"            (todo cache, dato más viejo es de hace 12m)
+//   "mix · 4m"               (algunos hits de cache, edad del más viejo: 4m)
+// Color: live=verde, cache=ámbar, mix=ámbar.
+function _renderFreshness(){
+  const el=document.getElementById('hsLast');
+  if(!el)return;
+  const {ageMin,source}=dataFreshness();
+  if(source===''){el.textContent='—';el.style.color='';return;}
+  const ageTxt=ageMin==null?'?':(ageMin<1?'ahora':`${ageMin}m`);
+  el.textContent=`${source} · ${ageTxt}`;
+  el.style.color = source==='live' ? 'var(--green)' : 'var(--amber)';
+}
+let _freshTimer=null;
+function _refreshFreshnessIndicator(){
+  _renderFreshness();
+  if(_freshTimer)clearInterval(_freshTimer);
+  // Actualizamos cada 30s para que el contador "Xm" vaya subiendo solo.
+  _freshTimer=setInterval(_renderFreshness,30000);
+}
+
+// Wrapper de loadAll que bypasea cache. Lo llama el botón refresh manual
+// y el ciclo de auto-refresh: en ambos casos el usuario pidió datos frescos.
+async function loadAllForce(){
+  window._CACHE_BYPASS=true;
+  try{ await loadAll(); }
+  finally{ window._CACHE_BYPASS=false; }
 }
 
 async function fetchGvizRaw(id,sheet,range){
@@ -2908,6 +3060,11 @@ async function loadAll(){
   document.getElementById('errorState').style.display='none';
   setLoadProgress(0);
 
+  // Reset del tracking de freshness — cada loadAll arma su propio resumen.
+  window._lastDataTs=null;
+  window._lastDataHadCache=false;
+  window._lastDataHadLive=false;
+
   try{
     setLoadProgress(15);
     // Carga primaria: TODO lo necesario para el primer render.
@@ -2979,8 +3136,7 @@ async function loadAll(){
     renderTelemetriaFlota();
     renderPedidosPendientesGlobal();
 
-    const _hsl=document.getElementById('hsLast');
-    if(_hsl)_hsl.textContent=fmtHora();
+    _refreshFreshnessIndicator(); // arranca el ciclo de actualización del indicador
     document.getElementById('loadingState').style.display='none';
     document.getElementById('dashboard').style.display='block';
     setLoadProgress(80);
@@ -3011,7 +3167,7 @@ async function loadAll(){
   }catch(e){
     document.getElementById('loadingState').style.display='none';
     document.getElementById('errorState').style.display='block';
-    document.getElementById('errorState').innerHTML=`<div style="color:var(--red);margin-bottom:8px">⚠ Error al cargar datos</div><div style="font-size:12px;color:var(--text3)">${e.message}</div><div style="margin-top:12px"><button onclick="loadAll()" class="refresh-btn">Reintentar</button></div>`;
+    document.getElementById('errorState').innerHTML=`<div style="color:var(--red);margin-bottom:8px">⚠ Error al cargar datos</div><div style="font-size:12px;color:var(--text3)">${e.message}</div><div style="margin-top:12px"><button onclick="loadAllForce()" class="refresh-btn">Reintentar</button></div>`;
     setLoadProgress(100);
   }
   btn.classList.remove('loading');btn.textContent='↻ actualizar';
@@ -4061,7 +4217,9 @@ function setAutoRefresh(){
     _autoSecs--;
     if(_autoSecs<=0){
       _autoSecs=_autoInterval;
-      loadAll();
+      // Auto-refresh = el usuario pidió datos frescos en este intervalo,
+      // así que bypaseamos el cache y vamos directo a red.
+      loadAllForce();
     }
     _renderAutoCD();
   },1000);
