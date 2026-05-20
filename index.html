@@ -783,45 +783,43 @@
   .eq-tenencia.alquilado{color:var(--amber);border-color:var(--amber-bg);background:var(--amber-bg);}
 
   /* ═══════════════════════════════════════════════════════
-     INACTIVOS · divisor + grupo colapsable
-     Por defecto los equipos inactivos están ocultos en ambos modos.
-     Si el contenedor tiene .show-inactivos, se muestran (atenuados).
+     INACTIVOS · sección colapsable APARTE del listado general
   ═══════════════════════════════════════════════════════ */
-  .equipo-grid:not(.show-inactivos) .equipo-card.inactivo,
-  .equipo-list-wrap:not(.show-inactivos) .equipo-list-row.inactivo{
-    display:none;
+  .inactivos-section{
+    margin-top:18px;
+    border:1px solid var(--border);background:var(--bg2);
   }
-  /* Inactivos visibles: dim por defecto, full opacity al hover */
-  .equipo-grid.show-inactivos .equipo-card.inactivo,
-  .equipo-list-wrap.show-inactivos .equipo-list-row.inactivo{
-    opacity:.55;
-  }
-  .equipo-grid.show-inactivos .equipo-card.inactivo:hover,
-  .equipo-list-wrap.show-inactivos .equipo-list-row.inactivo:hover{
-    opacity:1;
-  }
-
-  .inactivos-divider{
-    grid-column:1 / -1;
-    display:flex;align-items:center;gap:10px;
-    padding:11px 16px;background:var(--bg2);
-    border-top:1px dashed var(--border2);
-    border-bottom:1px dashed var(--border2);
-    cursor:pointer;user-select:none;
+  .inactivos-section-head{
+    display:flex;align-items:center;gap:12px;
+    padding:12px 16px;cursor:pointer;user-select:none;
     font-family:'JetBrains Mono',monospace;font-size:11px;
     color:var(--text2);letter-spacing:.04em;
-    transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
+    border-bottom:1px solid transparent;
+    transition:background var(--t-fast) var(--ease), color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
   }
-  .inactivos-divider:hover{background:var(--bg3);color:var(--text);}
-  .inactivos-divider .div-chevron{
+  .inactivos-section.open .inactivos-section-head{border-bottom-color:var(--border);background:var(--bg3);}
+  .inactivos-section-head:hover{background:var(--bg3);color:var(--text);}
+  .ins-chevron{
     display:inline-block;width:14px;color:var(--text3);
-    transition: transform var(--t-fast) var(--ease);
+    transition: transform var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
   }
-  .inactivos-divider.open .div-chevron{transform:rotate(90deg);color:var(--accent);}
-  .inactivos-divider .div-label b{color:var(--text2);font-weight:700;}
-  .inactivos-divider:hover .div-label b{color:var(--text);}
-  .inactivos-divider .div-hint{color:var(--text3);font-size:10px;}
-  .inactivos-divider:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+  .inactivos-section.open .ins-chevron{transform:rotate(90deg);color:var(--accent);}
+  .ins-title b{color:var(--text2);font-weight:700;}
+  .inactivos-section-head:hover .ins-title b{color:var(--text);}
+  .ins-count{
+    display:inline-block;margin-left:4px;
+    font-family:'JetBrains Mono',monospace;font-size:10px;
+    padding:1px 7px;color:var(--text3);background:var(--bg3);
+    border:1px solid var(--border);
+  }
+  .inactivos-section.open .ins-count{color:var(--accent);background:var(--accent-bg);border-color:var(--accent-tint);}
+  .ins-hint{color:var(--text3);font-size:10px;margin-left:auto;}
+  .inactivos-section-head:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+  /* Cards dentro de la sección: atenuadas por defecto, full opacity en hover */
+  #inactivosContent .equipo-card,
+  #inactivosContent .equipo-list-row{opacity:.6;}
+  #inactivosContent .equipo-card:hover,
+  #inactivosContent .equipo-list-row:hover{opacity:1;}
 
   /* Indicador de última actividad por equipo (entregas / service / combustible) */
   .eq-act{
@@ -1363,9 +1361,11 @@
       display:none;
     }
 
-    /* INACTIVOS divisor — mobile */
-    .inactivos-divider{padding:10px 12px;gap:8px;font-size:10.5px;}
-    .inactivos-divider .div-hint{display:none;} /* en mobile solo el label */
+    /* INACTIVOS sección — mobile */
+    .inactivos-section{margin-top:14px;}
+    .inactivos-section-head{padding:11px 12px;gap:8px;font-size:10.5px;}
+    .ins-hint{display:none;} /* en mobile solo el título + contador */
+    .ins-count{font-size:9.5px;padding:1px 6px;}
 
     /* RANGE BAR — mobile */
     .range-bar{padding:7px 10px;gap:8px;flex-wrap:wrap;}
@@ -1695,6 +1695,18 @@
         <div class="filter-bar filter-bar-ubi" id="filterBarUbi"></div>
 
         <div id="equipoGrid" class="equipo-grid"></div>
+
+        <!-- Sección separada para equipos inactivos (no operativos sin
+             movimiento). Estructuralmente fuera del listado general; el
+             header es clickeable y expande el contenido. -->
+        <section id="inactivosSection" class="inactivos-section" hidden>
+          <header class="inactivos-section-head" onclick="toggleInactivos()" role="button" tabindex="0" aria-expanded="false">
+            <span class="ins-chevron">▸</span>
+            <span class="ins-title"><b>Inactivos</b> <span id="inactivosCount" class="ins-count">0</span></span>
+            <span class="ins-hint">equipos no operativos o sin movimiento reciente</span>
+          </header>
+          <div id="inactivosContent" class="equipo-grid" hidden></div>
+        </section>
 
         <!-- Home estable del panel detalle. El panel se mueve dinámicamente
              a la fila de la tarjeta clickeada (modo grid) o justo debajo
@@ -2888,19 +2900,13 @@ let _filtroEstado='todos';
 let _filtroBtn=null;
 function setFiltroEstado(est,btn){
   _filtroEstado=est;
-  // Auto-expand del grupo de inactivos cuando el usuario filtra por estados
-  // que solo viven entre los inactivos. Sin esto, click en "No operativo"
-  // mostraba 0 cards porque todos están en el grupo colapsado.
+  // Auto-expand de la sección de inactivos cuando el usuario filtra por
+  // estados que viven principalmente entre los inactivos. Sin esto, el
+  // filtro mostraría 0 cards en el listado principal y el usuario no
+  // entendería por qué (los matches están en el bloque colapsado abajo).
   if(est==='parado'||est==='sin-estado'){
-    const grid=document.getElementById('equipoGrid');
-    if(grid&&!grid.classList.contains('show-inactivos')){
-      // Forzamos abierto sin persistir (es contextual al filtro)
-      const wrap=grid.querySelector('.equipo-list-wrap');
-      grid.classList.add('show-inactivos');
-      if(wrap)wrap.classList.add('show-inactivos');
-      const div=grid.querySelector('.inactivos-divider');
-      if(div){div.classList.add('open');div.setAttribute('aria-expanded','true');}
-    }
+    const sec=document.getElementById('inactivosSection');
+    if(sec && !sec.classList.contains('open')) toggleInactivos(true);
   }
   // Scope: limpiar .active solo en el bar de estado, no afectar al bar de categoría
   document.querySelectorAll('#filterBar .filter-btn').forEach(b=>b.classList.remove('active'));
@@ -3111,9 +3117,9 @@ function renderEquipoIndex(equipos){
     return info?.patente||null;
   };
 
-  // Partición activos / inactivos. Inactivos van al final, dentro de un
-  // grupo colapsable. Por defecto colapsado (se respeta la preferencia del
-  // usuario guardada en localStorage si existe).
+  // Partición activos / inactivos. Inactivos van a una SECCIÓN APARTE
+  // (#inactivosSection), no se mezclan con el listado principal.
+  // El header de esa sección es clickeable y persiste preferencia en LS.
   const activos=[], inactivos=[];
   for(const e of eq) (_esEquipoInactivo(e)?inactivos:activos).push(e);
   const showInactivos = (function(){
@@ -3153,28 +3159,19 @@ function renderEquipoIndex(equipos){
     </div>`;
   };
 
-  // Divisor entre activos e inactivos (mismo HTML para ambos modos).
-  const dividerHTML=(n,open)=>`<div class="inactivos-divider${open?' open':''}" onclick="toggleInactivos()" role="button" tabindex="0" aria-expanded="${open?'true':'false'}">
-    <span class="div-chevron">▸</span>
-    <span class="div-label"><b>Inactivos (${n})</b></span>
-    <span class="div-hint">sin movimiento reciente ni operatividad — click para ${open?'ocultar':'ver'}</span>
-  </div>`;
-
+  // ── Render del listado principal: SOLO activos ──
+  // Los inactivos se renderizan aparte en #inactivosContent.
   if(_viewMode==='list'){
     grid.className='';
-    if(!eq.length){grid.innerHTML='<div class="no-data">Sin equipos</div>';}
-    else{
-      const partes=[`<div class="equipo-list-wrap${showInactivos?' show-inactivos':''}">`];
-      partes.push(activos.map(e=>renderListRow(e,'')).join(''));
-      if(inactivos.length){
-        partes.push(dividerHTML(inactivos.length,showInactivos));
-        partes.push(inactivos.map(e=>renderListRow(e,' inactivo')).join(''));
-      }
-      partes.push('</div>');
-      grid.innerHTML=partes.join('');
+    if(!activos.length && !inactivos.length){
+      grid.innerHTML='<div class="no-data">Sin equipos</div>';
+    } else if(!activos.length){
+      grid.innerHTML='<div class="no-data">Sin equipos activos. Ver inactivos abajo.</div>';
+    } else {
+      grid.innerHTML=`<div class="equipo-list-wrap">${activos.map(e=>renderListRow(e,'')).join('')}</div>`;
     }
   }else{
-    grid.className=`equipo-grid${showInactivos?' show-inactivos':''}`;
+    grid.className='equipo-grid';
     const renderCard=(e,inactivoCls)=>{
       const info=(window._estadoEquipos||{})[normCod(e.codigo)];
       const hor=(window._horometros||{})[normCod(e.codigo)];
@@ -3204,31 +3201,95 @@ function renderEquipoIndex(equipos){
         </div>
       </div>`;
     };
-    if(!eq.length){grid.innerHTML='<div class="no-data">Sin equipos</div>';}
-    else{
-      const partes=[activos.map(e=>renderCard(e,'')).join('')];
-      if(inactivos.length){
-        partes.push(dividerHTML(inactivos.length,showInactivos));
-        partes.push(inactivos.map(e=>renderCard(e,' inactivo')).join(''));
+    if(!activos.length && !inactivos.length){
+      grid.innerHTML='<div class="no-data">Sin equipos</div>';
+    } else if(!activos.length){
+      grid.innerHTML='<div class="no-data">Sin equipos activos. Ver inactivos abajo.</div>';
+    } else {
+      grid.innerHTML=activos.map(e=>renderCard(e,'')).join('');
+    }
+  }
+
+  // ── Render del bloque de inactivos (sección aparte) ──
+  const sec=document.getElementById('inactivosSection');
+  const content=document.getElementById('inactivosContent');
+  const countEl=document.getElementById('inactivosCount');
+  if(sec && content){
+    if(!inactivos.length){
+      sec.setAttribute('hidden','');
+    } else {
+      sec.removeAttribute('hidden');
+      if(countEl) countEl.textContent=inactivos.length;
+      // El contenedor #inactivosContent espeja el modo (grid o list) del principal.
+      if(_viewMode==='list'){
+        content.className='';
+        content.innerHTML=`<div class="equipo-list-wrap">${inactivos.map(e=>renderListRow(e,' inactivo')).join('')}</div>`;
+      } else {
+        content.className='equipo-grid';
+        // renderCard solo está definido en el scope del bloque grid de arriba;
+        // como puede no estar (caso list mode), reuso renderListRow es-mode
+        // mismo formato del modo activo en grid: necesitamos renderCard también acá.
+        content.innerHTML=inactivos.map(e=>_renderCardForInactivos(e)).join('');
       }
-      grid.innerHTML=partes.join('');
+      // Visibilidad: respeta preferencia guardada
+      sec.classList.toggle('open',showInactivos);
+      if(showInactivos) content.removeAttribute('hidden'); else content.setAttribute('hidden','');
+      const head=sec.querySelector('.inactivos-section-head');
+      if(head) head.setAttribute('aria-expanded',showInactivos?'true':'false');
     }
   }
   aplicarFiltros();
 }
 
-// Toggle del grupo de inactivos. Persiste la preferencia en localStorage.
-// Auto-expand también lo dispara aplicarFiltros() cuando el usuario filtra
-// por estados que solo viven entre los inactivos (parado / sin estado).
-function toggleInactivos(){
-  const grid=document.getElementById('equipoGrid');if(!grid)return;
-  const containers=[grid, grid.querySelector('.equipo-list-wrap')].filter(Boolean);
-  const willOpen=!containers[0].classList.contains('show-inactivos');
-  containers.forEach(c=>c.classList.toggle('show-inactivos',willOpen));
-  const div=grid.querySelector('.inactivos-divider');
-  if(div){div.classList.toggle('open',willOpen);div.setAttribute('aria-expanded',willOpen?'true':'false');
-    const hint=div.querySelector('.div-hint');
-    if(hint)hint.textContent=`sin movimiento reciente ni operatividad — click para ${willOpen?'ocultar':'ver'}`;}
+// Renderer de card para la sección inactivos (modo grid). Es un wrapper
+// alrededor de la misma lógica de renderCard del modo grid principal; lo
+// extraemos a función top-level porque renderCard vive dentro de un closure.
+function _renderCardForInactivos(e){
+  const info=(window._estadoEquipos||{})[normCod(e.codigo)];
+  const hor=(window._horometros||{})[normCod(e.codigo)];
+  const est=ESTADO_COLOR(info?.estado);
+  const patente=(window._horometros||{})[normCod(e.codigo)]?.patente||info?.patente||null;
+  const titulo=buildEquipoNombre(e.clasificacion||info?.clasificacion||TIPO_EQUIPO(e.codigo),e.marca,e.modelo,e.nombre);
+  const ce=e.codigo.replace(/'/g,"\\'");
+  const tienePend=(window._equiposConPendientes||new Set()).has(normCod(e.codigo));
+  const ten=info?.tenencia;
+  const tenLabel=info?.observacion||(ten==='propio'?'Propio':ten==='alquilado'?'Alquilado':'');
+  const tenBadge=(ten==='propio'||ten==='alquilado')?`<span class="eq-tenencia ${ten}" title="Tenencia: ${tenLabel}">${tenLabel}</span>`:'';
+  return`<div class="equipo-card inactivo${tienePend?' has-pending':''}" id="eqcard_${e.codigo.replace(/[^a-z0-9]/gi,'_')}"
+    data-cod="${e.codigo}" data-nom="${e.nombre}" data-est="${est==='green'?'operativo':est==='amber'?'reparacion':est==='red'?'parado':'sin-estado'}"
+    title="${tienePend?'Tiene pedidos pendientes':''}"
+    onclick="toggleEquipoDetail('${ce}',this)">
+    <div class="eq-status-strip ${est}"></div>
+    <div class="eq-code">${e.codigo}</div>
+    <div class="eq-name">${titulo}</div>
+    <div class="eq-meta">
+      ${tenBadge}
+      ${patente?`<span class="eq-patente" title="Patente">${patente}</span>`:''}
+      ${info?.estado?`<span style="color:${ESTADO_CSS[est]}">${info.estado}</span>`:''}
+      ${e.costoTotal>0?`<span style="color:var(--amber)">${formatMoney(e.costoTotal)}</span>`:''}
+      ${hor?.actual?`<span style="color:var(--blue)" title="Horómetro actual">${hor.actual}</span>`:''}
+      ${(()=>{const a=fmtUltActividad(normCod(e.codigo));return `<span class="eq-act ${a.cls}" title="${a.title}">${a.txt}</span>`;})()}
+    </div>
+  </div>`;
+}
+
+// Toggle del bloque de inactivos. Persiste preferencia en localStorage.
+// La sección está estructuralmente AFUERA del listado principal, así que
+// abrir/cerrar no toca al grid de activos.
+function toggleInactivos(force){
+  const sec=document.getElementById('inactivosSection');
+  const content=document.getElementById('inactivosContent');
+  if(!sec||!content)return;
+  const willOpen = (force==null) ? content.hasAttribute('hidden') : !!force;
+  if(willOpen){
+    content.removeAttribute('hidden');
+    sec.classList.add('open');
+  } else {
+    content.setAttribute('hidden','');
+    sec.classList.remove('open');
+  }
+  const head=sec.querySelector('.inactivos-section-head');
+  if(head) head.setAttribute('aria-expanded', willOpen?'true':'false');
   try{ localStorage.setItem('ingecov-show-inactivos', willOpen?'1':'0'); }catch{}
 }
 
