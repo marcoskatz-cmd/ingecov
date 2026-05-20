@@ -4201,21 +4201,22 @@ function computarUltimaActividad(){
 }
 
 // Criterio "equipo inactivo" para separación visual del índice.
-// La definición es deliberadamente conservadora: marcamos como inactivo solo a
-// equipos que NO estén siendo usados ni reparados ni esperando repuestos.
-// Esto evita que algo legítimamente operativo se "esconda" por accidente.
-// Estado:
-//   activo = operativo OR en reparación OR tiene pedidos pendientes OR
-//            tuvo movimiento (entregas/service/combustible) en los últimos
-//            INACTIVE_THRESHOLD_DIAS días.
-//   inactivo = el resto (parado + sin actividad ni pendientes, o sin estado
-//              y sin actividad).
+// Regla por estado:
+//   - operativo (green)      → activo SIEMPRE
+//   - en reparación (amber)  → activo SIEMPRE (se está trabajando en él)
+//   - no operativo (red)     → INACTIVO SIEMPRE, ignora pendientes/actividad
+//   - sin estado (gray)      → inactivo SOLO si tampoco tiene pendientes
+//                              ni movimiento reciente (tiebreaker para
+//                              equipos a los que les falta la metadata)
+// Esto matchea el conteo del filtro "No operativo": todos los rojos van abajo.
 const INACTIVE_THRESHOLD_DIAS=90;
 function _esEquipoInactivo(e){
   const codN=normCod(e.codigo);
   const info=(window._estadoEquipos||{})[codN]||{};
   const est=ESTADO_COLOR(info.estado);
   if(est==='green'||est==='amber')return false;
+  if(est==='red')return true;
+  // gray (sin estado): tiebreaker por pendientes + actividad reciente
   if((window._equiposConPendientes||new Set()).has(codN))return false;
   const ts=(window._ultActividadPorEquipo||{})[codN];
   if(ts&&(Date.now()-ts)/86400000<=INACTIVE_THRESHOLD_DIAS)return false;
