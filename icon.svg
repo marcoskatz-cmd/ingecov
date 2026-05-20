@@ -1,7 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#0c0e12"/>
-  <path d="M 96 256 L 256 96 L 416 256 L 256 416 Z"
-        fill="none" stroke="#ff6b35" stroke-width="22" stroke-linejoin="miter"/>
-  <rect x="244" y="180" width="24" height="152" fill="#ff6b35"/>
-  <rect x="196" y="320" width="120" height="14" fill="#ff6b35"/>
+  <rect width="512" height="512" fill="#2a48a5"/>
+  <text x="256" y="275" text-anchor="middle"
+        font-family="'Arial Black','Helvetica Neue','Liberation Sans',Arial,sans-serif"
+        font-size="122" font-weight="900" fill="#ffffff"
+        letter-spacing="-4">INGECO</text>
+  <text x="256" y="345" text-anchor="middle"
+        font-family="'Arial','Helvetica Neue','Liberation Sans',sans-serif"
+        font-size="42" font-weight="700" fill="#ffffff"
+        letter-spacing="3">CONSTRUCCIONES</text>
 </svg>
