@@ -1631,11 +1631,11 @@ const SHEET_IDS = {
 // Pestaña tabular plana (una fila = una carga). No requiere Apps Script consolidador.
 const COMBUSTIBLE_SHEET='ENTREGA DE COMBUSTIBLE';
 
-// Combustible de livianos: pestaña del Excel y fila desde la que se toman los datos
-// (lo anterior es histórico viejo que no interesa). Si se insertan/borran filas POR
-// ENCIMA de la 6551 hay que ajustar este número.
+// Combustible de livianos: pestaña del Excel y fecha de corte. Se toman todos los
+// registros desde esa fecha en adelante (lo anterior es histórico viejo). Filtrar
+// por fecha es robusto: no depende de números de fila.
 const COMBUSTIBLE_LIVIANOS_SHEET='Control General';
-const COMBUSTIBLE_LIVIANOS_DESDE_FILA=6551;
+const COMBUSTIBLE_LIVIANOS_DESDE=new Date(2025,0,1); // 1 enero 2025
 
 // Pestañas del sheet PROGRAMA DE TRABAJOS DE SERVICE.
 const SERVICE_FREC_SHEET='FRECUENCIA - OPERATIVIDAD';
@@ -2510,25 +2510,25 @@ function procesarCombustible(rows){
      0 fecha · 1 factura · 2 remito · 3 tipo · 4 litros ·
      5 dominio(patente) · 6 odómetro(km) · 7 obra · 8 chofer ·
      10 precio unitario · 11 total $
-   Solo se toman las filas desde COMBUSTIBLE_LIVIANOS_DESDE_FILA (lo anterior
+   Solo se toman los registros desde COMBUSTIBLE_LIVIANOS_DESDE (lo anterior
    es histórico viejo). Se matchea por patente al código de equipo.
 ═══════════════════════════════════════════════════════ */
 function procesarCombustibleLivianos(rawRows,patenteToCarN){
   const out={porEquipo:{},gastoTotal:0,cargasTotal:0,sinMatch:0,gastoPorMes:{},cargasPorMes:{}};
   if(!rawRows||!rawRows.length)return out;
-  const desde=COMBUSTIBLE_LIVIANOS_DESDE_FILA-1; // índice gviz = fila − 1
   const numLitros=v=>{const n=parseFloat(String(v||'').trim().replace(',','.'));return isFinite(n)&&n>0?n:null;};
   const numKm=v=>{const s=String(v||'').replace(/[^\d]/g,'');return s?parseInt(s,10):null;};
-  for(let i=desde;i<rawRows.length;i++){
+  for(let i=0;i<rawRows.length;i++){
     const r=rawRows[i];
     if(!r)continue;
     const fecha=String(r[0]||'').trim();
     const patRaw=String(r[5]||'').trim();
     if(!fecha&&!patRaw)continue;            // fila vacía / basura
+    const d=_parseDate(fecha);
+    if(!d||d<COMBUSTIBLE_LIVIANOS_DESDE)continue;  // solo enero 2025 en adelante
     const litros=numLitros(r[4]);
     const costo=parseMoney(r[11]);
-    const d=_parseDate(fecha);
-    const ym=d?(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')):null;
+    const ym=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
     // gasto total + por mes: cuenta TODAS las cargas (incluye "Bidones" y no matcheadas)
     if(costo>0){
       out.gastoTotal+=costo;
