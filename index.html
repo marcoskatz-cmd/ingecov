@@ -17,7 +17,7 @@
         referrerpolicy="no-referrer"></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
-     INGECOV · Panel técnico de mantenimiento de flota
+     INGECO · Panel técnico de mantenimiento de flota
      Sans:  IBM Plex Sans  ·  Mono: JetBrains Mono
   ═══════════════════════════════════════════════════════════════ */
   :root, [data-theme="dark"] {
@@ -1375,7 +1375,7 @@
       <div class="logo-divider"></div>
       <div class="logo-text">
         <div class="logo-sub">Panel de mantenimiento</div>
-        <div class="logo-sub-small">INGECOV<span class="sep">·</span>Flota 2026<span class="sep">·</span>Tucumán</div>
+        <div class="logo-sub-small">INGECO<span class="sep">·</span>Flota 2026<span class="sep">·</span>Tucumán</div>
       </div>
     </div>
     <div class="masthead-mid">
@@ -1879,7 +1879,7 @@ function subtipoInactivo(estado){
 }
 const ESTADO_CSS={green:'var(--green)',amber:'var(--amber)',red:'var(--red)',gray:'var(--text3)'};
 
-// Tipo de equipo por prefijo de código → etiqueta corta (spec verificada INGECOV)
+// Tipo de equipo por prefijo de código → etiqueta corta (spec verificada INGECO)
 const TIPO_EQUIPO=cod=>{
   const p=(cod||'').split('-')[0].toUpperCase();
   const tipos={
@@ -3667,7 +3667,7 @@ async function toggleEquipoDetail(codigo,cardEl){
       </table></div>`
     :`<div class="no-data">Sin trabajos registrados para este equipo.${
       window._panelTrabajosTotal===0
-        ? '<br><span style=\"font-size:11px;color:var(--amber)\">PANEL_TRABAJOS no encontrado — ejecutá el menú INGECOV → Actualizar PANEL_TRABAJOS en el Sheet maestro.</span>'
+        ? '<br><span style=\"font-size:11px;color:var(--amber)\">PANEL_TRABAJOS no encontrado — actualizá PANEL_TRABAJOS desde el menú del Sheet maestro.</span>'
         : window._panelTrabajosTotal>0&&trabajosRows.length===0
           ? '<br><span style=\"font-size:11px\">Script B corrió pero este equipo no tiene trabajos registrados, o la columna CÓDIGO está vacía en la planilla.</span>'
           : ''
@@ -4136,7 +4136,7 @@ function renderTelemetriaFlota(){
         <span class="rank-val">${v.toFixed(1)} hr</span>
       </div>`;
     }).join('')
-    :'<div class="no-data">Sin datos de horas trabajadas.<br><span style="font-size:10px;color:var(--amber)">Si PANEL_TRABAJOS está vacío, ejecutá INGECOV → Actualizar PANEL_TRABAJOS en el Sheet maestro.</span></div>';
+    :'<div class="no-data">Sin datos de horas trabajadas.<br><span style="font-size:10px;color:var(--amber)">Si PANEL_TRABAJOS está vacío, actualizalo desde el menú del Sheet maestro.</span></div>';
 
   // Badge resumen en el header de la sección
   const badge=document.getElementById('telemetriaBadge');
