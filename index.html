@@ -1612,10 +1612,18 @@ const SHEET_IDS = {
   combustible:    '19dqJ-tcdmXiOns99mJgMMmZNDT3kKS7EQXwHd7VDILc',
   // PROGRAMA DE TRABAJOS DE SERVICE 2026 — fuente nueva de service / operatividad.
   programaService:'1y6pqbXscej3139lkImWJsJHeJvFa0B5sneICEyyNPmI',
+  // Control de combustible de vehículos livianos (Excel subido — gviz lo lee igual).
+  combustibleLivianos:'16KmV7k9gsqBgtd3YpesD2w9Hq2BEasac',
 };
 
 // Pestaña tabular plana (una fila = una carga). No requiere Apps Script consolidador.
 const COMBUSTIBLE_SHEET='ENTREGA DE COMBUSTIBLE';
+
+// Combustible de livianos: pestaña del Excel y fila desde la que se toman los datos
+// (lo anterior es histórico viejo que no interesa). Si se insertan/borran filas POR
+// ENCIMA de la 6551 hay que ajustar este número.
+const COMBUSTIBLE_LIVIANOS_SHEET='Control General';
+const COMBUSTIBLE_LIVIANOS_DESDE_FILA=6551;
 
 // Pestañas del sheet PROGRAMA DE TRABAJOS DE SERVICE.
 const SERVICE_FREC_SHEET='FRECUENCIA - OPERATIVIDAD';
@@ -1719,6 +1727,14 @@ async function fetchGvizObj(id,sheet,range){
 // normCod: quita tildes, espacios, guiones, cualquier caracter no alfanumérico.
 // "RN - 03" = "RN-03" = "RN 03" = "RN03" → todos dan "RN03"
 const normCod = s => String(s||'')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^A-Za-z0-9]/g, '')
+  .toUpperCase();
+
+// Normaliza PATENTE/dominio para matchear sin importar espacios ni guiones:
+// "AB 262 XX", "AB-262-XX", "ab262xx" \u2192 todos "AB262XX".
+const normPat = s => String(s||'')
   .normalize('NFD')
   .replace(/[\u0300-\u036f]/g, '')
   .replace(/[^A-Za-z0-9]/g, '')
@@ -2468,6 +2484,65 @@ function procesarCombustible(rows){
   return porEquipo;
 }
 
+/* ═══════════════════════════════════════════════════════
+   COMBUSTIBLE LIVIANOS — Excel "Control General"
+   Una fila = una carga. Columnas (0-indexadas):
+     0 fecha · 1 factura · 2 remito · 3 tipo · 4 litros ·
+     5 dominio(patente) · 6 odómetro(km) · 7 obra · 8 chofer ·
+     10 precio unitario · 11 total $
+   Solo se toman las filas desde COMBUSTIBLE_LIVIANOS_DESDE_FILA (lo anterior
+   es histórico viejo). Se matchea por patente al código de equipo.
+═══════════════════════════════════════════════════════ */
+function procesarCombustibleLivianos(rawRows,patenteToCarN){
+  const out={porEquipo:{},gastoTotal:0,cargasTotal:0,sinMatch:0};
+  if(!rawRows||!rawRows.length)return out;
+  const desde=COMBUSTIBLE_LIVIANOS_DESDE_FILA-1; // índice gviz = fila − 1
+  const numLitros=v=>{const n=parseFloat(String(v||'').trim().replace(',','.'));return isFinite(n)&&n>0?n:null;};
+  const numKm=v=>{const s=String(v||'').replace(/[^\d]/g,'');return s?parseInt(s,10):null;};
+  for(let i=desde;i<rawRows.length;i++){
+    const r=rawRows[i];
+    if(!r)continue;
+    const fecha=String(r[0]||'').trim();
+    const patRaw=String(r[5]||'').trim();
+    if(!fecha&&!patRaw)continue;            // fila vacía / basura
+    const litros=numLitros(r[4]);
+    const costo=parseMoney(r[11]);
+    if(costo>0)out.gastoTotal+=costo;       // gasto total: todas las cargas
+    out.cargasTotal++;
+    const codN=patenteToCarN[normPat(patRaw)];
+    if(!codN){ out.sinMatch++; continue; }  // "Bidones", patentes no mapeadas
+    const km=numKm(r[6]);
+    const d=_parseDate(fecha);
+    const e=out.porEquipo[codN]||(out.porEquipo[codN]={
+      unidad:'km',cargas:[],ultimaHr:null,ultimaFecha:null,ultimaFechaSort:null,
+      totalLitros:0,totalCosto:0,promedio:null,
+    });
+    e.cargas.push({
+      fecha,fechaSort:d?d.getTime():0,
+      hr:(km!=null&&km>0)?km:null,litros:litros||0,costo:costo||0,
+      tipo:String(r[3]||'').trim(),lugar:String(r[7]||'').trim(),
+      operario:String(r[8]||'').trim(),obs:'',estado:(km!=null&&km>0)?'ok':'sin lectura',
+    });
+    e.totalLitros+=litros||0;
+    e.totalCosto+=costo||0;
+  }
+  // Postproceso por equipo: ordenar, última lectura, consumo L/100km.
+  for(const codN of Object.keys(out.porEquipo)){
+    const e=out.porEquipo[codN];
+    e.cargas.sort((a,b)=>a.fechaSort-b.fechaSort);
+    for(let i=e.cargas.length-1;i>=0;i--){
+      if(e.cargas[i].hr!=null){e.ultimaHr=e.cargas[i].hr;e.ultimaFecha=e.cargas[i].fecha;e.ultimaFechaSort=e.cargas[i].fechaSort;break;}
+    }
+    const conHr=e.cargas.filter(c=>c.hr!=null);
+    if(conHr.length>=2){
+      const delta=conHr[conHr.length-1].hr-conHr[0].hr;
+      const litrosPeriodo=conHr.slice(1).reduce((s,c)=>s+c.litros,0);
+      if(delta>0&&litrosPeriodo>0)e.promedio=litrosPeriodo/delta*100; // L/100km
+    }
+  }
+  return out;
+}
+
 // Clasifica el estado de service de un equipo: 'red' | 'amber' | 'green' | 'gray'
 // Compara hr/km actual del equipo contra estimación del próximo service y rangos
 // (umbrales en hr/km restantes). Si no hay datos suficientes devuelve 'gray'.
@@ -3105,7 +3180,7 @@ async function loadAll(){
     // Carga primaria: TODO lo necesario para el primer render.
     // PANEL_REPUESTOS pasa a ser fuente única de entregas (reemplaza MESES_ENTREGAS).
     // PANEL_TRABAJOS se carga acá también para alimentar telemetría de flota (rankings + chart de horas).
-    const[pendientesRaw,entregadosRaw,codV,codL,codP,codS,panelRepuestosObj,panelTrabajosObj,serviceFrecRows,serviceTrimRows,combustibleObj]=await Promise.all([
+    const[pendientesRaw,entregadosRaw,codV,codL,codP,codS,panelRepuestosObj,panelTrabajosObj,serviceFrecRows,serviceTrimRows,combustibleObj,combLivianosRows]=await Promise.all([
       fetchGvizRaw(SHEET_IDS.pedidos,'PENDIENTES'),
       // ENTREGADOS tiene título y contadores en filas 1-10; headers reales en fila 11.
       // El range fuerza a gviz a usar la fila 11 como header (sin esto, los nombres se pierden).
@@ -3120,6 +3195,8 @@ async function loadAll(){
       fetchGvizRaw(SHEET_IDS.programaService,SERVICE_FREC_SHEET).catch(()=>[]),
       fetchGvizRaw(SHEET_IDS.programaService,SERVICE_TRIM_SHEET).catch(()=>[]),
       fetchGvizObj(SHEET_IDS.combustible,COMBUSTIBLE_SHEET).catch(()=>[]),
+      // Combustible de livianos (Excel "Control General"); se procesa abajo.
+      fetchGvizRaw(SHEET_IDS.combustibleLivianos,COMBUSTIBLE_LIVIANOS_SHEET).catch(()=>[]),
     ]);
     setLoadProgress(55);
 
@@ -3159,6 +3236,30 @@ async function loadAll(){
       ...parseCodigos(codP,'pesado'),
       ...parseCodigos(codS,'soporte'),
     };
+
+    // Combustible de livianos: matchea por patente al código de equipo y fusiona
+    // en _combustiblePorEquipo (así detalle, consumo y operatividad lo toman igual).
+    {
+      const patenteToCarN={};
+      for(const [codN,info] of Object.entries(window._estadoEquipos)){
+        const p=normPat(info.patente);
+        if(p)patenteToCarN[p]=codN;
+      }
+      const liv=procesarCombustibleLivianos(combLivianosRows,patenteToCarN);
+      window._gastoCombLivianos=liv.gastoTotal;
+      for(const codN of Object.keys(liv.porEquipo)){
+        const e=liv.porEquipo[codN];
+        const ex=window._combustiblePorEquipo[codN];
+        if(!ex){ window._combustiblePorEquipo[codN]=e; continue; }
+        // Colisión (raro): fusionar cargas y recomputar última lectura.
+        ex.cargas=(ex.cargas||[]).concat(e.cargas).sort((a,b)=>a.fechaSort-b.fechaSort);
+        ex.totalLitros=(ex.totalLitros||0)+e.totalLitros;
+        ex.totalCosto=(ex.totalCosto||0)+e.totalCosto;
+        for(let i=ex.cargas.length-1;i>=0;i--){
+          if(ex.cargas[i].hr!=null){ex.ultimaHr=ex.cargas[i].hr;ex.ultimaFecha=ex.cargas[i].fecha;ex.ultimaFechaSort=ex.cargas[i].fechaSort;break;}
+        }
+      }
+    }
 
     // Render dashboard con entregas del mes actual (calculadas desde PANEL_REPUESTOS)
     renderDashboard(pendientesRaw,ctx.entregasMesActual);
@@ -3320,12 +3421,14 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
     ? `${serviceAmber} intermedio · ${serviceGreen} holgado · ${Object.keys(sp).length-serviceConDatos} sin datos`
     : (Object.keys(sp).length>0 ? 'falta cargar rangos/frecuencia' : 'sin datos en PROGRAMA DE SERVICE');
 
-  // KPIs (7: operativos, pedidos activos, reparación, service crítico, costo mes, horas taller, disponibilidad)
+  // KPIs (8: operativos, pedidos activos, reparación, service crítico, costo mes,
+  // horas taller, combustible livianos, disponibilidad)
   // Cualquier KPI cuyo valor numérico real sea 0 o no haya dato se renderiza con clase
   // .kpi-empty para atenuar visualmente; los KPIs con valor compiten por la atención.
   const _kpiCostoEmpty = !(totalCostoMes>0);
   const _kpiHorasEmpty = !(horasTotalFlota>0);
   const _kpiServiceEmpty = !(serviceConDatos>0);
+  const _gastoComb = window._gastoCombLivianos||0;
   document.getElementById('kpiGrid').innerHTML=`
     <div class="kpi${totalEquipos?'':' kpi-empty'}"><div class="kpi-label">operativos</div><div class="kpi-val green">${fmtInt(operativosAbs)}<span style="font-size:18px;color:var(--text3);font-weight:400"> / ${totalEquipos?fmtInt(totalEquipos):'—'}</span></div><div class="kpi-sub">estado verde en CÓDIGOS</div><div class="kpi-accent-bar green"></div></div>
     <div class="kpi${pendActivos?'':' kpi-empty'}"><div class="kpi-label">pedidos activos</div><div class="kpi-val ${pendActivos>10?'red':'amber'}">${fmtInt(pendActivos)}</div><div class="kpi-sub">pendiente · parcial · comprado</div><div class="kpi-accent-bar ${pendActivos>10?'red':'amber'}"></div></div>
@@ -3333,6 +3436,7 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
     <div class="kpi${_kpiServiceEmpty?' kpi-empty':''}${serviceCritico>0?' kpi-clickable':''}"${serviceCritico>0?' onclick="openServiceCriticoModal()" title="Ver lista de equipos críticos"':''}><div class="kpi-label">service crítico</div><div class="kpi-val ${serviceClass}">${fmtInt(serviceCritico)}</div><div class="kpi-sub">${serviceSub}</div><div class="kpi-accent-bar ${serviceClass}"></div></div>
     <div class="kpi${_kpiCostoEmpty?' kpi-empty':''}"><div class="kpi-label">costo en repuestos</div><div class="kpi-val amber">${totalCostoMes>0?formatMoney(totalCostoMes):'—'}</div><div class="kpi-sub">${MES_ACTUAL.label} · ${fmtInt(entConCosto)} entregas con costo</div><div class="kpi-accent-bar amber"></div></div>
     <div class="kpi${_kpiHorasEmpty?' kpi-empty':''}"><div class="kpi-label">horas en taller</div><div class="kpi-val">${horasTotalFlota>0?fmtInt(Math.round(horasTotalFlota))+' hr':'—'}</div>${horasTotalFlota>0?`<div class="kpi-sub hr-split"><div class="hr-split-bar"><span class="corr" style="width:${_corrPct}%"></span><span class="prev" style="width:${_prevPct}%"></span></div><span class="hr-split-leg"><i class="corr"></i>${fmtInt(Math.round(_horasCorr))} hr correctivo · ${_corrPct}%</span><span class="hr-split-leg"><i class="prev"></i>${fmtInt(Math.round(_horasPrev))} hr preventivo · ${_prevPct}%</span></div>`:`<div class="kpi-sub">acumuladas 2026 · flota</div>`}<div class="kpi-accent-bar blue"></div></div>
+    <div class="kpi${_gastoComb>0?'':' kpi-empty'}"><div class="kpi-label">combustible livianos</div><div class="kpi-val amber">${_gastoComb>0?formatMoney(_gastoComb):'—'}</div><div class="kpi-sub">gasto acumulado · vehículos livianos</div><div class="kpi-accent-bar amber"></div></div>
     <div class="kpi kpi-empty" id="kpiDispCard"><div class="kpi-label">disponibilidad global</div><div class="kpi-val" id="kpiDisp">—</div><div class="kpi-sub">cargando…</div><div class="kpi-accent-bar" id="kpiDispBar"></div></div>
   `;
 
@@ -3523,6 +3627,7 @@ async function toggleEquipoDetail(codigo,cardEl){
       <div class="eq-kpi"><div class="eq-kpi-val">${entMes.length}</div><div class="eq-kpi-label">entregas ${MES_ACTUAL.label}</div></div>
       <div class="eq-kpi"><div class="eq-kpi-val">${totalPedidos}</div><div class="eq-kpi-label">pedidos 2026</div></div>
       <div class="eq-kpi" title="${_consumoSub}"><div class="eq-kpi-val">${_consumoTxt}</div><div class="eq-kpi-label">consumo promedio</div></div>
+      <div class="eq-kpi" title="${_consumoSub}"><div class="eq-kpi-val amber">${comb?.totalCosto>0?formatMoney(comb.totalCosto):'—'}</div><div class="eq-kpi-label">gasto combustible</div></div>
     </div>`;
 
   // Estado operativo
@@ -3888,6 +3993,7 @@ async function toggleEquipoDetail(codigo,cardEl){
           <th>Fecha</th>
           <th style="text-align:right">${_hrUnit==='km'?'Odómetro':'Horóm.'}</th>
           <th style="text-align:right">Litros</th>
+          <th style="text-align:right">Costo</th>
           <th>Tipo</th>
           <th>Lugar</th>
           <th>Operario</th>
@@ -3897,14 +4003,15 @@ async function toggleEquipoDetail(codigo,cardEl){
           <td class="mono" style="font-size:10.5px;color:var(--text2);white-space:nowrap">${formatFechaCorta(c.fecha)}</td>
           <td class="mono" style="font-size:11px;text-align:right;color:${c.hr!=null?'var(--blue)':'var(--text3)'}">${c.hr!=null?fmtInt(c.hr)+' '+_hrUnit:'<span title="Horómetro/odómetro sin lectura">—</span>'}</td>
           <td class="mono" style="font-size:11px;text-align:right;color:var(--amber);font-weight:500">${fmtInt(c.litros)} L</td>
+          <td class="mono" style="font-size:11px;text-align:right;color:${c.costo>0?'var(--amber)':'var(--text3)'}">${c.costo>0?formatMoney(c.costo):'—'}</td>
           <td style="font-size:11px;color:var(--text2)">${c.tipo||'—'}</td>
           <td style="font-size:11px;color:var(--text3)">${c.lugar||'—'}</td>
           <td style="font-size:11px;color:var(--text3)">${c.operario||'—'}</td>
           <td style="font-size:11px;color:var(--text3)">${c.obs||''}</td>
         </tr>`).join('')}</tbody>
-        ${comb?.promedio!=null?`<tfoot><tr style="background:var(--bg3);font-weight:500">
-          <td colspan="2" style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em">Consumo promedio</td>
-          <td colspan="5" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text)">${comb.promedio.toFixed(_unidad==='km'?1:2)} ${_consumoLabel} · ${fmtInt(comb.totalLitros)} L acumulados</td>
+        ${(comb?.promedio!=null||comb?.totalCosto>0)?`<tfoot><tr style="background:var(--bg3);font-weight:500">
+          <td colspan="2" style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em">Acumulado</td>
+          <td colspan="6" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text)">${comb?.promedio!=null?`${comb.promedio.toFixed(_unidad==='km'?1:2)} ${_consumoLabel} · `:''}${fmtInt(comb.totalLitros)} L${comb?.totalCosto>0?` · ${formatMoney(comb.totalCosto)} en combustible`:''}</td>
         </tr></tfoot>`:''}
       </table></div>`
     : `<div class="no-data">Sin cargas de combustible registradas para este equipo.</div>`;
