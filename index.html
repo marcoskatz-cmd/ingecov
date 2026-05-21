@@ -1503,12 +1503,11 @@
           <button class="filter-btn" onclick="setFiltroCategoria('soporte',this)">Soporte <span class="f-count" id="fcCatSoporte">0</span></button>
         </div>
 
-        <!-- Filtros por estado (los inactivos viven en su propia sección) -->
+        <!-- Filtros por estado (los inactivos y sin estado viven en su propia sección) -->
         <div class="filter-bar" id="filterBar">
           <button class="filter-btn active" onclick="setFiltroEstado('todos',this)">Todos <span class="f-count" id="fcTodos">—</span></button>
           <button class="filter-btn" onclick="setFiltroEstado('operativo',this)"><span style="color:var(--green)">●</span> Operativo <span class="f-count" id="fcOper">0</span></button>
           <button class="filter-btn" onclick="setFiltroEstado('reparacion',this)"><span style="color:var(--amber)">●</span> En reparación <span class="f-count" id="fcRep">0</span></button>
-          <button class="filter-btn" onclick="setFiltroEstado('sin-estado',this)">Sin estado <span class="f-count" id="fcSin">0</span></button>
         </div>
 
         <!-- Filtros por tenencia (propio / alquilado, viene de CÓDIGOS columna OBSERVACIÓN) -->
@@ -1553,6 +1552,7 @@
           <button class="filter-btn active" onclick="setFiltroInactivo('todos',this)">Todos <span class="f-count" id="fcInactTodos">—</span></button>
           <button class="filter-btn" onclick="setFiltroInactivo('desuso',this)"><span style="color:var(--text3)">●</span> En desuso <span class="f-count" id="fcInactDesuso">0</span></button>
           <button class="filter-btn" onclick="setFiltroInactivo('no-operativo',this)"><span style="color:var(--red)">●</span> No operativo <span class="f-count" id="fcInactNoOp">0</span></button>
+          <button class="filter-btn" onclick="setFiltroInactivo('sin-estado',this)"><span style="color:var(--text-mute)">●</span> Sin estado <span class="f-count" id="fcInactSinEst">0</span></button>
         </div>
         <div id="inactivosBody"></div>
       </div>
@@ -1854,14 +1854,18 @@ const ESTADO_COLOR=st=>{
   return'green';
 };
 
-// Inactivo = equipo en desuso o no operativo (estado rojo). Estos no van a la
-// grilla principal sino a la sección "equipos inactivos".
+// Inactivo = equipo en desuso, no operativo (estado rojo) o sin estado cargado
+// (estado gris). Estos no van a la grilla principal sino a la sección
+// "equipos inactivos".
 function esEquipoInactivo(codigo){
   const info=(window._estadoEquipos||{})[normCod(codigo)];
-  return info?ESTADO_COLOR(info.estado)==='red':false;
+  if(!info)return false;
+  const c=ESTADO_COLOR(info.estado);
+  return c==='red'||c==='gray';
 }
-// Distingue el subtipo de inactivo a partir del texto crudo del estado.
+// Subtipo de inactivo: 'desuso' | 'no-operativo' | 'sin-estado'.
 function subtipoInactivo(estado){
+  if(ESTADO_COLOR(estado)==='gray')return'sin-estado';
   const l=String(estado||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
   return l.includes('desuso')?'desuso':'no-operativo';
 }
@@ -2849,10 +2853,12 @@ function renderInactivos(){
 
   const nDesuso=inactivos.filter(x=>x.subtipo==='desuso').length;
   const nNoOp  =inactivos.filter(x=>x.subtipo==='no-operativo').length;
+  const nSinEst=inactivos.filter(x=>x.subtipo==='sin-estado').length;
   const setN=(id,n)=>{const el=document.getElementById(id);if(el)el.textContent=n;};
   setN('fcInactTodos',inactivos.length);
   setN('fcInactDesuso',nDesuso);
   setN('fcInactNoOp',nNoOp);
+  setN('fcInactSinEst',nSinEst);
   const badge=document.getElementById('inactivosBadge');
   if(badge)badge.textContent=inactivos.length;
 
@@ -2868,8 +2874,11 @@ function renderInactivos(){
       <td class="mono" style="font-weight:600;color:var(--accent)">${esc(x.codigo)}</td>
       <td style="font-size:12px;color:var(--text2)">${esc(x.nombre)||'—'}</td>
       <td style="font-size:11px;color:var(--text3)">${CAT_LABEL[x.categoria]||esc(x.categoria)||'—'}</td>
-      <td>${x.subtipo==='desuso'
+      <td>${
+        x.subtipo==='desuso'
         ?'<span class="badge badge-gray" style="font-size:9px">En desuso</span>'
+        :x.subtipo==='sin-estado'
+        ?'<span style="font-size:9px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.06em">Sin estado</span>'
         :'<span class="badge badge-red" style="font-size:9px">No operativo</span>'}</td>
       <td style="font-size:11px;color:var(--text3)">${esc(x.ubicacion)||'—'}</td>
       <td style="font-size:11px;color:var(--text3)">${esc(x.operario)||'—'}</td>
