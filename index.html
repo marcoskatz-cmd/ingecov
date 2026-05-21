@@ -1610,10 +1610,18 @@ const SHEET_IDS = {
   trabajos_reg:   '1cNWQ44UEDiotHyB65BfTMcFuOCfQXYQoSNNAdAKTsy8',
   service:        '1zB9q0e9kxRKe52-I0u5Dqg7PUSE_nlxi3IYn7pxF0Iw',
   combustible:    '19dqJ-tcdmXiOns99mJgMMmZNDT3kKS7EQXwHd7VDILc',
+  // PROGRAMA DE TRABAJOS DE SERVICE 2026 — fuente nueva de service / operatividad.
+  programaService:'1y6pqbXscej3139lkImWJsJHeJvFa0B5sneICEyyNPmI',
 };
 
 // Pestaña tabular plana (una fila = una carga). No requiere Apps Script consolidador.
 const COMBUSTIBLE_SHEET='ENTREGA DE COMBUSTIBLE';
+
+// Pestañas del sheet PROGRAMA DE TRABAJOS DE SERVICE.
+const SERVICE_FREC_SHEET='FRECUENCIA - OPERATIVIDAD';
+// Trimestre vigente según el mes actual (1°: ene-mar, 2°: abr en adelante).
+// Cuando se agreguen 3°/4° trimestre, extender este map.
+const SERVICE_TRIM_SHEET=(new Date().getMonth()<3)?'1° TRIMESTRE':'2° TRIMESTRE';
 
 // Prefijos de código de equipo que usan ODÓMETRO (kilometraje) en lugar de horómetro.
 // El resto se asume horómetro (lo más común en obras viales). Si un equipo nuevo
@@ -2288,6 +2296,86 @@ function procesarPanelPrograma(rawRows){
 }
 
 /* ═══════════════════════════════════════════════════════
+   PROGRAMA DE TRABAJOS DE SERVICE 2026 — fuente nueva.
+   Combina FRECUENCIA-OPERATIVIDAD (rangos por equipo) con el trimestre
+   vigente (estado actual, último y próximo service). Produce _servicePanel
+   con shape compatible con el resto del panel.
+   - frecRows: [descripcion, codigo, serie, frecuencia, holgada, intermedia, critica]
+   - trimRows: [desc, cod, serie, _, fechaActual, hrActual, fechaUltService,
+                hrUltService, hrProximoService, operatividad, ...]
+═══════════════════════════════════════════════════════ */
+function procesarProgramaService(frecRows,trimRows){
+  const out={};
+  for(const r of(frecRows||[])){
+    const codN=normCod(r[1]);
+    if(!codN)continue;
+    out[codN]={
+      codigo:String(r[1]||'').trim(),
+      descripcion:String(r[0]||'').trim(),
+      patente:String(r[2]||'').trim(),
+      frecuencia:String(r[3]||'').trim(),
+      rangoHolgada:String(r[4]||'').trim(),
+      rangoIntermedia:String(r[5]||'').trim(),
+      rangoCritica:String(r[6]||'').trim(),
+      ultFecha:'',ultHrKm:'',estFecha:'',estHrKm:'',
+      ultServiceFecha:'',ultServiceHrKm:'',operatividad:'',
+    };
+  }
+  for(const r of(trimRows||[])){
+    const codN=normCod(r[1]);
+    if(!codN)continue;
+    const e=out[codN]||(out[codN]={
+      codigo:String(r[1]||'').trim(),descripcion:String(r[0]||'').trim(),
+      patente:String(r[2]||'').trim(),frecuencia:'',
+      rangoHolgada:'',rangoIntermedia:'',rangoCritica:'',
+    });
+    e.ultFecha       =String(r[4]||'').trim();
+    e.ultHrKm        =String(r[5]||'').trim();
+    e.ultServiceFecha=String(r[6]||'').trim();
+    e.ultServiceHrKm =String(r[7]||'').trim();
+    e.estHrKm        =String(r[8]||'').trim();
+    e.operatividad   =String(r[9]||'').trim();
+  }
+  return out;
+}
+
+// Operatividad de service: clasifica un equipo en holgado / intermedio / critico
+// según los hr/km restantes hasta el próximo service. La hr/km "actual" sale del
+// combustible (lectura más fresca); si el equipo no tiene cargas, se usa la del
+// PROGRAMA DE SERVICE. Rangos por equipo desde FRECUENCIA - OPERATIVIDAD.
+function operatividadEquipo(codN){
+  const SD={nivel:'sin-datos',color:'var(--text3)',label:'Sin datos',
+            restantes:null,hrActual:null,hrProximo:null,fuente:'',frecuencia:''};
+  const sp=(window._servicePanel||{})[codN];
+  if(!sp)return SD;
+  // Lectura de hr/km: descarta vacíos, "-", "S/H" y fechas (los equipos sin horómetro
+  // tienen la fecha del próximo service en esa columna — no es un número de hr/km).
+  const numHr=v=>{
+    const s=String(v||'').trim();
+    if(!s||s==='-'||/\//.test(s)||/s\/?h/i.test(s))return null;
+    const n=parseFloat(s.replace(/[^\d.,-]/g,'').replace(',','.'));
+    return isFinite(n)?n:null;
+  };
+  // Umbral inferior de cada rango: "250-400" → 250 ; "6000-10000" → 6000
+  const minRango=s=>{const m=String(s||'').match(/-?\d[\d.]*/);return m?parseFloat(m[0].replace(/\./g,'')):null;};
+  const holgadaMin=minRango(sp.rangoHolgada);
+  const intermediaMin=minRango(sp.rangoIntermedia);
+  const hrProximo=numHr(sp.estHrKm);
+  if(hrProximo==null||holgadaMin==null||intermediaMin==null)return SD;
+  const comb=(window._combustiblePorEquipo||{})[codN];
+  let hrActual,fuente;
+  if(comb&&comb.ultimaHr!=null){ hrActual=comb.ultimaHr; fuente='combustible'; }
+  else { hrActual=numHr(sp.ultHrKm); fuente='programa de service'; }
+  if(hrActual==null)return SD;
+  const restantes=hrProximo-hrActual;
+  let nivel,color,label;
+  if(restantes>=holgadaMin){ nivel='holgado'; color='var(--blue)'; label='Holgado'; }
+  else if(restantes>=intermediaMin){ nivel='intermedio'; color='var(--amber)'; label='Intermedio'; }
+  else { nivel='critico'; color='var(--red)'; label='Crítico'; }
+  return{nivel,color,label,restantes,hrActual,hrProximo,fuente,frecuencia:sp.frecuencia};
+}
+
+/* ═══════════════════════════════════════════════════════
    COMBUSTIBLE — Procesamiento de la pestaña ENTREGA DE COMBUSTIBLE
    Una fila = una carga. Acumulamos por código de equipo y derivamos:
      - últimas hr/km registradas (y su fecha)
@@ -2939,6 +3027,7 @@ function renderEquipoIndex(equipos){
       const tenLabel=info?.observacion||(ten==='propio'?'Propio':ten==='alquilado'?'Alquilado':'');
       const tenBadge=(ten==='propio'||ten==='alquilado')?`<span class="eq-tenencia ${ten}" title="Tenencia: ${tenLabel}">${tenLabel}</span>`:'';
       const _dim = !(e.costoTotal>0) && !tienePend;
+      const op=operatividadEquipo(normCod(e.codigo));
       return`<div class="equipo-list-row${tienePend?' has-pending':''}${_dim?' dim':''}" id="eqcard_${e.codigo.replace(/[^a-z0-9]/gi,'_')}"
         data-cod="${e.codigo}" data-nom="${e.nombre}" data-est="${est==='green'?'operativo':est==='amber'?'reparacion':est==='red'?'parado':'sin-estado'}"
         title="${tienePend?'Tiene pedidos pendientes':''}"
@@ -2948,6 +3037,7 @@ function renderEquipoIndex(equipos){
         <span class="eq-list-name">${titulo}</span>
         <div class="eq-list-meta">
           ${tienePend?'<span class="pending-dot" title="Pedidos pendientes"></span>':''}
+          ${op.nivel!=='sin-datos'?`<span style="color:${op.color};font-weight:600" title="Operatividad de service · ${op.label}">● ${op.label}</span>`:''}
           ${tenBadge}
           ${patente?`<span class="eq-patente">${patente}</span>`:''}
           ${info?.ubicacion?`<span>${info.ubicacion}</span>`:''}
@@ -2970,6 +3060,7 @@ function renderEquipoIndex(equipos){
       const tenLabel=info?.observacion||(ten==='propio'?'Propio':ten==='alquilado'?'Alquilado':'');
       const tenBadge=(ten==='propio'||ten==='alquilado')?`<span class="eq-tenencia ${ten}" title="Tenencia: ${tenLabel}">${tenLabel}</span>`:'';
       const _dim = !(e.costoTotal>0) && !tienePend;
+      const op=operatividadEquipo(normCod(e.codigo));
       return`<div class="equipo-card${tienePend?' has-pending':''}${_dim?' dim':''}" id="eqcard_${e.codigo.replace(/[^a-z0-9]/gi,'_')}"
         data-cod="${e.codigo}" data-nom="${e.nombre}" data-est="${est==='green'?'operativo':est==='amber'?'reparacion':est==='red'?'parado':'sin-estado'}"
         title="${tienePend?'Tiene pedidos pendientes':''}"
@@ -2978,6 +3069,7 @@ function renderEquipoIndex(equipos){
         <div class="eq-code">${e.codigo}</div>
         <div class="eq-name">${titulo}</div>
         <div class="eq-meta">
+          ${op.nivel!=='sin-datos'?`<span style="color:${op.color};font-weight:600" title="Operatividad de service · ${op.label}">● ${op.label}</span>`:''}
           ${tenBadge}
           ${patente?`<span class="eq-patente" title="Patente">${patente}</span>`:''}
           ${info?.estado?`<span style="color:${ESTADO_CSS[est]}">${info.estado}</span>`:''}
@@ -3013,7 +3105,7 @@ async function loadAll(){
     // Carga primaria: TODO lo necesario para el primer render.
     // PANEL_REPUESTOS pasa a ser fuente única de entregas (reemplaza MESES_ENTREGAS).
     // PANEL_TRABAJOS se carga acá también para alimentar telemetría de flota (rankings + chart de horas).
-    const[pendientesRaw,entregadosRaw,codV,codL,codP,codS,panelRepuestosObj,panelTrabajosObj,panelProgramaObj,combustibleObj]=await Promise.all([
+    const[pendientesRaw,entregadosRaw,codV,codL,codP,codS,panelRepuestosObj,panelTrabajosObj,serviceFrecRows,serviceTrimRows,combustibleObj]=await Promise.all([
       fetchGvizRaw(SHEET_IDS.pedidos,'PENDIENTES'),
       // ENTREGADOS tiene título y contadores en filas 1-10; headers reales en fila 11.
       // El range fuerza a gviz a usar la fila 11 como header (sin esto, los nombres se pierden).
@@ -3024,7 +3116,9 @@ async function loadAll(){
       fetchGvizRaw(SHEET_IDS.codigos,'SOPORTE').catch(()=>[]),
       fetchGvizObj(SHEET_IDS.repuestos_hist,'PANEL_REPUESTOS').catch(()=>[]),
       fetchGvizObj(SHEET_IDS.trabajos_reg,'PANEL_TRABAJOS').catch(()=>[]),
-      fetchGvizObj(SHEET_IDS.service,'PANEL_PROGRAMA').catch(()=>[]),
+      // PROGRAMA DE TRABAJOS DE SERVICE 2026: rangos de operatividad + trimestre vigente.
+      fetchGvizRaw(SHEET_IDS.programaService,SERVICE_FREC_SHEET).catch(()=>[]),
+      fetchGvizRaw(SHEET_IDS.programaService,SERVICE_TRIM_SHEET).catch(()=>[]),
       fetchGvizObj(SHEET_IDS.combustible,COMBUSTIBLE_SHEET).catch(()=>[]),
     ]);
     setLoadProgress(55);
@@ -3051,7 +3145,7 @@ async function loadAll(){
     window._horasCorrPorEquipo = tctx.horasCorrPorEquipo;
 
     // Procesar PANEL_PROGRAMA: estado de service por equipo (alimenta KPI y modal)
-    window._servicePanel = procesarPanelPrograma(panelProgramaObj);
+    window._servicePanel = procesarProgramaService(serviceFrecRows,serviceTrimRows);
 
     // Procesar ENTREGA DE COMBUSTIBLE: por equipo, última hr/km + consumo promedio + historial.
     // No requiere Apps Script — la pestaña ya es plana (una fila = una carga).
@@ -3184,42 +3278,33 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
   const operativosAbs=Object.values(window._estadoEquipos||{}).filter(info=>ESTADO_COLOR(info.estado)==='green').length;
   const totalEquipos=Object.keys(window._estadoEquipos||{}).length;
 
-  // Service: contar equipos en rango crítico según PANEL_PROGRAMA
-  // Prioridad para hr "actual": combustible (lectura más fresca) > horómetros precargados > último service.
-  // También armamos la lista de equipos rojos para el modal del KPI clickeable.
+  // Service: operatividad de cada equipo del PROGRAMA DE TRABAJOS DE SERVICE.
+  // operatividadEquipo() ya resuelve la hr/km actual (combustible > programa de service)
+  // y clasifica en holgado / intermedio / critico. Armamos la lista de críticos para el modal.
   let serviceCritico=0, serviceAmber=0, serviceGreen=0, serviceConDatos=0;
   const sp=window._servicePanel||{};
   const _criticosList=[];
-  const _numClean=v=>{const n=parseFloat(String(v||'').replace(/[^\d.,-]/g,'').replace(',','.'));return isFinite(n)?n:null;};
   for(const codN of Object.keys(sp)){
-    const comb=(window._combustiblePorEquipo||{})[codN];
-    const hor=(window._horometros||{})[codN];
-    let hrActual, fuente;
-    if(comb && comb.ultimaHr!=null){ hrActual=comb.ultimaHr; fuente='combustible'; }
-    else if(hor?.actual){ hrActual=hor.actual; fuente='horómetro'; }
-    else { hrActual=sp[codN].ultHrKm; fuente='último service'; }
-    const c=clasificarServicio(sp[codN],hrActual);
-    if(c==='gray')continue;
+    const op=operatividadEquipo(codN);
+    if(op.nivel==='sin-datos')continue;
     serviceConDatos++;
-    if(c==='red'){
+    if(op.nivel==='critico'){
       serviceCritico++;
       const info=(window._estadoEquipos||{})[codN]||{};
-      const estN=_numClean(sp[codN].estHrKm);
-      const hrN=_numClean(hrActual);
       _criticosList.push({
         codN,
         codigo: info.rawCod || sp[codN].codigo || codN,
         nombre: info.equipo || sp[codN].descripcion || '',
-        hrActual: hrN,
-        hrActualFmt: (typeof hrActual==='number') ? fmtInt(hrActual) : String(hrActual||'—'),
-        estimado: estN,
-        estimadoFmt: sp[codN].estHrKm || '—',
-        restantes: (estN!=null && hrN!=null) ? (estN-hrN) : null,
-        fuente,
-        ultFecha: comb?.ultimaFecha || sp[codN].ultFecha || '',
+        hrActual: op.hrActual,
+        hrActualFmt: op.hrActual!=null ? fmtInt(op.hrActual) : '—',
+        estimado: op.hrProximo,
+        estimadoFmt: op.hrProximo!=null ? fmtInt(op.hrProximo) : '—',
+        restantes: op.restantes,
+        fuente: op.fuente,
+        ultFecha: (window._combustiblePorEquipo||{})[codN]?.ultimaFecha || sp[codN].ultFecha || '',
       });
     }
-    else if(c==='amber')serviceAmber++;
+    else if(op.nivel==='intermedio')serviceAmber++;
     else serviceGreen++;
   }
   // Más pasado (restantes más negativo) primero.
@@ -3232,8 +3317,8 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
 
   const serviceClass=serviceCritico>0?'red':(serviceAmber>0?'amber':'green');
   const serviceSub=serviceConDatos>0
-    ? `${serviceAmber} próximo · ${serviceGreen} ok · ${Object.keys(sp).length-serviceConDatos} sin datos`
-    : (Object.keys(sp).length>0 ? 'falta cargar rangos/frecuencia' : 'sin datos en PANEL_PROGRAMA');
+    ? `${serviceAmber} intermedio · ${serviceGreen} holgado · ${Object.keys(sp).length-serviceConDatos} sin datos`
+    : (Object.keys(sp).length>0 ? 'falta cargar rangos/frecuencia' : 'sin datos en PROGRAMA DE SERVICE');
 
   // KPIs (7: operativos, pedidos activos, reparación, service crítico, costo mes, horas taller, disponibilidad)
   // Cualquier KPI cuyo valor numérico real sea 0 o no haya dato se renderiza con clase
@@ -3464,37 +3549,29 @@ async function toggleEquipoDetail(codigo,cardEl){
   const sp=(window._servicePanel||{})[codN]||null;
   let horHTML='';
   if(sp){
-    // Datos consolidados desde PANEL_PROGRAMA
-    // Si la última carga de combustible es más reciente que el último service registrado,
-    // el horómetro/odómetro de combustible es la mejor lectura disponible.
-    const _ultServiceTs=_parseDate(sp.ultFecha)?.getTime()||0;
-    const _ultCombTs=comb?.ultimaFechaSort||0;
-    const usarComb = comb && comb.ultimaHr!=null && _ultCombTs>_ultServiceTs;
-    const ultHr = usarComb ? comb.ultimaHr : (sp.ultHrKm||serviceRow?.horActual||'—');
-    const ultFecha = usarComb ? comb.ultimaFecha : (sp.ultFecha||serviceRow?.fecha||serviceRow?.mes||'—');
-    const ultFuente = usarComb ? `vía combustible (${formatFechaCorta(comb.ultimaFecha)})` : '';
+    // Operatividad del PROGRAMA DE TRABAJOS DE SERVICE. operatividadEquipo() resuelve
+    // la hr/km actual: combustible (lo más fresco) o, si no hay cargas, el programa de service.
+    const op=operatividadEquipo(codN);
+    const usarComb = op.fuente==='combustible';
+    const ultHr = op.hrActual!=null ? op.hrActual : (sp.ultHrKm||serviceRow?.horActual||'—');
+    const ultFecha = usarComb ? (comb?.ultimaFecha||'—')
+                              : (sp.ultFecha||serviceRow?.fecha||serviceRow?.mes||'—');
+    const ultFuente = usarComb ? `vía combustible (${formatFechaCorta(comb?.ultimaFecha)})`
+                               : (op.fuente?`vía ${op.fuente}`:'');
     const estHr=sp.estHrKm||serviceRow?.horProximo||'—';
     const frec=sp.frecuencia||'—';
-    const oper=sp.operatividad||'';
-    const proxFecha=sp.estFecha||'';
-    // Semáforo: la mejor lectura (combustible > horómetros precargados > último service)
-    const hrParaSemaforo = usarComb ? comb.ultimaHr : ((window._horometros||{})[codN]?.actual||sp.ultHrKm);
-    const estado=clasificarServicio(sp,hrParaSemaforo);
-    const estadoColor=estado==='red'?'var(--red)':estado==='amber'?'var(--amber)':estado==='green'?'var(--green)':'var(--text3)';
-    const estadoLabel=estado==='red'?'CRÍTICO':estado==='amber'?'PRÓXIMO':estado==='green'?'EN RANGO':'SIN DATOS';
-    // Restantes hr/km hasta próximo
-    const num=v=>{const n=parseFloat(String(v||'').replace(/[^\d.,-]/g,'').replace(',','.'));return isFinite(n)?n:null;};
-    const restantes=(()=>{const e=num(estHr),h=num(hrParaSemaforo);return e!=null&&h!=null?(e-h):null;})();
+    const estadoColor=op.color;
+    const estadoLabel=op.label.toUpperCase();
+    const restantes=op.restantes;
     const restantesTxt=restantes!=null?(restantes>=0?`faltan ${restantes.toLocaleString('es-AR')}`:`vencido ${Math.abs(restantes).toLocaleString('es-AR')}`):'';
 
     horHTML=`
     <div style="background:var(--bg3);border:1px solid var(--border);border-left:3px solid ${estadoColor};margin-bottom:12px">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border);background:var(--bg2)">
         <div style="display:flex;align-items:center;gap:10px">
-          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;color:${estadoColor};letter-spacing:.1em">● SERVICE ${estadoLabel}</span>
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;color:${estadoColor};letter-spacing:.1em">● OPERATIVIDAD ${estadoLabel}</span>
           ${restantesTxt?`<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text2)">${restantesTxt}</span>`:''}
         </div>
-        ${oper?`<span style="font-family:'IBM Plex Sans',sans-serif;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em">${oper}</span>`:''}
       </div>
       <div style="display:flex;flex-wrap:wrap">
         <div style="flex:1;min-width:140px;padding:10px 14px;border-right:1px solid var(--border)">
@@ -3504,8 +3581,7 @@ async function toggleEquipoDetail(codigo,cardEl){
         </div>
         <div style="flex:1;min-width:140px;padding:10px 14px;border-right:1px solid var(--border)">
           <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Próximo service</div>
-          <div style="font-size:15px;color:${estadoColor};font-family:'IBM Plex Mono',monospace;font-weight:500">${estHr}</div>
-          ${proxFecha?`<div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text3);margin-top:2px">${proxFecha}</div>`:''}
+          <div style="font-size:15px;color:${estadoColor};font-family:'IBM Plex Mono',monospace;font-weight:500">${typeof estHr==='number'?fmtInt(estHr):estHr}</div>
         </div>
         <div style="flex:1;min-width:120px;padding:10px 14px">
           <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Frecuencia</div>
