@@ -1503,12 +1503,11 @@
           <button class="filter-btn" onclick="setFiltroCategoria('soporte',this)">Soporte <span class="f-count" id="fcCatSoporte">0</span></button>
         </div>
 
-        <!-- Filtros por estado -->
+        <!-- Filtros por estado (los inactivos viven en su propia sección) -->
         <div class="filter-bar" id="filterBar">
           <button class="filter-btn active" onclick="setFiltroEstado('todos',this)">Todos <span class="f-count" id="fcTodos">—</span></button>
           <button class="filter-btn" onclick="setFiltroEstado('operativo',this)"><span style="color:var(--green)">●</span> Operativo <span class="f-count" id="fcOper">0</span></button>
           <button class="filter-btn" onclick="setFiltroEstado('reparacion',this)"><span style="color:var(--amber)">●</span> En reparación <span class="f-count" id="fcRep">0</span></button>
-          <button class="filter-btn" onclick="setFiltroEstado('parado',this)"><span style="color:var(--red)">●</span> No operativo <span class="f-count" id="fcPar">0</span></button>
           <button class="filter-btn" onclick="setFiltroEstado('sin-estado',this)">Sin estado <span class="f-count" id="fcSin">0</span></button>
         </div>
 
@@ -1540,6 +1539,22 @@
             <div class="equipo-detail-body" id="eqDetailBody"></div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Equipos inactivos (en desuso / no operativos) -->
+    <div class="section">
+      <div class="section-label" onclick="toggleSection('secInactivos')">
+        <span class="section-chevron">▾</span>equipos inactivos
+        <span class="section-badge" id="inactivosBadge">—</span>
+      </div>
+      <div class="section-content" id="secInactivos">
+        <div class="filter-bar" id="filterBarInact">
+          <button class="filter-btn active" onclick="setFiltroInactivo('todos',this)">Todos <span class="f-count" id="fcInactTodos">—</span></button>
+          <button class="filter-btn" onclick="setFiltroInactivo('desuso',this)"><span style="color:var(--text3)">●</span> En desuso <span class="f-count" id="fcInactDesuso">0</span></button>
+          <button class="filter-btn" onclick="setFiltroInactivo('no-operativo',this)"><span style="color:var(--red)">●</span> No operativo <span class="f-count" id="fcInactNoOp">0</span></button>
+        </div>
+        <div id="inactivosBody"></div>
       </div>
     </div>
 
@@ -1590,7 +1605,7 @@
 const SHEET_IDS = {
   pedidos:        '1VFJwFLLEaOE9tTuwah7QkaDTrYkeYtOH8brUgSyHeFY',
   indicadores:    '1GpP2ejMVXncr2OLmKK_IP-zqr5AARi1Q3YdQIPlsUUE',
-  codigos:        '1JKVZB43VqhIenkrefSefcZrqy8_7QADHPPHqKi4OkH4',
+  codigos:        '1I4ejRAoMnpou-cRvefgfVCzPg9Obkmi2',
   repuestos_hist: '1TUEoOul4SI5O323LcMq2VkaxdcTMfTmZce7NToGESfc',
   trabajos_reg:   '1cNWQ44UEDiotHyB65BfTMcFuOCfQXYQoSNNAdAKTsy8',
   service:        '1zB9q0e9kxRKe52-I0u5Dqg7PUSE_nlxi3IYn7pxF0Iw',
@@ -1826,16 +1841,30 @@ function formatFechaCorta(s){
 // ESTADO_COLOR: clasifica el texto de estado del equipo en red/amber/green/gray
 // Acepta variaciones de escritura del personal de campo
 const ESTADO_COLOR=st=>{
-  if(!st||!st.trim())return'gray';
+  // Vacío o placeholder ("-", "—", "s/d", "n/a") → sin estado (gris)
+  if(!st||!st.trim()||['-','—','s/d','n/a'].includes(st.trim().toLowerCase()))return'gray';
   const l=st.toLowerCase();
   // Reparación / taller (ámbar)
   if(l.includes('reparaci')||l.includes('taller')||l.includes('en servicio de')||l.includes('service'))return'amber';
-  // No operativo / fuera de servicio / parado (rojo)
+  // No operativo / fuera de servicio / parado / en desuso (rojo = inactivo)
   if(l.includes('no oper')||l.includes('inoper')||l.includes('fuera de')||
-     l.includes('parad')||l.includes('baja')||l.includes('detenid')||l.includes('inutiliz'))return'red';
+     l.includes('parad')||l.includes('baja')||l.includes('detenid')||
+     l.includes('inutiliz')||l.includes('desuso'))return'red';
   // Cualquier texto que tenga contenido = operativo por defecto (verde)
   return'green';
 };
+
+// Inactivo = equipo en desuso o no operativo (estado rojo). Estos no van a la
+// grilla principal sino a la sección "equipos inactivos".
+function esEquipoInactivo(codigo){
+  const info=(window._estadoEquipos||{})[normCod(codigo)];
+  return info?ESTADO_COLOR(info.estado)==='red':false;
+}
+// Distingue el subtipo de inactivo a partir del texto crudo del estado.
+function subtipoInactivo(estado){
+  const l=String(estado||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  return l.includes('desuso')?'desuso':'no-operativo';
+}
 const ESTADO_CSS={green:'var(--green)',amber:'var(--amber)',red:'var(--red)',gray:'var(--text3)'};
 
 // Tipo de equipo por prefijo de código → etiqueta corta (spec verificada INGECOV)
@@ -2656,7 +2685,8 @@ function clearSearch(){
 }
 
 function aplicarFiltros(){
-  const eq=window._equiposOrdenados||[];
+  // Solo equipos activos: los inactivos no están en #equipoGrid ni cuentan acá.
+  const eq=(window._equiposOrdenados||[]).filter(e=>!esEquipoInactivo(e.codigo));
 
   // ─── Pre-paso: validar selecciones de filtro contra el dataset absoluto.
   // Si la opción seleccionada no existe en los datos (recarga, dataset cambió),
@@ -2785,6 +2815,68 @@ function aplicarFiltros(){
   }
 }
 
+/* ═══════════════════════════════════════════════════════
+   SECCIÓN EQUIPOS INACTIVOS — desuso / no operativos
+   Tabla read-only aparte de la grilla principal. Filtro propio
+   que distingue "en desuso" de "no operativo".
+═══════════════════════════════════════════════════════ */
+let _filtroInactivo='todos';
+function setFiltroInactivo(f,btn){
+  _filtroInactivo=f;
+  document.querySelectorAll('#filterBarInact .filter-btn').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  renderInactivos();
+}
+function renderInactivos(){
+  const body=document.getElementById('inactivosBody');
+  if(!body)return;
+  const CAT_LABEL={viales:'Viales/asfalto',liviano:'T. liviano',pesado:'T. pesado',soporte:'Soporte'};
+  const inactivos=(window._equiposOrdenados||[])
+    .filter(e=>esEquipoInactivo(e.codigo))
+    .map(e=>{
+      const info=(window._estadoEquipos||{})[normCod(e.codigo)]||{};
+      return{
+        codigo:e.codigo,
+        nombre:buildEquipoNombre(e.clasificacion||info.clasificacion,e.marca,e.modelo,e.nombre),
+        categoria:e.categoria||info.categoria||'',
+        estado:info.estado||'',
+        subtipo:subtipoInactivo(info.estado),
+        ubicacion:info.ubicacion||'',
+        operario:info.operario||'',
+      };
+    })
+    .sort((a,b)=>a.codigo.localeCompare(b.codigo));
+
+  const nDesuso=inactivos.filter(x=>x.subtipo==='desuso').length;
+  const nNoOp  =inactivos.filter(x=>x.subtipo==='no-operativo').length;
+  const setN=(id,n)=>{const el=document.getElementById(id);if(el)el.textContent=n;};
+  setN('fcInactTodos',inactivos.length);
+  setN('fcInactDesuso',nDesuso);
+  setN('fcInactNoOp',nNoOp);
+  const badge=document.getElementById('inactivosBadge');
+  if(badge)badge.textContent=inactivos.length;
+
+  const vis=inactivos.filter(x=>_filtroInactivo==='todos'||x.subtipo===_filtroInactivo);
+  if(!vis.length){
+    body.innerHTML='<div class="no-data">Sin equipos inactivos'+(_filtroInactivo!=='todos'?' en este filtro':'')+'.</div>';
+    return;
+  }
+  const esc=s=>String(s||'').replace(/</g,'&lt;');
+  body.innerHTML=`<div class="table-wrap"><table>
+    <thead><tr><th>Código</th><th>Equipo</th><th>Categoría</th><th>Estado</th><th>Ubicación</th><th>Operario</th></tr></thead>
+    <tbody>${vis.map(x=>`<tr>
+      <td class="mono" style="font-weight:600;color:var(--accent)">${esc(x.codigo)}</td>
+      <td style="font-size:12px;color:var(--text2)">${esc(x.nombre)||'—'}</td>
+      <td style="font-size:11px;color:var(--text3)">${CAT_LABEL[x.categoria]||esc(x.categoria)||'—'}</td>
+      <td>${x.subtipo==='desuso'
+        ?'<span class="badge badge-gray" style="font-size:9px">En desuso</span>'
+        :'<span class="badge badge-red" style="font-size:9px">No operativo</span>'}</td>
+      <td style="font-size:11px;color:var(--text3)">${esc(x.ubicacion)||'—'}</td>
+      <td style="font-size:11px;color:var(--text3)">${esc(x.operario)||'—'}</td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
 // VISTA
 let _viewMode='grid';
 function setViewMode(mode){
@@ -2799,7 +2891,9 @@ function setViewMode(mode){
 // aplicarFiltros() para que se recalculen facetados en cada cambio de filtro.
 function renderEquipoIndex(equipos){
   if(equipos)window._equiposOrdenados=equipos;
-  const eq=window._equiposOrdenados||[];
+  // La grilla principal muestra solo equipos activos. Los inactivos (desuso /
+  // no operativos) se renderizan aparte en renderInactivos().
+  const eq=(window._equiposOrdenados||[]).filter(e=>!esEquipoInactivo(e.codigo));
   const grid=document.getElementById('equipoGrid');if(!grid)return;
 
   // Si hay un detalle abierto, cerrarlo antes de reemplazar innerHTML.
@@ -2967,6 +3061,7 @@ async function loadAll(){
       eq.costoTotal=total;
     }
     renderEquipoIndex();
+    renderInactivos();
 
     // Telemetría de flota y pedidos pendientes global — agregados que cruzan todo
     renderTelemetriaFlota();
