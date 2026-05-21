@@ -513,11 +513,11 @@
   .kpi-sub.hr-split{margin-top:7px;}
   .hr-split-bar{display:flex;height:5px;margin-bottom:6px;overflow:hidden;background:var(--bg3);}
   .hr-split-bar span{display:block;height:100%;}
-  .hr-split-bar span.corr{background:var(--amber);}
+  .hr-split-bar span.corr{background:var(--red);}
   .hr-split-bar span.prev{background:var(--corp);}
   .hr-split-leg{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--text3);line-height:1.5;}
   .hr-split-leg i{width:7px;height:7px;flex-shrink:0;display:inline-block;}
-  .hr-split-leg i.corr{background:var(--amber);}
+  .hr-split-leg i.corr{background:var(--red);}
   .hr-split-leg i.prev{background:var(--corp);}
 
   /* Service crítico modal */
@@ -844,13 +844,19 @@
     width:14px;height:14px;display:inline-block;
   }
   .combo-swatch.costo{background:var(--amber);}
-  .combo-swatch.horas{
+  .combo-swatch.horas,
+  .combo-swatch.corr,
+  .combo-swatch.prev{
     background:transparent;height:3px;width:20px;
     position:relative;
   }
-  .combo-swatch.horas::after{
+  .combo-swatch.horas::after,
+  .combo-swatch.corr::after,
+  .combo-swatch.prev::after{
     content:'';position:absolute;inset:0;background:var(--corp);
   }
+  .combo-swatch.corr::after{background:var(--red);}
+  .combo-swatch.prev::after{background:var(--corp);}
   .combo-totals{
     font-family:'JetBrains Mono',monospace;font-size:10.5px;
     color:var(--text3);letter-spacing:.08em;margin-bottom:18px;
@@ -858,6 +864,8 @@
   }
   .combo-totals .v-costo{color:var(--amber);font-weight:700;}
   .combo-totals .v-horas{color:var(--corp);font-weight:700;}
+  .combo-totals .v-corr{color:var(--red);font-weight:700;}
+  .combo-totals .v-prev{color:var(--corp);font-weight:700;}
   .combo-totals .sep{opacity:.4;margin:0 10px;}
   .combo-chart-wrap{position:relative;height:300px;}
   @media(max-width:600px){.combo-chart-wrap{height:240px;}}
@@ -1446,7 +1454,8 @@
             <div class="telemetria-card-title">actividad de flota mes a mes</div>
             <div class="combo-legend">
               <span class="combo-leg-item"><span class="combo-swatch costo"></span>costo en repuestos</span>
-              <span class="combo-leg-item"><span class="combo-swatch horas"></span>horas en taller</span>
+              <span class="combo-leg-item"><span class="combo-swatch corr"></span>horas correctivo</span>
+              <span class="combo-leg-item"><span class="combo-swatch prev"></span>horas preventivo</span>
             </div>
           </div>
           <div class="combo-totals" id="comboTotals">—</div>
@@ -3745,6 +3754,7 @@ function renderTelemetriaFlota(){
   const AMBER=_cssVar('--amber','#ffa030');
   const ACCENT=_cssVar('--accent','#3a5fc8');
   const CORP =_cssVar('--corp','#5d80e8');
+  const RED  =_cssVar('--red','#e5484d');
   const TICK =_cssVar('--chart-tick','#6a7287');
   const GRID =_cssVar('--chart-grid','#1a2030');
   const TEXT2=_cssVar('--text2','#aab3c8');
@@ -3756,25 +3766,27 @@ function renderTelemetriaFlota(){
   // Mismos labels de mes; los meses con dato 0 quedan vacíos en su serie.
   const costosPorMes=window._costosPorMes||{};
   const horasPorMesFlota=window._horasPorMesFlota||{};
+  const horasCorrPorMes=window._horasCorrPorMes||{};
+  const horasPrevPorMes=window._horasPrevPorMes||{};
 
-  // Union de meses presentes en cualquiera de las dos series (ordenados)
+  // Union de meses presentes en cualquiera de las series (ordenados)
   const ymsAll=[...new Set([...Object.keys(costosPorMes),...Object.keys(horasPorMesFlota)])].sort();
   const labels=ymsAll.map(ym=>{const[y,mm]=ym.split('-');return`${nomMes[+mm-1]}'${y.slice(2)}`;});
   const dataCosto=ymsAll.map(ym=>{
     const m=costosPorMes[ym]||{};
     return Object.values(m).reduce((s,v)=>s+(v||0),0);
   });
-  const dataHoras=ymsAll.map(ym=>Math.round((horasPorMesFlota[ym]||0)*10)/10);
+  const dataHorasCorr=ymsAll.map(ym=>Math.round((horasCorrPorMes[ym]||0)*10)/10);
+  const dataHorasPrev=ymsAll.map(ym=>Math.round((horasPrevPorMes[ym]||0)*10)/10);
 
   // Resumen numérico arriba del chart
   const totC=dataCosto.reduce((s,v)=>s+v,0);
-  const totH=dataHoras.reduce((s,v)=>s+v,0);
-  const promC=ymsAll.length?totC/ymsAll.length:0;
-  const promH=ymsAll.length?totH/ymsAll.length:0;
+  const totHc=dataHorasCorr.reduce((s,v)=>s+v,0);
+  const totHp=dataHorasPrev.reduce((s,v)=>s+v,0);
   const totalsEl=document.getElementById('comboTotals');
   if(totalsEl){
     totalsEl.innerHTML=ymsAll.length
-      ?`acumulado 2026 · <span class="v-costo">${formatMoney(totC)}</span> en repuestos<span class="sep">·</span><span class="v-horas">${totH.toFixed(0)} hr</span> en taller<span class="sep">·</span>promedio mensual <span class="v-costo">${formatMoney(promC)}</span> / <span class="v-horas">${promH.toFixed(0)} hr</span>`
+      ?`acumulado 2026 · <span class="v-costo">${formatMoney(totC)}</span> en repuestos<span class="sep">·</span><span class="v-corr">${totHc.toFixed(0)} hr</span> correctivo<span class="sep">·</span><span class="v-prev">${totHp.toFixed(0)} hr</span> preventivo`
       :'sin datos para graficar';
   }
 
@@ -3799,20 +3811,37 @@ function renderTelemetriaFlota(){
           },
           {
             type:'line',
-            label:'Horas en taller',
-            data:dataHoras,
+            label:'Horas correctivo',
+            data:dataHorasCorr,
+            borderColor:RED,
+            backgroundColor:RED+'20',
+            borderWidth:2.5,
+            pointBackgroundColor:RED,
+            pointBorderColor:'#fff',
+            pointBorderWidth:1.5,
+            pointRadius:4.5,
+            pointHoverRadius:6.5,
+            fill:false,
+            tension:0.35,
+            yAxisID:'yHoras',
+            order:1,  // líneas delante de las barras
+          },
+          {
+            type:'line',
+            label:'Horas preventivo',
+            data:dataHorasPrev,
             borderColor:CORP,
             backgroundColor:CORP+'20',
             borderWidth:2.5,
             pointBackgroundColor:CORP,
             pointBorderColor:'#fff',
             pointBorderWidth:1.5,
-            pointRadius:5,
-            pointHoverRadius:7,
+            pointRadius:4.5,
+            pointHoverRadius:6.5,
             fill:false,
             tension:0.35,
             yAxisID:'yHoras',
-            order:1,  // línea delante
+            order:0,
           }
         ]
       },
@@ -3835,7 +3864,8 @@ function renderTelemetriaFlota(){
             callbacks:{
               label:c=>{
                 if(c.dataset.label==='Costo en repuestos')return '  ▣ '+formatMoney(c.raw)+' en repuestos';
-                if(c.dataset.label==='Horas en taller')   return '  ─ '+c.raw.toFixed(1)+' hr en taller';
+                if(c.dataset.label==='Horas correctivo')   return '  ─ '+c.raw.toFixed(1)+' hr correctivo';
+                if(c.dataset.label==='Horas preventivo')   return '  ─ '+c.raw.toFixed(1)+' hr preventivo';
                 return c.raw;
               }
             }
