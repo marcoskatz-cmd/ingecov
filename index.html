@@ -2834,11 +2834,15 @@ function setFiltroInactivo(f,btn){
 function renderInactivos(){
   const body=document.getElementById('inactivosBody');
   if(!body)return;
+  // Si hay un detalle abierto dentro de esta sección, cerrarlo antes de re-render
+  // (de lo contrario _activeEqCard quedaría apuntando a un nodo huérfano).
+  if(_activeEqCard&&_activeEqCard.closest('#inactivosBody'))closeEquipoDetail();
   const CAT_LABEL={viales:'Viales/asfalto',liviano:'T. liviano',pesado:'T. pesado',soporte:'Soporte'};
   const inactivos=(window._equiposOrdenados||[])
     .filter(e=>esEquipoInactivo(e.codigo))
     .map(e=>{
       const info=(window._estadoEquipos||{})[normCod(e.codigo)]||{};
+      const hor=(window._horometros||{})[normCod(e.codigo)];
       return{
         codigo:e.codigo,
         nombre:buildEquipoNombre(e.clasificacion||info.clasificacion,e.marca,e.modelo,e.nombre),
@@ -2846,7 +2850,8 @@ function renderInactivos(){
         estado:info.estado||'',
         subtipo:subtipoInactivo(info.estado),
         ubicacion:info.ubicacion||'',
-        operario:info.operario||'',
+        patente:hor?.patente||info.patente||'',
+        costoTotal:e.costoTotal||0,
       };
     })
     .sort((a,b)=>a.codigo.localeCompare(b.codigo));
@@ -2868,22 +2873,26 @@ function renderInactivos(){
     return;
   }
   const esc=s=>String(s||'').replace(/</g,'&lt;');
-  body.innerHTML=`<div class="table-wrap"><table>
-    <thead><tr><th>Código</th><th>Equipo</th><th>Categoría</th><th>Estado</th><th>Ubicación</th><th>Operario</th></tr></thead>
-    <tbody>${vis.map(x=>`<tr>
-      <td class="mono" style="font-weight:600;color:var(--accent)">${esc(x.codigo)}</td>
-      <td style="font-size:12px;color:var(--text2)">${esc(x.nombre)||'—'}</td>
-      <td style="font-size:11px;color:var(--text3)">${CAT_LABEL[x.categoria]||esc(x.categoria)||'—'}</td>
-      <td>${
-        x.subtipo==='desuso'
-        ?'<span class="badge badge-gray" style="font-size:9px">En desuso</span>'
-        :x.subtipo==='sin-estado'
-        ?'<span style="font-size:9px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.06em">Sin estado</span>'
-        :'<span class="badge badge-red" style="font-size:9px">No operativo</span>'}</td>
-      <td style="font-size:11px;color:var(--text3)">${esc(x.ubicacion)||'—'}</td>
-      <td style="font-size:11px;color:var(--text3)">${esc(x.operario)||'—'}</td>
-    </tr>`).join('')}</tbody>
-  </table></div>`;
+  // Recuadros con el mismo formato que la grilla principal de equipos.
+  body.innerHTML=`<div class="equipo-grid">${vis.map(x=>{
+    const est=ESTADO_COLOR(x.estado);
+    const ce=x.codigo.replace(/'/g,"\\'");
+    const estLabel=x.subtipo==='sin-estado'?'Sin estado':(x.estado||'—');
+    return`<div class="equipo-card" id="eqcard_${x.codigo.replace(/[^a-z0-9]/gi,'_')}"
+      data-cod="${x.codigo}" data-nom="${x.nombre}"
+      onclick="toggleEquipoDetail('${ce}',this)">
+      <div class="eq-status-strip ${est}"></div>
+      <div class="eq-code">${esc(x.codigo)}</div>
+      <div class="eq-name">${esc(x.nombre)||'—'}</div>
+      <div class="eq-meta">
+        <span style="color:${ESTADO_CSS[est]}">${esc(estLabel)}</span>
+        ${x.categoria?`<span>${CAT_LABEL[x.categoria]||esc(x.categoria)}</span>`:''}
+        ${x.patente?`<span class="eq-patente" title="Patente">${esc(x.patente)}</span>`:''}
+        ${x.ubicacion?`<span>${esc(x.ubicacion)}</span>`:''}
+        ${x.costoTotal>0?`<span style="color:var(--amber)" title="Costo acumulado en repuestos">${formatMoney(x.costoTotal)}</span>`:''}
+      </div>
+    </div>`;
+  }).join('')}</div>`;
 }
 
 // VISTA
@@ -3285,8 +3294,10 @@ let _activeEqCard=null;
  */
 function placeDetailPanelNearCard(cardEl){
   const panel=document.getElementById('equipoDetailPanel');
-  const grid=document.getElementById('equipoGrid');
-  if(!panel||!grid||!cardEl)return;
+  if(!panel||!cardEl)return;
+  // El grid puede ser el principal (#equipoGrid) o el de la sección de inactivos.
+  const grid=cardEl.closest('#equipoGrid, .equipo-grid')||document.getElementById('equipoGrid');
+  if(!grid)return;
 
   // Modo lista: el wrap es el contenedor; insertamos después de la fila clickeada.
   const wrap=grid.querySelector('.equipo-list-wrap');
