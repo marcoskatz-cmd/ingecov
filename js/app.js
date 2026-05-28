@@ -218,8 +218,17 @@ async function _gvizObjImpl(id,sheet,range){
    Eso permite migración parcial mientras se prueba — los pares migrados
    van por API, los demás siguen por gviz hasta que se sumen al mapping.
 ═══════════════════════════════════════════════════════ */
+// API privada via Cloudflare Worker (Pages Function en /api/).
+//   - El panel hace fetch a /api/?ep=X (mismo origen → cero CORS).
+//   - El Worker está protegido por Cloudflare Access (whitelist por email).
+//   - El Worker reenvía al Apps Script con un shared secret para que el
+//     Apps Script confíe en el email del usuario que CF Access ya validó.
+//
+// Cuando el panel se sirve desde Cloudflare Pages (mantenimiento-ingeco.pages.dev),
+// USE_API=true. Si alguien lo abre desde un origen sin la Pages Function (por
+// ejemplo en localhost sin wrangler), el flag funciona con fallback a gviz.
 const USE_API = true;
-const API_URL = 'https://script.google.com/macros/s/AKfycbx2C_1Ehh7lmXdY5T69TE93hlsEEOBv23RcZTgQH0pNsknxgfHxST8XIb6uETBK72X9zA/exec';
+const API_URL = '/api/';
 
 /**
  * Llama a la API. Si el server devuelve 403 (no autorizado), muestra la

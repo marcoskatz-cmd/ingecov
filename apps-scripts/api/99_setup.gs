@@ -55,6 +55,7 @@ function initializeProperties() {
     MIRROR_SHEET_ID:                '',  // <-- EDITAR manualmente con el ID del Sheet mirror que creés
     CACHE_TTL_SECONDS:              '1800',
     MIRROR_STRATEGY:                'export', // 'export' (default) o 'copy' si Drive.Files.export no extrae la pestaña correcta
+    SHARED_SECRET:                  '',  // <-- EDITAR con el mismo valor que SHARED_SECRET de Cloudflare Pages
   };
 
   let created = 0, skipped = 0;
@@ -84,8 +85,12 @@ function checkSetup() {
   Logger.log('Script Properties:');
   const props = PropertiesService.getScriptProperties().getProperties();
   ['ALLOWED_EMAILS', 'XLSX_COMBUSTIBLE_LIVIANOS_ID', 'XLSX_CODIGOS_EQUIPOS_ID',
-   'MIRROR_SHEET_ID', 'CACHE_TTL_SECONDS', 'MIRROR_STRATEGY'].forEach(function(k) {
-    const v = props[k] == null ? '(faltante)' : props[k];
+   'MIRROR_SHEET_ID', 'CACHE_TTL_SECONDS', 'MIRROR_STRATEGY', 'SHARED_SECRET'].forEach(function(k) {
+    let v = props[k] == null ? '(faltante)' : props[k];
+    // No loguear el secret entero — solo confirmar que existe y mostrar longitud
+    if (k === 'SHARED_SECRET' && v !== '(faltante)') {
+      v = '(seteado, ' + v.length + ' chars)';
+    }
     Logger.log('  ' + k + ' = ' + v);
   });
 

@@ -16,16 +16,34 @@ function doGet(e) {
   const params = (e && e.parameter) || {};
   const ep = params.ep || '';
 
-  // whoami no requiere autorización: devuelve auth state para que el front
-  // pueda renderizar la pantalla "no autorizado" sin loop de redirects.
-  if (ep === 'whoami') {
-    return jsonOk(getAuthInfo(), ep);
-  }
-
   try {
-    assertAllowed();
+    // Auth: dos rutas posibles según cómo viene el request.
+    //
+    // (1) Via Cloudflare Worker — los params _cfu (email del usuario autenticado
+    //     por CF Access) y _cfs (shared secret) están presentes. Validamos el
+    //     secret y que el email esté en whitelist.
+    //
+    // (2) Acceso directo al Web App (sin Worker) — usamos Session.getActiveUser()
+    //     como antes. Útil para debugging y para el endpoint whoami.
+    //
+    // Path (1) es el flujo de producción. Path (2) queda como fallback.
+    if (params._cfs != null || params._cfu != null) {
+      authViaWorker(params);
+    } else {
+      // whoami no requiere autorización: devuelve auth state para que el front
+      // pueda renderizar la pantalla "no autorizado" sin loop de redirects.
+      if (ep === 'whoami') {
+        return jsonOk(getAuthInfo(), ep);
+      }
+      assertAllowed();
+    }
+
+    // Limpiar params internos antes de pasarlos a los handlers (que no deben verlos)
+    delete params._cfs;
+    delete params._cfu;
 
     switch (ep) {
+      case 'whoami':               return jsonOk({ email: params._cfu_resolved || getAuthInfo().email, allowed: true }, ep);
       case 'pedidos':              return jsonOk(getPedidos(params), ep);
       case 'codigos':              return jsonOk(getCodigos(params), ep);
       case 'panel_repuestos':      return jsonOk(getPanelRepuestos(params), ep);
@@ -41,6 +59,31 @@ function doGet(e) {
   } catch (err) {
     return jsonErr(err, ep);
   }
+}
+
+/**
+ * Valida que el request venga del Cloudflare Worker y que el usuario que
+ * pasó CF Access esté en nuestra whitelist propia (doble check).
+ */
+function authViaWorker(params) {
+  const expectedSecret = getProperty('SHARED_SECRET');
+  if (!expectedSecret) {
+    throw new ApiError('shared_secret_not_configured',
+      'Falta Script Property SHARED_SECRET en el proyecto Apps Script', 500);
+  }
+  if (params._cfs !== expectedSecret) {
+    throw new ApiError('invalid_secret',
+      'Shared secret inválido — request no viene del Cloudflare Worker autorizado', 403);
+  }
+  const email = String(params._cfu || '').toLowerCase().trim();
+  if (!email) {
+    throw new ApiError('no_cf_user', 'Falta el email del usuario de Cloudflare Access', 400);
+  }
+  if (!getAllowedEmails().has(email)) {
+    throw new ApiError('not_authorized',
+      `Email ${email} no está en la whitelist del Apps Script (ALLOWED_EMAILS Property)`, 403);
+  }
+  params._cfu_resolved = email; // disponible para handlers que quieran loguearlo
 }
 
 function jsonOk(payload, endpoint) {
