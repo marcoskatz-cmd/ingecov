@@ -1,16 +1,19 @@
-/* Service worker para Panel INGECOV (PWA)
+/* Service worker para Panel INGECO (PWA)
    Estrategias:
-   - App shell (HTML/iconos del repo): network-first con fallback a cache.
-     Por qué network-first: si pusheamos una nueva versión, la próxima visita
-     online la va a tomar enseguida en lugar de quedarse pegada a la vieja.
-   - CDN (Chart.js, fonts): cache-first. No cambian seguido y un fetch a
-     cdnjs/gstatic en 4G mata el TTI.
+   - App shell (HTML/JS/CSS/fonts/iconos del repo): network-first con fallback
+     a cache. Por qué network-first: si pusheamos una nueva versión, la próxima
+     visita online la va a tomar enseguida en lugar de quedarse pegada a la vieja.
+   - CDN (Chart.js): cache-first. No cambia seguido y un fetch a cdnjs en
+     4G mata el TTI. Las fonts ahora son self-hosted (parte del shell).
    - gviz API (Google Sheets): siempre red, nunca cache. El cache de datos
-     vive en localStorage controlado por la app (CACHE module en el HTML),
+     vive en localStorage controlado por la app (CACHE module en app.js),
      no acá. Mezclar ambas capas duplicaría lógica de TTL.
    Bump CACHE_VERSION para invalidar todo lo cacheado.
 */
-const CACHE_VERSION = 'v1';
+// v2: extracción de scripts inline a js/ + self-host de fonts + CSP estricta.
+// Bump fuerza invalidación de cualquier cliente con la versión vieja (que tenía
+// el HTML inline-script cacheado y rompería contra la CSP nueva).
+const CACHE_VERSION = 'v2';
 const SHELL_CACHE   = `ingecov-shell-${CACHE_VERSION}`;
 const CDN_CACHE     = `ingecov-cdn-${CACHE_VERSION}`;
 
@@ -20,6 +23,11 @@ const SHELL_ASSETS = [
   './',
   './index.html',
   './manifest.json',
+  './js/init.js',
+  './js/app.js',
+  './fonts/fonts.css',
+  './fonts/ibm-plex-sans-latin.woff2',
+  './fonts/jetbrains-mono-latin.woff2',
   './icon-192.png',
   './icon-512.png',
   './icon.svg',
@@ -56,9 +64,7 @@ function isGvizRequest(url) {
   return url.hostname === 'docs.google.com' && url.pathname.includes('/gviz/');
 }
 function isCDNRequest(url) {
-  return url.hostname === 'cdnjs.cloudflare.com'
-      || url.hostname === 'fonts.googleapis.com'
-      || url.hostname === 'fonts.gstatic.com';
+  return url.hostname === 'cdnjs.cloudflare.com';
 }
 
 self.addEventListener('fetch', (event) => {
