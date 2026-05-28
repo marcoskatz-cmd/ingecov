@@ -15,7 +15,7 @@
   · frame-ancestors no se setea via meta; el script tiene un frame-buster que
     redirige top a la URL real si alguien intenta embedearnos en un iframe.
 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdnjs.cloudflare.com https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; font-src 'self'; img-src 'self' data: https://lh3.googleusercontent.com; connect-src 'self' https://docs.google.com https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; manifest-src 'self'; worker-src 'self'; base-uri 'self'; form-action 'none'; object-src 'none'; trusted-types ingecov-html 'allow-duplicates';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://docs.google.com; manifest-src 'self'; worker-src 'self'; base-uri 'self'; form-action 'none'; object-src 'none'; require-trusted-types-for 'script'; trusted-types ingecov-html;">
 <title>Panel de Mantenimiento — INGECO</title>
 <!-- Fonts self-hosted (latin subset, variable woff2). Eliminado el third-party
      a fonts.googleapis.com/gstatic.com: CSP más simple + sin beacons a Google. -->
@@ -29,9 +29,6 @@
 <!-- init.js: setea el tema en <html> ANTES del paint para evitar FOUC.
      Sin defer a propósito. -->
 <script src="./js/init.js"></script>
-<!-- Google Identity Services (Sign in with Google). Carga async para no
-     bloquear el render; app.js espera con waitForGIS() a que esté listo. -->
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <!-- app.js: toda la lógica de la app. Con defer corre tras parsear el DOM,
      equivalente a estar al final del <body>. -->
 <script src="./js/app.js" defer></script>
@@ -1365,11 +1362,75 @@
   @media (prefers-reduced-motion: reduce){
     *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;}
   }
+
+  /* ═══════════════════════════════════════════════════════════════
+     PIN GATE — overlay full-screen previo al panel.
+     init.js lo oculta si sessionStorage.ingeco-pin-ok === '1'.
+  ═══════════════════════════════════════════════════════════════ */
+  .pin-gate{
+    position:fixed; inset:0; z-index:99999;
+    background:var(--bg);
+    display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .pin-gate.hidden{ display:none; }
+  .pin-gate-box{
+    max-width:380px; width:100%;
+    background:var(--bg2); border:1px solid var(--border);
+    border-radius:8px; padding:32px 28px;
+    text-align:center;
+  }
+  .pin-gate-icon{ font-size:42px; line-height:1; margin-bottom:14px; }
+  .pin-gate-title{
+    margin:0 0 6px 0; font-size:18px; font-weight:600;
+    letter-spacing:.04em; color:var(--text);
+  }
+  .pin-gate-sub{
+    margin:0 0 22px 0; color:var(--text2); font-size:12.5px;
+  }
+  .pin-gate-form{ display:flex; gap:8px; }
+  .pin-gate-form input{
+    flex:1; padding:11px 14px; font-size:18px;
+    font-family:'JetBrains Mono', monospace; letter-spacing:.3em;
+    text-align:center; color:var(--text);
+    background:var(--bg3); border:1px solid var(--border);
+    border-radius:4px; outline:none;
+    transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+  }
+  .pin-gate-form input:focus{
+    border-color:var(--accent);
+    box-shadow:0 0 0 3px var(--accent-tint);
+  }
+  .pin-gate-btn{
+    padding:11px 18px; font-size:13px; font-weight:600;
+    letter-spacing:.05em; text-transform:uppercase;
+    background:var(--accent); color:#fff; border:none; border-radius:4px;
+    cursor:pointer;
+    transition: background var(--t-fast) var(--ease);
+  }
+  .pin-gate-btn:hover{ background:var(--accent-hover, var(--accent)); filter:brightness(1.1); }
+  .pin-gate-error{
+    margin-top:12px; min-height:18px;
+    color:var(--red); font-size:12px;
+  }
 </style>
 
 </head>
 <body>
 <!-- Scripts extraídos a js/init.js y js/app.js (cargados desde <head>). -->
+
+<!-- PIN gate. Visible por default; init.js lo oculta si la sesión ya está validada. -->
+<div id="pinGate" class="pin-gate">
+  <div class="pin-gate-box">
+    <div class="pin-gate-icon">🔒</div>
+    <h2 class="pin-gate-title">Panel de Mantenimiento</h2>
+    <p class="pin-gate-sub">Ingresá el PIN para acceder.</p>
+    <form id="pinForm" class="pin-gate-form" autocomplete="off">
+      <input id="pinInput" type="password" inputmode="numeric" pattern="[0-9]*" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="20" placeholder="••••" autofocus>
+      <button type="submit" class="pin-gate-btn">Entrar</button>
+    </form>
+    <div id="pinError" class="pin-gate-error" aria-live="polite"></div>
+  </div>
+</div>
 
 <div class="load-bar" id="loadBar"><div class="load-bar-fill" id="loadBarFill"></div></div>
 

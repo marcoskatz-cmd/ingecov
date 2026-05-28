@@ -84,24 +84,28 @@ window.addEventListener('unhandledrejection', (e) => {
 const SHEET_IDS = {
   pedidos:        '1VFJwFLLEaOE9tTuwah7QkaDTrYkeYtOH8brUgSyHeFY',
   indicadores:    '1GpP2ejMVXncr2OLmKK_IP-zqr5AARi1Q3YdQIPlsUUE',
-  codigos:        '1I4ejRAoMnpou-cRvefgfVCzPg9Obkmi2',
+  // CÓDIGOS y COMBUSTIBLE LIVIANOS son .xlsx mantenidos por terceros.
+  // El proyecto Apps Script standalone (INGECO Panel API) tiene triggers
+  // cada 30 min que los copian a pestañas nativas dentro del Sheet
+  // "INGECO Panel Mirror" (id abajo). Cero intervención manual.
+  codigos:        '1Z8kg4aC6KUNeWyxpPiD3xKntRYB4oghxsbnxqWQdVio', // INGECO Panel Mirror
   repuestos_hist: '1TUEoOul4SI5O323LcMq2VkaxdcTMfTmZce7NToGESfc',
   trabajos_reg:   '1cNWQ44UEDiotHyB65BfTMcFuOCfQXYQoSNNAdAKTsy8',
   service:        '1zB9q0e9kxRKe52-I0u5Dqg7PUSE_nlxi3IYn7pxF0Iw',
   combustible:    '19dqJ-tcdmXiOns99mJgMMmZNDT3kKS7EQXwHd7VDILc',
   // PROGRAMA DE TRABAJOS DE SERVICE 2026 — fuente nueva de service / operatividad.
   programaService:'1y6pqbXscej3139lkImWJsJHeJvFa0B5sneICEyyNPmI',
-  // Control de combustible de vehículos livianos (Excel subido — gviz lo lee igual).
-  combustibleLivianos:'16KmV7k9gsqBgtd3YpesD2w9Hq2BEasac',
+  // Combustible livianos: lee del mirror sincronizado (mismo Sheet que CÓDIGOS).
+  combustibleLivianos:'1Z8kg4aC6KUNeWyxpPiD3xKntRYB4oghxsbnxqWQdVio', // INGECO Panel Mirror
 };
 
 // Pestaña tabular plana (una fila = una carga). No requiere Apps Script consolidador.
 const COMBUSTIBLE_SHEET='ENTREGA DE COMBUSTIBLE';
 
-// Combustible de livianos: pestaña del Excel y fecha de corte. Se toman todos los
-// registros desde esa fecha en adelante (lo anterior es histórico viejo). Filtrar
-// por fecha es robusto: no depende de números de fila.
-const COMBUSTIBLE_LIVIANOS_SHEET='Control General';
+// Combustible de livianos: el operario sube su .xlsx, un Apps Script lo
+// sincroniza cada 30 min a la pestaña COMBUSTIBLE_LIVIANOS_MIRROR del Mirror.
+// El panel lee esa pestaña; el flujo del operario no cambia.
+const COMBUSTIBLE_LIVIANOS_SHEET='COMBUSTIBLE_LIVIANOS_MIRROR';
 const COMBUSTIBLE_LIVIANOS_DESDE=new Date(2025,0,1); // 1 enero 2025
 
 // Pestañas del sheet PROGRAMA DE TRABAJOS DE SERVICE.
@@ -201,154 +205,14 @@ async function _gvizObjImpl(id,sheet,range){
   ));
 }
 
-/* ═══════════════════════════════════════════════════════
-   API PRIVADA — Cloudflare Pages Function + Apps Script
-   ──────────────────────────────────────────────────────
-   Auth: Google Identity Services (Sign in with Google).
-     - El panel hace login con Google al cargar.
-     - Recibe un ID token (JWT firmado por Google).
-     - Cada fetch a /api/ va con Authorization: Bearer <jwt>.
-     - El Worker (Pages Function) valida el JWT + chequea whitelist.
-     - Si OK, reenvía al Apps Script con shared secret.
-
-   API_URL es relativo (/api/) porque el panel y el Worker viven en el
-   mismo dominio Cloudflare Pages → cero CORS.
-═══════════════════════════════════════════════════════ */
-const USE_API = true;
-const API_URL = '/api/';
-const GOOGLE_CLIENT_ID = '1080058000144-ogmu40thse0j9jfe1i199ncj4c5nhkdk.apps.googleusercontent.com';
-
-// State del login. Se setea en handleGoogleCredential() cuando el usuario
-// se autentica con Google Identity Services.
-let _idToken = null;
-let _userEmail = null;
-
-/**
- * Llama a la API. Manda el ID token de Google en Authorization.
- * Si el server devuelve 401/403, muestra la pantalla de auth gate.
- */
-async function fetchApi(endpoint, params){
-  if (!_idToken) {
-    showSignInScreen('Necesitás iniciar sesión.');
-    throw new Error('not_signed_in');
-  }
-  const qs = new URLSearchParams({ ep: endpoint, ...(params||{}) });
-  const r = await fetch(`${API_URL}?${qs}`, {
-    headers: { 'Authorization': `Bearer ${_idToken}` },
-  });
-  const body = await r.json().catch(()=>({ ok:false, error:'bad_response', message: 'respuesta no es JSON' }));
-  if (!body.ok) {
-    if (['not_authorized','no_session','no_token','invalid_token','email_unverified'].includes(body.error)) {
-      showAuthGate(body.message || body.error);
-      throw new Error('not_authorized');
-    }
-    throw new Error(`API ${endpoint}: ${body.error} — ${body.message||''}`);
-  }
-  return body.data;
-}
-
-/**
- * Pantalla a pantalla completa cuando el usuario no está en la whitelist.
- * Reemplaza el dashboard.
- */
-function showAuthGate(message){
-  const dashboard = document.getElementById('dashboard');
-  const loading   = document.getElementById('loadingState');
-  const error     = document.getElementById('errorState');
-  if (loading)   loading.style.display = 'none';
-  if (dashboard) dashboard.style.display = 'none';
-  if (error) {
-    error.style.display = 'block';
-    setHTML(error, html`
-      <div style="min-height:60vh;display:flex;align-items:center;justify-content:center;padding:40px">
-        <div style="max-width:520px;text-align:center">
-          <div style="font-size:48px;line-height:1;margin-bottom:16px">🔒</div>
-          <h2 style="margin:0 0 12px 0;font-size:20px;color:var(--text)">No tenés acceso al panel</h2>
-          <p style="margin:8px 0;color:var(--text2);font-size:13px;line-height:1.5">${message||'Usuario no autorizado'}</p>
-          <p style="margin:16px 0 0 0;color:var(--text3);font-size:12px">
-            Pedile a Marcos que te agregue:<br>
-            <a href="mailto:marcoskatz@grupoingeco.com.ar" style="color:var(--accent)">marcoskatz@grupoingeco.com.ar</a>
-          </p>
-        </div>
-      </div>`);
-  }
-}
-
-/**
- * Mapeo (sheetId, sheetName) → endpoint API + extractor del payload.
- * Devuelve null si el par no está mapeado (el shim hace fallback a gviz).
- */
-function _findApiEndpoint(id, sheet){
-  if (id === SHEET_IDS.pedidos) {
-    if (sheet === 'PENDIENTES') return { ep: 'pedidos', extract: d => d.pendientes };
-    if (sheet === 'ENTREGADOS') return { ep: 'pedidos', extract: d => d.entregados };
-  }
-  if (id === SHEET_IDS.codigos) {
-    return { ep: 'codigos', extract: d => d.filter(r => r.__pestana === sheet) };
-  }
-  if (id === SHEET_IDS.repuestos_hist && sheet === 'PANEL_REPUESTOS') {
-    return { ep: 'panel_repuestos', extract: d => d };
-  }
-  if (id === SHEET_IDS.trabajos_reg && sheet === 'PANEL_TRABAJOS') {
-    return { ep: 'panel_trabajos', extract: d => d };
-  }
-  if (id === SHEET_IDS.indicadores) {
-    return { ep: 'indicadores', extract: d => d[sheet] || [] };
-  }
-  if (id === SHEET_IDS.programaService) {
-    if (sheet === SERVICE_FREC_SHEET) return { ep: 'service', extract: d => d.frecuencia };
-    if (sheet === SERVICE_TRIM_SHEET) return { ep: 'service', extract: d => d.trimestre };
-  }
-  if (id === SHEET_IDS.combustible && sheet === COMBUSTIBLE_SHEET) {
-    return { ep: 'combustible', extract: d => d };
-  }
-  if (id === SHEET_IDS.combustibleLivianos && sheet === COMBUSTIBLE_LIVIANOS_SHEET) {
-    return { ep: 'combustible_livianos', extract: d => d };
-  }
-  return null;
-}
-
-/** Convierte array de objects a matrix (preserva orden de columnas). */
-function _objectsToMatrix(objects){
-  if (!Array.isArray(objects) || !objects.length) return [];
-  const headers = Object.keys(objects[0]);
-  return objects.map(o => headers.map(h => o[h] == null ? '' : o[h]));
-}
-
-async function fetchGvizRaw(id, sheet, range){
-  if (USE_API) {
-    const map = _findApiEndpoint(id, sheet);
-    if (map) {
-      const data = await fetchApi(map.ep);
-      return _objectsToMatrix(map.extract(data));
-    }
-    // Sin mapping → fallback a gviz directo (queda registrado en consola).
-    console.debug('[API] fallback a gviz para', id, sheet);
-  }
-  return _gvizRawImpl(id, sheet, range);
-}
-
-async function fetchGvizObj(id, sheet, range){
-  if (USE_API) {
-    const map = _findApiEndpoint(id, sheet);
-    if (map) {
-      const data = await fetchApi(map.ep);
-      return map.extract(data);
-    }
-    console.debug('[API] fallback a gviz para', id, sheet);
-  }
-  return _gvizObjImpl(id, sheet, range);
-}
-
-/** Fuerza refresh server-side de todos los paneles consolidados. */
-async function apiRefreshAll(){
-  if (!USE_API) return;
-  try {
-    await fetchApi('refresh', { panel: 'all' });
-  } catch (e) {
-    console.warn('[API] refresh falló:', e.message);
-  }
-}
+// fetchGvizRaw/Obj son alias de las implementaciones gviz directas. El
+// panel lee Sheets que están como "anyone with link can view" (sin login).
+// Privacidad: hay un PIN gate en index.html que filtra usuarios casuales.
+// Si alguien con F12 mira los SHEET_IDS y los abre directo, igual los ve —
+// es disuasor, no seguridad criptográfica. Decisión documentada y aceptada.
+const fetchGvizRaw = _gvizRawImpl;
+const fetchGvizObj = _gvizObjImpl;
+async function apiRefreshAll(){ /* no-op: ya no hay API privada */ }
 
 /* ═══════════════════════════════════════════════════════
    HELPERS
@@ -3282,80 +3146,20 @@ document.addEventListener('change', _dispatchAction);
 document.addEventListener('input',  _dispatchAction);
 
 /* ═══════════════════════════════════════════════════════
-   GOOGLE SIGN IN — bootstrap
+   PIN GATE — bootstrap
 ═══════════════════════════════════════════════════════ */
-// Bootstrap: si USE_API está activo, hay que loguearse antes de hacer loadAll.
-// Si USE_API es false, arranca como antes (gviz directo, sin auth).
-if (USE_API) {
-  // Esperar a que Google Identity Services cargue (script externo async).
-  (function waitForGIS(){
-    if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
-      initGoogleSignIn();
-    } else {
-      setTimeout(waitForGIS, 100);
-    }
-  })();
-} else {
+// El PIN protege contra accesos casuales (no es seguridad criptográfica).
+// El overlay de PIN vive en index.html y se hace cargo de mostrar el form.
+// Cuando el usuario ingresa el PIN correcto, se dispara este loadAll().
+// sessionStorage guarda el flag para que no pida PIN otra vez en la sesión.
+if (sessionStorage.getItem('ingeco-pin-ok') === '1') {
+  // Sesión ya validada — arrancar directo
   loadAll();
 }
-
-function initGoogleSignIn(){
-  // auto_select: false — sin esto, el SDK fuerza la cuenta activa del
-  // navegador ignorando el selector. Con multi-account era el bug que
-  // metía a Marcos con una cuenta equivocada aunque eligiera otra.
-  // También evitamos One Tap (prompt auto): siempre mostramos el botón
-  // explícito que abre un popup donde el usuario elige cuenta libremente.
-  google.accounts.id.initialize({
-    client_id: GOOGLE_CLIENT_ID,
-    callback: handleGoogleCredential,
-    auto_select: false,
-    cancel_on_tap_outside: false,
-    use_fedcm_for_prompt: false,
-  });
-  showSignInScreen();
-}
-
-function handleGoogleCredential(response){
-  _idToken = response.credential;
-  // Decodear el payload (sin verificar — la verificación real la hace el Worker).
-  try {
-    const payload = JSON.parse(atob(response.credential.split('.')[1]));
-    _userEmail = payload.email;
-  } catch (e) {
-    console.error('[INGECO] no se pudo decodear ID token:', e);
-  }
-  // Limpiar la pantalla de sign-in si estaba activa, iniciar carga del panel.
-  const err = document.getElementById('errorState');
-  if (err) { err.style.display = 'none'; err.textContent = ''; }
+// Si NO está validado, el overlay queda visible (lo maneja el script
+// inline de index.html que verifica el PIN). Cuando valida, llama a
+// window.__startPanel() que dispara loadAll().
+window.__startPanel = () => {
+  sessionStorage.setItem('ingeco-pin-ok', '1');
   loadAll();
-}
-
-function showSignInScreen(extraMsg){
-  const err = document.getElementById('errorState');
-  const dashboard = document.getElementById('dashboard');
-  const loading = document.getElementById('loadingState');
-  if (loading)   loading.style.display = 'none';
-  if (dashboard) dashboard.style.display = 'none';
-  if (!err) return;
-  err.style.display = 'block';
-  setHTML(err, html`
-    <div style="min-height:60vh;display:flex;align-items:center;justify-content:center;padding:40px">
-      <div style="max-width:520px;text-align:center">
-        <div style="font-size:48px;line-height:1;margin-bottom:16px">🔐</div>
-        <h2 style="margin:0 0 12px 0;font-size:20px;color:var(--text)">Iniciar sesión</h2>
-        <p style="margin:8px 0 16px 0;color:var(--text2);font-size:13px;line-height:1.5">
-          El panel INGECO requiere autenticación con Google.
-          ${extraMsg ? html`<br><small style="color:var(--text3)">${extraMsg}</small>` : ''}
-        </p>
-        <div id="g_id_signin_btn" style="display:inline-block"></div>
-      </div>
-    </div>
-  `);
-  // Renderizar el botón oficial de Google Sign In.
-  if (google && google.accounts && google.accounts.id) {
-    google.accounts.id.renderButton(
-      document.getElementById('g_id_signin_btn'),
-      { theme: 'filled_blue', size: 'large', text: 'signin_with', shape: 'pill' }
-    );
-  }
-}
+};
