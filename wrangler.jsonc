@@ -14,5 +14,15 @@
     // not_found_handling controla qué hacer cuando la ruta pedida no es un
     // asset estático. "none" deja que el worker maneje el 404 explícitamente.
     "not_found_handling": "none"
+  },
+  // Plaintext vars: tienen que vivir acá porque wrangler deploy reemplaza
+  // las del dashboard en cada build. SHARED_SECRET sigue en el dashboard
+  // como "Secret" — wrangler preserva los secrets across deploys.
+  // Para cambiar emails autorizados sin redeploy del code, hay que editar
+  // ALLOWED_EMAILS acá y pushear (CF deploya en ~1-2 min).
+  "vars": {
+    "APPS_SCRIPT_URL": "https://script.google.com/macros/s/AKfycbx2C_1Ehh7lmXdY5T69TE93hlsEEOBv23RcZTgQH0pNsknxgfHxST8XIb6uETBK72X9zA/exec",
+    "GOOGLE_CLIENT_ID": "1080058000144-ogmu40thse0j9jfe1i199ncj4c5nhkdk.apps.googleusercontent.com",
+    "ALLOWED_EMAILS": "marcoskatz@grupoingeco.com.ar,nicobdallagata@gmail.com,rmreyes2022@gmail.com,compras@grupoingeco.com.ar,agustindg1990@gmail.com"
   }
 }
