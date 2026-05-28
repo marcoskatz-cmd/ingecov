@@ -760,18 +760,21 @@ function procesarPanelTrabajos(rawRows){
 
 /* ═══════════════════════════════════════════════════════
    SERVICES PLANIFICADOS — fuentes externas a TRABAJOS REALIZADOS
-   Los sheets de service ("PROGRAMA DE TRABAJOS DE SERVICE 2026" + "TRABAJO DE
-   SERVICE 2026"/PANEL_PROGRAMA) registran cada service hecho con fecha + hr/km
-   del equipo, pero NO con tiempo de trabajo invertido. Algunos services no se
-   cargan en las planillas TRABAJOS REALIZADOS (cuando son rápidos y sin
-   reparaciones asociadas). Cruzamos:
-     - cargadoComoService:  service del planning con fila de RAZÓN service/mant en ±7d
-     - cargadoComoOtraRazon: service del planning con fila de otra RAZÓN en ±7d
-                             (parada conjunta service+reparación: el operario
-                              marcó la razón mayoritaria, no sumamos extra)
-     - sinCarga: service del planning sin ninguna fila en PANEL_TRABAJOS en ±7d
-                 → estimamos horas con la mediana de services registrados del
-                   prefijo del equipo y las sumamos al preventivo
+   Regla operativa: cuando el service es PURO (sin reparaciones asociadas) se
+   carga SOLO en los sheets de service ("PROGRAMA DE TRABAJOS DE SERVICE 2026"
+   + PANEL_PROGRAMA del "TRABAJO DE SERVICE 2026"). Cuando hay reparación o
+   parada conjunta service+reparación, se carga en las planillas mensuales
+   TRABAJOS REALIZADOS. Por eso este cruce NO es para detectar fallas de carga
+   sino para clasificar y completar la métrica:
+     - cargadosService:    el operario también cargó como service en planilla
+                           (puede haber reparación pequeña en la misma parada)
+     - cargadosOtraRazon:  parada conjunta service+reparación cargada como
+                           "Reparación" (la razón del operario manda)
+     - sinCarga:           service PURO — solo está en el planning porque no
+                           hubo reparación. Estimamos horas con la mediana de
+                           services registrados del prefijo del equipo y las
+                           sumamos al preventivo (las planillas TRABAJOS DE
+                           SERVICE no registran tiempo trabajado).
 ═══════════════════════════════════════════════════════ */
 const SERVICE_VENTANA_DIAS=7;
 function _prefijoCod(codN){const m=String(codN||'').match(/^([A-Z]+)/);return m?m[1]:'';}
@@ -2180,13 +2183,17 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
     <div class="kpi${_kpiHorasEmpty?' kpi-empty':''}"><div class="kpi-label">horas en taller</div><div class="kpi-val">${horasTotalFlota>0?fmtInt(Math.round(horasTotalFlota))+' hr':'—'}</div>${horasTotalFlota>0?html`<div class="kpi-sub hr-split"><div class="hr-split-bar"><span class="corr" style="width:${_corrPct}%"></span><span class="prev" style="width:${_prevPct}%"></span></div><span class="hr-split-leg"><i class="corr"></i>${fmtInt(Math.round(_horasCorr))} hr correctivo · ${_corrPct}%</span><span class="hr-split-leg"><i class="prev"></i>${fmtInt(Math.round(_horasPrev))} hr preventivo · ${_prevPct}%</span></div>`:html`<div class="kpi-sub">acumuladas 2026 · flota</div>`}<div class="kpi-accent-bar blue"></div></div>
     <div class="kpi${_gcEmpty?' kpi-empty':''}"><div class="kpi-label">combustible livianos<select class="kpi-mes-sel" id="kpiCombMes" data-action="actualizarKpiCombustible" data-event="change">${new RawHTML(_gcOpts)}</select></div><div class="kpi-val amber" id="kpiCombVal">${_gcVal>0?formatMoney(_gcVal):'—'}</div><div class="kpi-sub" id="kpiCombSub">${_gcSub}</div><div class="kpi-accent-bar amber"></div></div>
     ${(()=>{
+      // Regla operativa: si el service fue puro (sin reparaciones asociadas) se carga
+      // SOLO en los sheets de planning (TRABAJOS DE SERVICE); si hubo reparación, se
+      // carga en TRABAJOS REALIZADOS. Por eso "sinCarga" NO es una falla de carga,
+      // es la cantidad de services puros — y "cargadosService"+"cargadosOtraRazon"
+      // son los que tuvieron reparación asociada (parada conjunta).
       const sc=window._serviceCumplimiento||{total:0,cargadosService:0,cargadosOtraRazon:0,sinCarga:0};
       const _scTotal=sc.total||0;
-      const _scCarg=(sc.cargadosService||0)+(sc.cargadosOtraRazon||0);
-      const _scPct=_scTotal>0?Math.round(_scCarg/_scTotal*100):0;
-      const _scColor=_scTotal===0?'':(_scPct>=80?'green':_scPct>=50?'amber':'red');
+      const _scSolo=sc.sinCarga||0;
+      const _scConRep=(sc.cargadosService||0)+(sc.cargadosOtraRazon||0);
       const _scEmpty=_scTotal===0;
-      return html`<div class="kpi${_scEmpty?' kpi-empty':''}"><div class="kpi-label">services realizados</div><div class="kpi-val ${_scColor}">${_scTotal>0?fmtInt(_scTotal):'—'}</div><div class="kpi-sub">${_scTotal>0?html`${fmtInt(_scCarg)} cargados · ${fmtInt(sc.sinCarga||0)} sin carga · ${_scPct}%`:'sin datos del planning'}</div><div class="kpi-accent-bar ${_scColor||'blue'}"></div></div>`;
+      return html`<div class="kpi${_scEmpty?' kpi-empty':''}"><div class="kpi-label">services realizados</div><div class="kpi-val">${_scTotal>0?fmtInt(_scTotal):'—'}</div><div class="kpi-sub">${_scTotal>0?html`${fmtInt(_scSolo)} solo service · ${fmtInt(_scConRep)} con reparación`:'sin datos del planning'}</div><div class="kpi-accent-bar blue"></div></div>`;
     })()}
   `);
 
