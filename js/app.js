@@ -218,8 +218,8 @@ async function _gvizObjImpl(id,sheet,range){
    Eso permite migración parcial mientras se prueba — los pares migrados
    van por API, los demás siguen por gviz hasta que se sumen al mapping.
 ═══════════════════════════════════════════════════════ */
-const USE_API = false;
-const API_URL = ''; // pegar acá la URL del Web App: https://script.google.com/macros/s/.../exec
+const USE_API = true;
+const API_URL = 'https://script.google.com/macros/s/AKfycbx2C_1Ehh7lmXdY5T69TE93hlsEEOBv23RcZTgQH0pNsknxgfHxST8XIb6uETBK72X9zA/exec';
 
 /**
  * Llama a la API. Si el server devuelve 403 (no autorizado), muestra la
