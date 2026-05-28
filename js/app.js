@@ -1373,8 +1373,11 @@ function renderEquipoCombo(chartId, codigo, horasPorMes){
   // Horas: el caller pasa horasPorMes ya construido
   const horasByYm=horasPorMes||{};
 
-  // Union de meses presentes en cualquier serie, ordenados
-  const ymsAll=[...new Set([...Object.keys(costosByYm),...Object.keys(horasByYm)])].sort();
+  // Union de meses presentes en cualquier serie, ordenados (filtrando YMs inválidos)
+  const _anioAct=new Date().getFullYear();
+  const ymsAll=[...new Set([...Object.keys(costosByYm),...Object.keys(horasByYm)])]
+    .filter(ym=>/^\d{4}-\d{2}$/.test(ym)&&+ym.slice(0,4)>=2020&&+ym.slice(0,4)<=_anioAct+1)
+    .sort();
   if(!ymsAll.length)return;
 
   const labels=ymsAll.map(ym=>{const[y,mm]=ym.split('-');return`${nomMes[+mm-1]}'${y.slice(2)}`;});
@@ -2966,8 +2969,14 @@ function renderTelemetriaFlota(){
   const horasCorrPorMes=window._horasCorrPorMes||{};
   const horasPrevPorMes=window._horasPrevPorMes||{};
 
-  // Union de meses presentes en cualquiera de las series (ordenados)
-  const ymsAll=[...new Set([...Object.keys(costosPorMes),...Object.keys(horasPorMesFlota)])].sort();
+  // Union de meses presentes en cualquiera de las series (ordenados).
+  // Filtramos YMs inválidos (año fuera del rango razonable): alguna fila de datos
+  // puede venir con fecha mal formateada (ej. "01/02/205" → ym "205-02") y no
+  // queremos que genere un punto "Feb'5" en el chart.
+  const _anioAct=new Date().getFullYear();
+  const ymsAll=[...new Set([...Object.keys(costosPorMes),...Object.keys(horasPorMesFlota)])]
+    .filter(ym=>/^\d{4}-\d{2}$/.test(ym)&&+ym.slice(0,4)>=2020&&+ym.slice(0,4)<=_anioAct+1)
+    .sort();
   const labels=ymsAll.map(ym=>{const[y,mm]=ym.split('-');return`${nomMes[+mm-1]}'${y.slice(2)}`;});
   const dataCosto=ymsAll.map(ym=>{
     const m=costosPorMes[ym]||{};
