@@ -89,6 +89,31 @@ export async function onRequest({ request, env }) {
   params.set('_cfu', email);
   params.set('_cfs', env.SHARED_SECRET);
 
+  // Endpoint de debug: si el query original tiene ?ep=__debug, devolvemos
+  // info de qué está armando el Worker sin tocar el Apps Script. NUNCA
+  // incluye el shared secret, solo si está seteado y su longitud.
+  if (params.get('ep') === '__debug') {
+    return jsonResponse({
+      ok: true,
+      endpoint: '__debug',
+      worker: {
+        apps_script_url_set: !!env.APPS_SCRIPT_URL,
+        apps_script_url_preview: (env.APPS_SCRIPT_URL || '').substring(0, 70) + '...',
+        shared_secret_set: !!env.SHARED_SECRET,
+        shared_secret_length: (env.SHARED_SECRET || '').length,
+        google_client_id_set: !!env.GOOGLE_CLIENT_ID,
+        allowed_emails_set: !!env.ALLOWED_EMAILS,
+        user_email_from_jwt: email,
+        target_url_built: env.APPS_SCRIPT_URL + '?' + (() => {
+          const dbg = new URLSearchParams(url.search);
+          dbg.set('_cfu', email);
+          dbg.set('_cfs', '[REDACTED-len-' + (env.SHARED_SECRET || '').length + ']');
+          return dbg.toString();
+        })(),
+      }
+    });
+  }
+
   const targetUrl = env.APPS_SCRIPT_URL + '?' + params.toString();
 
   let upstream;
