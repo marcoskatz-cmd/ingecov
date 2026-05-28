@@ -89,7 +89,7 @@ const SHEET_IDS = {
   // cada 30 min que los copian a pestañas nativas dentro del Sheet
   // "INGECO Panel Mirror" (id abajo). Cero intervención manual.
   codigos:        '1Z8kg4aC6KUNeWyxpPiD3xKntRYB4oghxsbnxqWQdVio', // INGECO Panel Mirror
-  repuestos_hist: '1TUEoOul4SI5O323LcMq2VkaxdcTMfTmZce7NToGESfc',
+  repuestos_hist: '1WCtB-8C1VP4-axoQ_ugk_ersCfPJFjMC1fEDXRHOKFE',
   trabajos_reg:   '1cNWQ44UEDiotHyB65BfTMcFuOCfQXYQoSNNAdAKTsy8',
   service:        '1zB9q0e9kxRKe52-I0u5Dqg7PUSE_nlxi3IYn7pxF0Iw',
   combustible:    '19dqJ-tcdmXiOns99mJgMMmZNDT3kKS7EQXwHd7VDILc',
@@ -605,8 +605,19 @@ function procesarPanelRepuestos(panelObj){
     const itemsStr=String(_pickCol(r,['ITEMS DETALLE','ITEMS','REPUESTOS ENTREGADOS','REPUESTOS'])||'').trim();
     const items=parseItemsDetalle(itemsStr);
 
-    const ym=mesAnioToYm(mes,anio);
-    const label=mesAnioToLabel(mes,anio);
+    // Fallback: si MES/AÑO ARCHIVO no están (sheet sin esa metadata), derivamos
+    // ym y label de la FECHA. Necesario para el sheet histórico nuevo (1WCtB...)
+    // que solo trae N° ENTREGA, FECHA, EQUIPO, CÓDIGO, REPUESTOS, COSTO.
+    let ym=mesAnioToYm(mes,anio);
+    let label=mesAnioToLabel(mes,anio);
+    if(!ym){
+      const d=_parseDate(fechaRaw);
+      if(d){
+        ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+        const _ab=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+        label=`${_ab[d.getMonth()]} ${d.getFullYear()}`;
+      }
+    }
 
     // 1) _entregaCostos[nro]
     if(nro){
@@ -2048,7 +2059,13 @@ function _yearsDisponibles(){
     ...Object.keys(window._horasPorMesFlota||{}),
     ...Object.keys(window._gastoCombLivianosPorMes||{}),
   ]);
-  return [...new Set([...yms].map(ym=>ym.slice(0,4)))].sort();
+  // Filtrar años válidos (4 dígitos, entre 2020 y año actual + 1). Si una fila
+  // de datos vino con fecha mal formateada (ej. "01/02/205"), el ym derivado
+  // sería "205-02" y se filtra acá para no mostrar un botón inválido.
+  const anioAct=new Date().getFullYear();
+  return [...new Set([...yms].map(ym=>ym.slice(0,4)))]
+    .filter(y=>/^\d{4}$/.test(y)&&+y>=2020&&+y<=anioAct+1)
+    .sort();
 }
 // Devuelve los YMs (formato "YYYY-MM") correspondientes al rango pedido.
 function _ymsEnRango(key){
