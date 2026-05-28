@@ -1,0 +1,18 @@
+{
+  // Configuración del Worker. En el modelo nuevo "Cloudflare Workers with
+  // static assets" (que es lo que Cloudflare crea por default al conectar
+  // un repo de Pages), las "Pages Functions" no se detectan automáticamente
+  // — necesita un entrypoint explícito. `main` apunta a ese entrypoint, y
+  // `assets` declara la carpeta con HTML/CSS/JS estáticos.
+  "name": "mantenimiento-ingeco",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-05-28",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./",
+    "binding": "ASSETS",
+    // not_found_handling controla qué hacer cuando la ruta pedida no es un
+    // asset estático. "none" deja que el worker maneje el 404 explícitamente.
+    "not_found_handling": "none"
+  }
+}
