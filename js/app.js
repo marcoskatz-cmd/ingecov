@@ -3300,20 +3300,19 @@ if (USE_API) {
 }
 
 function initGoogleSignIn(){
+  // auto_select: false — sin esto, el SDK fuerza la cuenta activa del
+  // navegador ignorando el selector. Con multi-account era el bug que
+  // metía a Marcos con una cuenta equivocada aunque eligiera otra.
+  // También evitamos One Tap (prompt auto): siempre mostramos el botón
+  // explícito que abre un popup donde el usuario elige cuenta libremente.
   google.accounts.id.initialize({
     client_id: GOOGLE_CLIENT_ID,
     callback: handleGoogleCredential,
-    auto_select: true,
+    auto_select: false,
     cancel_on_tap_outside: false,
-    use_fedcm_for_prompt: true,
+    use_fedcm_for_prompt: false,
   });
-  google.accounts.id.prompt((notification) => {
-    // Si One Tap no se muestra (browser bloquea, usuario no logueado en
-    // Google, etc.), mostrar pantalla con botón "Iniciar sesión".
-    if (notification.isNotDisplayed() || notification.isSkippedMoment() || notification.isDismissedMoment()) {
-      showSignInScreen();
-    }
-  });
+  showSignInScreen();
 }
 
 function handleGoogleCredential(response){
