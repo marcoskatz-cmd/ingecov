@@ -759,6 +759,144 @@ function procesarPanelTrabajos(rawRows){
 }
 
 /* ═══════════════════════════════════════════════════════
+   SERVICES PLANIFICADOS — fuentes externas a TRABAJOS REALIZADOS
+   Los sheets de service ("PROGRAMA DE TRABAJOS DE SERVICE 2026" + "TRABAJO DE
+   SERVICE 2026"/PANEL_PROGRAMA) registran cada service hecho con fecha + hr/km
+   del equipo, pero NO con tiempo de trabajo invertido. Algunos services no se
+   cargan en las planillas TRABAJOS REALIZADOS (cuando son rápidos y sin
+   reparaciones asociadas). Cruzamos:
+     - cargadoComoService:  service del planning con fila de RAZÓN service/mant en ±7d
+     - cargadoComoOtraRazon: service del planning con fila de otra RAZÓN en ±7d
+                             (parada conjunta service+reparación: el operario
+                              marcó la razón mayoritaria, no sumamos extra)
+     - sinCarga: service del planning sin ninguna fila en PANEL_TRABAJOS en ±7d
+                 → estimamos horas con la mediana de services registrados del
+                   prefijo del equipo y las sumamos al preventivo
+═══════════════════════════════════════════════════════ */
+const SERVICE_VENTANA_DIAS=7;
+function _prefijoCod(codN){const m=String(codN||'').match(/^([A-Z]+)/);return m?m[1]:'';}
+function _ymd(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function _ym(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
+function _mediana(arr){const s=[...arr].sort((a,b)=>a-b);const n=s.length;if(!n)return null;return n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2;}
+
+// Lee los 3 sheets de planning y devuelve eventos únicos {cod, fecha, ym}.
+// trim1Rows/trim2Rows vienen como arrays de arrays (gvizRaw); cols [1]=codigo,
+// [6]=ULT_FECHA, [11]/[13]/[15]=fechas mensuales del trimestre.
+// panelProgramaRows viene como array de objetos (gvizObj); CODIGO, ULT_FECHA.
+function procesarServicesPlanning(trim1Rows,trim2Rows,panelProgramaRows){
+  const eventos=[];
+  const COLS_TRIM_FECHA=[6,11,13,15];
+  for(const rows of [trim1Rows||[],trim2Rows||[]]){
+    for(const r of rows){
+      const cod=normCod(r&&r[1]);
+      if(!cod)continue;
+      for(const idx of COLS_TRIM_FECHA){
+        const d=_parseDate(r[idx]);
+        if(d)eventos.push({cod,fecha:d});
+      }
+    }
+  }
+  for(const r of (panelProgramaRows||[])){
+    const idx={};
+    for(const k of Object.keys(r||{}))idx[normHead(k)]=r[k];
+    const cod=normCod(idx['CODIGO']||idx['COD']||'');
+    if(!cod)continue;
+    const d=_parseDate(idx['ULT FECHA']||idx['ULTIMA FECHA']||'');
+    if(d)eventos.push({cod,fecha:d});
+  }
+  // Deduplicar por (cod, ymd)
+  const seen=new Set();
+  const unicos=[];
+  const fechasPorCod={};
+  for(const e of eventos){
+    const ymd=_ymd(e.fecha);
+    const k=`${e.cod}|${ymd}`;
+    if(seen.has(k))continue;
+    seen.add(k);
+    unicos.push({cod:e.cod,fecha:e.fecha,ym:_ym(e.fecha),ymd});
+    if(!fechasPorCod[e.cod])fechasPorCod[e.cod]=new Set();
+    fechasPorCod[e.cod].add(ymd);
+  }
+  return{eventos:unicos,fechasPorCod,total:unicos.length};
+}
+
+// Cruza services del planning con PANEL_TRABAJOS. Suma horas estimadas (mediana
+// de horas de service registradas por prefijo) al preventivo SOLO para los que
+// no tienen ninguna fila en ±7d (services puros sin reparación, no se cargaron
+// en la planilla porque fueron rápidos).
+function cruzarServicesEnTrabajos(rawTrabajos,servicesPlanning){
+  const out={
+    horasAgregadasFlota:0,
+    horasAgregadasPorEquipo:{},
+    horasAgregadasPorMes:{},
+    serviceFechasMatch:{}, // codN -> Set<ymd> con TODAS las fechas con service planificado del equipo
+    cumplimiento:{total:0,cargadosService:0,cargadosOtraRazon:0,sinCarga:0},
+    medianas:{global:null,porPrefijo:{}},
+  };
+  if(!servicesPlanning||!servicesPlanning.eventos.length)return out;
+
+  // 1) Calcular mediana de horas por prefijo a partir de PANEL_TRABAJOS, mirando
+  //    solo filas con RAZÓN service/mantenimiento y tiempo > 0.
+  const SIN_TIEMPO=['TIEMPO TRABAJO','TIEMPO (HR)','TIEMPO TRABAJO (HR)','TIEMPO TRABAJO HR','TIEMPO HR','TIEMPO','HORAS','HS'];
+  const SIN_FECHA=['FECHA TRABAJO','FECHA DE TRABAJO','FECHA'];
+  const SIN_RAZON=['RAZON TRABAJO','RAZON DE TRABAJO','RAZON','MOTIVO TRABAJO','MOTIVO'];
+  const SIN_COD=['CODIGO','COD','CODIGO EQUIPO'];
+  const horasPorPref={};const horasGlobal=[];
+  const filasTrab=[]; // {codN, fecha:Date|null, razon, tNum}
+  for(const r of (rawTrabajos||[])){
+    const idx={};
+    for(const k of Object.keys(r))idx[normHead(k)]=r[k];
+    const get=keys=>{for(const k of keys){const v=idx[k];if(v!=null&&String(v).trim()!=='')return String(v).trim();}return'';};
+    const codN=normCod(get(SIN_COD));
+    if(!codN)continue;
+    const tNum=parseFloat(String(get(SIN_TIEMPO)).replace(',','.'));
+    const razon=get(SIN_RAZON);
+    const fecha=_parseDate(get(SIN_FECHA));
+    filasTrab.push({codN,fecha,razon,tNum:isFinite(tNum)&&tNum>0?tNum:0});
+    if(isFinite(tNum)&&tNum>0&&/service|mantenimiento/i.test(razon)){
+      const pref=_prefijoCod(codN);
+      if(!horasPorPref[pref])horasPorPref[pref]=[];
+      horasPorPref[pref].push(tNum);
+      horasGlobal.push(tNum);
+    }
+  }
+  const medianaGlobal=_mediana(horasGlobal);
+  out.medianas.global=medianaGlobal;
+  for(const k of Object.keys(horasPorPref))out.medianas.porPrefijo[k]=_mediana(horasPorPref[k]);
+
+  // 2) Indexar filas de TRABAJOS por codN -> array de {fecha, razon}
+  const trabajosPorCod={};
+  for(const f of filasTrab){
+    if(!trabajosPorCod[f.codN])trabajosPorCod[f.codN]=[];
+    trabajosPorCod[f.codN].push(f);
+  }
+
+  // 3) Cruce
+  const ventanaMs=SERVICE_VENTANA_DIAS*86400000;
+  for(const ev of servicesPlanning.eventos){
+    out.cumplimiento.total++;
+    if(!out.serviceFechasMatch[ev.cod])out.serviceFechasMatch[ev.cod]=new Set();
+    out.serviceFechasMatch[ev.cod].add(ev.ymd);
+    const filas=trabajosPorCod[ev.cod]||[];
+    const enVentana=filas.filter(f=>f.fecha&&Math.abs(f.fecha-ev.fecha)<=ventanaMs);
+    if(enVentana.length===0){
+      out.cumplimiento.sinCarga++;
+      const pref=_prefijoCod(ev.cod);
+      const h=(out.medianas.porPrefijo[pref]!=null?out.medianas.porPrefijo[pref]:medianaGlobal)||0;
+      if(h>0){
+        out.horasAgregadasFlota+=h;
+        out.horasAgregadasPorEquipo[ev.cod]=(out.horasAgregadasPorEquipo[ev.cod]||0)+h;
+        out.horasAgregadasPorMes[ev.ym]=(out.horasAgregadasPorMes[ev.ym]||0)+h;
+      }
+      continue;
+    }
+    if(enVentana.some(f=>/service|mantenimiento/i.test(f.razon)))out.cumplimiento.cargadosService++;
+    else out.cumplimiento.cargadosOtraRazon++;
+  }
+  return out;
+}
+
+/* ═══════════════════════════════════════════════════════
    PANEL_PROGRAMA — Estado de service por equipo
    Lee la consolidación del Sheet de service (TRABAJOS DE SERVICE 2026)
    y produce un índice por código normalizado.
@@ -1695,7 +1833,7 @@ async function loadAll(){
     // Carga primaria: TODO lo necesario para el primer render.
     // PANEL_REPUESTOS pasa a ser fuente única de entregas (reemplaza MESES_ENTREGAS).
     // PANEL_TRABAJOS se carga acá también para alimentar telemetría de flota (rankings + chart de horas).
-    const[pendientesRaw,entregadosRaw,codV,codL,codP,codS,panelRepuestosObj,panelTrabajosObj,serviceFrecRows,serviceTrimRows,combustibleObj,combLivianosRows]=await Promise.all([
+    const[pendientesRaw,entregadosRaw,codV,codL,codP,codS,panelRepuestosObj,panelTrabajosObj,serviceFrecRows,serviceTrimRows,trim1Rows,trim2Rows,panelProgramaObj,combustibleObj,combLivianosRows]=await Promise.all([
       fetchGvizRaw(SHEET_IDS.pedidos,'PENDIENTES'),
       // ENTREGADOS tiene título y contadores en filas 1-10; headers reales en fila 11.
       // El range fuerza a gviz a usar la fila 11 como header (sin esto, los nombres se pierden).
@@ -1709,6 +1847,11 @@ async function loadAll(){
       // PROGRAMA DE TRABAJOS DE SERVICE 2026: rangos de operatividad + trimestre vigente.
       fetchGvizRaw(SHEET_IDS.programaService,SERVICE_FREC_SHEET).catch(()=>[]),
       fetchGvizRaw(SHEET_IDS.programaService,SERVICE_TRIM_SHEET).catch(()=>[]),
+      // Ambos trimestres del PROGRAMA + PANEL_PROGRAMA del sheet de service:
+      // services planificados/realizados que cruzamos con TRABAJOS REALIZADOS.
+      fetchGvizRaw(SHEET_IDS.programaService,'1° TRIMESTRE').catch(()=>[]),
+      fetchGvizRaw(SHEET_IDS.programaService,'2° TRIMESTRE').catch(()=>[]),
+      fetchGvizObj(SHEET_IDS.service,'PANEL_PROGRAMA').catch(()=>[]),
       fetchGvizObj(SHEET_IDS.combustible,COMBUSTIBLE_SHEET).catch(()=>[]),
       // Combustible de livianos (Excel "Control General"); se procesa abajo.
       fetchGvizRaw(SHEET_IDS.combustibleLivianos,COMBUSTIBLE_LIVIANOS_SHEET).catch(()=>[]),
@@ -1735,6 +1878,27 @@ async function loadAll(){
     window._horasCorrPorMes    = tctx.horasCorrPorMes;
     window._horasPrevPorEquipo = tctx.horasPrevPorEquipo;
     window._horasCorrPorEquipo = tctx.horasCorrPorEquipo;
+
+    // Procesar SERVICES PLANIFICADOS y cruzar con PANEL_TRABAJOS.
+    // Suma al preventivo horas estimadas de los services que el planning dice
+    // que se hicieron pero no quedaron cargados en TRABAJOS REALIZADOS.
+    window._servicesPlanning = procesarServicesPlanning(trim1Rows,trim2Rows,panelProgramaObj);
+    const sctx = cruzarServicesEnTrabajos(panelTrabajosObj,window._servicesPlanning);
+    window._serviceCumplimiento = sctx.cumplimiento;
+    window._serviceFechasMatch  = sctx.serviceFechasMatch;
+    window._serviceMedianas     = sctx.medianas;
+    if(sctx.horasAgregadasFlota>0){
+      window._horasFlota.prev += sctx.horasAgregadasFlota;
+      window._horasFlota.total+= sctx.horasAgregadasFlota;
+      for(const k of Object.keys(sctx.horasAgregadasPorEquipo)){
+        window._horasPorEquipo[k]=(window._horasPorEquipo[k]||0)+sctx.horasAgregadasPorEquipo[k];
+        window._horasPrevPorEquipo[k]=(window._horasPrevPorEquipo[k]||0)+sctx.horasAgregadasPorEquipo[k];
+      }
+      for(const ym of Object.keys(sctx.horasAgregadasPorMes)){
+        window._horasPorMesFlota[ym]=(window._horasPorMesFlota[ym]||0)+sctx.horasAgregadasPorMes[ym];
+        window._horasPrevPorMes[ym]=(window._horasPrevPorMes[ym]||0)+sctx.horasAgregadasPorMes[ym];
+      }
+    }
 
     // Procesar PANEL_PROGRAMA: estado de service por equipo (alimenta KPI y modal)
     window._servicePanel = procesarProgramaService(serviceFrecRows,serviceTrimRows);
@@ -1986,7 +2150,15 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
     <div class="kpi${_kpiCostoEmpty?' kpi-empty':''}"><div class="kpi-label">costo en repuestos</div><div class="kpi-val amber">${totalCostoMes>0?formatMoney(totalCostoMes):'—'}</div><div class="kpi-sub">${MES_ACTUAL.label} · ${fmtInt(entConCosto)} entregas con costo</div><div class="kpi-accent-bar amber"></div></div>
     <div class="kpi${_kpiHorasEmpty?' kpi-empty':''}"><div class="kpi-label">horas en taller</div><div class="kpi-val">${horasTotalFlota>0?fmtInt(Math.round(horasTotalFlota))+' hr':'—'}</div>${horasTotalFlota>0?html`<div class="kpi-sub hr-split"><div class="hr-split-bar"><span class="corr" style="width:${_corrPct}%"></span><span class="prev" style="width:${_prevPct}%"></span></div><span class="hr-split-leg"><i class="corr"></i>${fmtInt(Math.round(_horasCorr))} hr correctivo · ${_corrPct}%</span><span class="hr-split-leg"><i class="prev"></i>${fmtInt(Math.round(_horasPrev))} hr preventivo · ${_prevPct}%</span></div>`:html`<div class="kpi-sub">acumuladas 2026 · flota</div>`}<div class="kpi-accent-bar blue"></div></div>
     <div class="kpi${_gcEmpty?' kpi-empty':''}"><div class="kpi-label">combustible livianos<select class="kpi-mes-sel" id="kpiCombMes" data-action="actualizarKpiCombustible" data-event="change">${new RawHTML(_gcOpts)}</select></div><div class="kpi-val amber" id="kpiCombVal">${_gcVal>0?formatMoney(_gcVal):'—'}</div><div class="kpi-sub" id="kpiCombSub">${_gcSub}</div><div class="kpi-accent-bar amber"></div></div>
-    <div class="kpi kpi-empty" id="kpiDispCard"><div class="kpi-label">disponibilidad global</div><div class="kpi-val" id="kpiDisp">—</div><div class="kpi-sub">cargando…</div><div class="kpi-accent-bar" id="kpiDispBar"></div></div>
+    ${(()=>{
+      const sc=window._serviceCumplimiento||{total:0,cargadosService:0,cargadosOtraRazon:0,sinCarga:0};
+      const _scTotal=sc.total||0;
+      const _scCarg=(sc.cargadosService||0)+(sc.cargadosOtraRazon||0);
+      const _scPct=_scTotal>0?Math.round(_scCarg/_scTotal*100):0;
+      const _scColor=_scTotal===0?'':(_scPct>=80?'green':_scPct>=50?'amber':'red');
+      const _scEmpty=_scTotal===0;
+      return html`<div class="kpi${_scEmpty?' kpi-empty':''}"><div class="kpi-label">services realizados</div><div class="kpi-val ${_scColor}">${_scTotal>0?fmtInt(_scTotal):'—'}</div><div class="kpi-sub">${_scTotal>0?html`${fmtInt(_scCarg)} cargados · ${fmtInt(sc.sinCarga||0)} sin carga · ${_scPct}%`:'sin datos del planning'}</div><div class="kpi-accent-bar ${_scColor||'blue'}"></div></div>`;
+    })()}
   `);
 
   // Cablear status bar superior — telemetría en vivo del estado de la flota
@@ -2298,12 +2470,27 @@ async function toggleEquipoDetail(codigo,cardEl){
   }
   filasServicio.sort((a,b)=>b._ts-a._ts);
 
+  // Tag "service planificado": si la fecha de la fila coincide (±SERVICE_VENTANA_DIAS)
+  // con un service del planning para este equipo, mostramos un chip. Útil para
+  // distinguir las paradas conjuntas service+reparación que el operario cargó como
+  // RAZÓN="Reparación" porque la mayor parte del tiempo fue reparación.
+  const _svcFechas = (window._serviceFechasMatch||{})[codN];
+  const _ventanaMs = (typeof SERVICE_VENTANA_DIAS!=='undefined'?SERVICE_VENTANA_DIAS:7)*86400000;
+  const _svcFechasArr = _svcFechas ? [..._svcFechas].map(ymd=>{const [y,m,d]=ymd.split('-');return new Date(+y,+m-1,+d);}) : [];
+  const _matchSvcPlan = (fechaStr)=>{
+    if(!_svcFechasArr.length)return false;
+    const d = _parseDate(fechaStr);
+    if(!d)return false;
+    for(const fp of _svcFechasArr) if(Math.abs(d-fp)<=_ventanaMs) return true;
+    return false;
+  };
+
   const contServicio=filasServicio.length
     ?`<div class="table-wrap"><table class="eq-inner-table">
         <thead><tr><th>Planilla</th><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Lugar</th><th style="text-align:right">Tiempo</th></tr></thead>
         <tbody>${filasServicio.map(f=>`<tr>
           <td class="mono" style="font-size:10px;color:var(--text3)">${f.ref}</td>
-          <td class="mono" style="font-size:10px;color:var(--text3);white-space:nowrap">${formatFechaCorta(f.fecha)}</td>
+          <td class="mono" style="font-size:10px;color:var(--text3);white-space:nowrap">${formatFechaCorta(f.fecha)}${_matchSvcPlan(f.fecha)?' <span class="badge badge-blue" style="font-size:8px;padding:1px 4px;margin-left:3px" title="Coincide con un service planificado para este equipo">🔧 svc</span>':''}</td>
           <td>${(f.tipo==='service'||f.tipo==='preventivo')?'<span class="badge badge-blue" style="font-size:9px">Preventivo</span>':'<span class="badge badge-green" style="font-size:9px">Correctivo</span>'}</td>
           <td style="font-size:12px;color:var(--text2)">${f.desc}</td>
           <td style="font-size:11px;color:var(--text3);white-space:nowrap">${f.lugar}</td>

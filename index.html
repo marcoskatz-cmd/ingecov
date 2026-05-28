@@ -28,10 +28,12 @@
         referrerpolicy="no-referrer"></script>
 <!-- init.js: setea el tema en <html> ANTES del paint para evitar FOUC.
      Sin defer a propósito. -->
-<script src="./js/init.js"></script>
+<script src="./js/init.js?v=3"></script>
 <!-- app.js: toda la lógica de la app. Con defer corre tras parsear el DOM,
-     equivalente a estar al final del <body>. -->
-<script src="./js/app.js" defer></script>
+     equivalente a estar al final del <body>. Bump del query ?v= cuando se cambia
+     app.js para forzar a clientes con HTTP cache a re-fetchear (el SW solo
+     invalida cuando cambia CACHE_VERSION en sw.js). -->
+<script src="./js/app.js?v=3" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
