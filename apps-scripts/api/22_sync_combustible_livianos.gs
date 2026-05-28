@@ -37,7 +37,14 @@ function syncCombustibleLivianos() {
   }
 }
 
-/** Opción A: export del .xlsx a CSV directo. Primera pestaña solamente. */
+/**
+ * Opción A: export del .xlsx a CSV directo. Primera pestaña solamente.
+ *
+ * Drive.Files.export(id, mimeType) en Apps Script Advanced Drive v3 falla
+ * con "Export requires alt=media to download the exported content."
+ * (bug conocido cuando el método se usa con dos args). Workaround:
+ * UrlFetchApp directo al endpoint REST con el OAuth token del script.
+ */
 function _syncCombustibleLivianos_export() {
   const xlsxId = getProperty('XLSX_COMBUSTIBLE_LIVIANOS_ID');
   const mirrorId = getProperty('MIRROR_SHEET_ID');
@@ -45,8 +52,16 @@ function _syncCombustibleLivianos_export() {
     throw new Error('Faltan Script Properties XLSX_COMBUSTIBLE_LIVIANOS_ID y/o MIRROR_SHEET_ID');
   }
 
-  const csvBlob = Drive.Files.export(xlsxId, 'text/csv');
-  const csv = csvBlob.getDataAsString('UTF-8');
+  const url = 'https://www.googleapis.com/drive/v3/files/' + xlsxId + '/export?mimeType=text/csv';
+  const response = UrlFetchApp.fetch(url, {
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
+    muteHttpExceptions: true,
+  });
+  if (response.getResponseCode() !== 200) {
+    throw new Error('Drive export falló (' + response.getResponseCode() + '): ' +
+                    response.getContentText().substring(0, 200));
+  }
+  const csv = response.getContentText();
   const rows = Utilities.parseCsv(csv);
 
   _writeToMirror(mirrorId, rows);
