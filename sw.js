@@ -10,10 +10,10 @@
      no acá. Mezclar ambas capas duplicaría lógica de TTL.
    Bump CACHE_VERSION para invalidar todo lo cacheado.
 */
-// v2: extracción de scripts inline a js/ + self-host de fonts + CSP estricta.
-// Bump fuerza invalidación de cualquier cliente con la versión vieja (que tenía
-// el HTML inline-script cacheado y rompería contra la CSP nueva).
-const CACHE_VERSION = 'v2';
+// v3: bump para forzar invalidación del app.js viejo cacheado en HTTP cache del
+// browser de clientes ya instalados. El JS vigente calcula horas en taller sumando
+// todo PANEL_TRABAJOS (no solo 2026 como hacía una versión anterior).
+const CACHE_VERSION = 'v3';
 const SHELL_CACHE   = `ingecov-shell-${CACHE_VERSION}`;
 const CDN_CACHE     = `ingecov-cdn-${CACHE_VERSION}`;
 
