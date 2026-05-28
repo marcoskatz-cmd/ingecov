@@ -1989,6 +1989,13 @@ async function loadAll(){
     renderEquipoIndex();
     renderInactivos();
 
+    // Barra de selección de rango de meses para los KPIs sensibles a tiempo
+    // (costo, horas, combustible). Default = mes actual. Si el usuario ya había
+    // cambiado el rango antes (refresh manual), respetar la selección.
+    if(!window._kpiRangoKey)window._kpiRangoKey='mesActual';
+    renderKpiRangeBar();
+    _actualizarKpisDeRango();
+
     // Telemetría de flota y pedidos pendientes global — agregados que cruzan todo
     renderTelemetriaFlota();
     renderPedidosPendientesGlobal();
@@ -2031,23 +2038,134 @@ async function loadAll(){
   btn.classList.remove('loading');btn.textContent='↻ actualizar';
 }
 
-// Actualiza el KPI de combustible livianos al mes elegido en el select.
-// 'all' = acumulado de todo el período.
-function actualizarKpiCombustible(sel){
-  const gpm=window._gastoCombLivianosPorMes||{};
-  const cpm=window._cargasCombLivianosPorMes||{};
-  const val=document.getElementById('kpiCombVal');
-  const sub=document.getElementById('kpiCombSub');
-  let g,subTxt;
-  if(sel==='all'){
-    g=window._gastoCombLivianos||0;
-    subTxt='acumulado · vehículos livianos';
-  }else{
-    g=gpm[sel]||0;
-    subTxt=`${fmtInt(cpm[sel]||0)} cargas · ${ymLabel(sel)}`;
+/* ═══════════════════════════════════════════════════════
+   RANGO DE MESES PARA LOS KPIs (costo, horas, combustible)
+═══════════════════════════════════════════════════════ */
+// Devuelve la lista de años (4 dígitos) presentes en los datos con dato>0.
+function _yearsDisponibles(){
+  const yms=new Set([
+    ...Object.keys(window._costosPorMes||{}),
+    ...Object.keys(window._horasPorMesFlota||{}),
+    ...Object.keys(window._gastoCombLivianosPorMes||{}),
+  ]);
+  return [...new Set([...yms].map(ym=>ym.slice(0,4)))].sort();
+}
+// Devuelve los YMs (formato "YYYY-MM") correspondientes al rango pedido.
+function _ymsEnRango(key){
+  const todos=[...new Set([
+    ...Object.keys(window._costosPorMes||{}),
+    ...Object.keys(window._horasPorMesFlota||{}),
+    ...Object.keys(window._gastoCombLivianosPorMes||{}),
+  ])].sort();
+  const now=new Date();
+  const fmtYm=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  if(key==='mesActual')return [fmtYm(now)];
+  if(key==='ult3'){
+    const out=[];
+    for(let i=0;i<3;i++)out.push(fmtYm(new Date(now.getFullYear(),now.getMonth()-i,1)));
+    return out;
   }
-  if(val)val.textContent=g>0?formatMoney(g):'—';
-  if(sub)sub.textContent=subTxt;
+  if(key==='ult6'){
+    const out=[];
+    for(let i=0;i<6;i++)out.push(fmtYm(new Date(now.getFullYear(),now.getMonth()-i,1)));
+    return out;
+  }
+  if(/^\d{4}$/.test(key))return todos.filter(ym=>ym.startsWith(key+'-'));
+  if(key==='todo')return todos;
+  return [fmtYm(now)];
+}
+// Label legible del rango activo.
+function _labelRango(key){
+  if(key==='mesActual')return ymLabel(_ymsEnRango('mesActual')[0]||'');
+  if(key==='ult3')return 'últimos 3 meses';
+  if(key==='ult6')return 'últimos 6 meses';
+  if(/^\d{4}$/.test(key))return key;
+  if(key==='todo')return 'acumulado';
+  return ymLabel(_ymsEnRango('mesActual')[0]||'');
+}
+// Suma valores por YM (acepta map ym→número o ym→objeto).
+function _sumarPorMes(map,yms){
+  let s=0;
+  for(const ym of yms){
+    const v=(map||{})[ym];
+    if(v==null)continue;
+    if(typeof v==='number')s+=v;
+    else if(typeof v==='object')s+=Object.values(v).reduce((a,b)=>a+(b||0),0);
+  }
+  return s;
+}
+function renderKpiRangeBar(){
+  const bar=document.getElementById('kpiRangeBar');
+  if(!bar)return;
+  const activo=window._kpiRangoKey||'mesActual';
+  const years=_yearsDisponibles();
+  const mkBtn=(key,label)=>html`<button class="kpi-range-btn${activo===key?' active':''}" data-action="setKpiRango" data-arg="${key}">${label}</button>`;
+  const btns=[mkBtn('mesActual','mes'),mkBtn('ult3','últ 3m'),mkBtn('ult6','últ 6m')];
+  for(const y of years)btns.push(mkBtn(y,y));
+  btns.push(mkBtn('todo','todo'));
+  setHTML(bar, html`<span class="lbl">rango ›</span>${btns}`);
+}
+function setKpiRango(key){
+  window._kpiRangoKey=key;
+  renderKpiRangeBar();
+  _actualizarKpisDeRango();
+}
+// Recalcula y re-renderea los 3 KPIs sensibles a tiempo (costo, horas, combustible).
+function _actualizarKpisDeRango(){
+  const yms=_ymsEnRango(window._kpiRangoKey||'mesActual');
+  const labelRango=_labelRango(window._kpiRangoKey||'mesActual');
+  // --- Costo en repuestos ---
+  const costo=_sumarPorMes(window._costosPorMes||{},yms);
+  const entregaCostos=window._entregaCostos||{};
+  const ymsSet=new Set(yms);
+  // entregaCostos[nro].mes viene como "Ene 2026" (label), no YM. Convertimos.
+  const _MES_MAP={ene:'01',feb:'02',mar:'03',abr:'04',may:'05',jun:'06',jul:'07',ago:'08',sep:'09',oct:'10',nov:'11',dic:'12'};
+  const _mesLabelToYm=label=>{
+    const m=String(label||'').toLowerCase().match(/([a-z]{3})\s*(\d{4})/);
+    if(!m)return'';
+    const mm=_MES_MAP[m[1]];
+    return mm?`${m[2]}-${mm}`:'';
+  };
+  let entConCosto=0;
+  for(const nro of Object.keys(entregaCostos)){
+    const e=entregaCostos[nro];
+    if(e&&e.costo>0&&ymsSet.has(_mesLabelToYm(e.mes)))entConCosto++;
+  }
+  const cardC=document.getElementById('kpiCostoCard');
+  const valC=document.getElementById('kpiCostoVal');
+  const subC=document.getElementById('kpiCostoSub');
+  if(valC)valC.textContent=costo>0?formatMoney(costo):'—';
+  if(subC)subC.textContent=`${labelRango} · ${fmtInt(entConCosto)} entregas con costo`;
+  if(cardC)cardC.classList.toggle('kpi-empty',!(costo>0));
+  // --- Horas en taller ---
+  const horasTotal=_sumarPorMes(window._horasPorMesFlota||{},yms);
+  const horasCorr=_sumarPorMes(window._horasCorrPorMes||{},yms);
+  const horasPrev=_sumarPorMes(window._horasPrevPorMes||{},yms);
+  const corrPct=horasTotal>0?Math.round(horasCorr/horasTotal*100):0;
+  const prevPct=horasTotal>0?100-corrPct:0;
+  const cardH=document.getElementById('kpiHorasCard');
+  const valH=document.getElementById('kpiHorasVal');
+  const subH=document.getElementById('kpiHorasSub');
+  if(valH)valH.textContent=horasTotal>0?fmtInt(Math.round(horasTotal))+' hr':'—';
+  if(subH){
+    if(horasTotal>0){
+      subH.classList.add('hr-split');
+      setHTML(subH, new RawHTML(`<div class="hr-split-bar"><span class="corr" style="width:${corrPct}%"></span><span class="prev" style="width:${prevPct}%"></span></div><span class="hr-split-leg"><i class="corr"></i>${fmtInt(Math.round(horasCorr))} hr correctivo · ${corrPct}%</span><span class="hr-split-leg"><i class="prev"></i>${fmtInt(Math.round(horasPrev))} hr preventivo · ${prevPct}%</span>`));
+    }else{
+      subH.classList.remove('hr-split');
+      subH.textContent=`${labelRango} · sin horas registradas`;
+    }
+  }
+  if(cardH)cardH.classList.toggle('kpi-empty',!(horasTotal>0));
+  // --- Combustible livianos ---
+  const gastoComb=_sumarPorMes(window._gastoCombLivianosPorMes||{},yms);
+  const cargasComb=_sumarPorMes(window._cargasCombLivianosPorMes||{},yms);
+  const cardG=document.getElementById('kpiCombCard');
+  const valG=document.getElementById('kpiCombVal');
+  const subG=document.getElementById('kpiCombSub');
+  if(valG)valG.textContent=gastoComb>0?formatMoney(gastoComb):'—';
+  if(subG)subG.textContent=gastoComb>0?`${fmtInt(cargasComb)} cargas · ${labelRango}`:'sin cargas en el rango';
+  if(cardG)cardG.classList.toggle('kpi-empty',!(gastoComb>0));
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -2179,22 +2297,10 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
     <div class="kpi${pendActivos?'':' kpi-empty'}"><div class="kpi-label">pedidos activos</div><div class="kpi-val ${pendActivos>10?'red':'amber'}">${fmtInt(pendActivos)}</div><div class="kpi-sub">pendiente · parcial · comprado</div><div class="kpi-accent-bar ${pendActivos>10?'red':'amber'}"></div></div>
     <div class="kpi${enReparacion?'':' kpi-empty'}"><div class="kpi-label">equipos en reparación</div><div class="kpi-val amber">${fmtInt(enReparacion)}</div><div class="kpi-sub">estado naranja en CÓDIGOS</div><div class="kpi-accent-bar amber"></div></div>
     <div class="kpi${_kpiServiceEmpty?' kpi-empty':''}${serviceCritico>0?' kpi-clickable':''}"${svKpiAttrs}><div class="kpi-label">service crítico</div><div class="kpi-val ${serviceClass}">${fmtInt(serviceCritico)}</div><div class="kpi-sub">${serviceSub}</div><div class="kpi-accent-bar ${serviceClass}"></div></div>
-    <div class="kpi${_kpiCostoEmpty?' kpi-empty':''}"><div class="kpi-label">costo en repuestos</div><div class="kpi-val amber">${totalCostoMes>0?formatMoney(totalCostoMes):'—'}</div><div class="kpi-sub">${MES_ACTUAL.label} · ${fmtInt(entConCosto)} entregas con costo</div><div class="kpi-accent-bar amber"></div></div>
-    <div class="kpi${_kpiHorasEmpty?' kpi-empty':''}"><div class="kpi-label">horas en taller</div><div class="kpi-val">${horasTotalFlota>0?fmtInt(Math.round(horasTotalFlota))+' hr':'—'}</div>${horasTotalFlota>0?html`<div class="kpi-sub hr-split"><div class="hr-split-bar"><span class="corr" style="width:${_corrPct}%"></span><span class="prev" style="width:${_prevPct}%"></span></div><span class="hr-split-leg"><i class="corr"></i>${fmtInt(Math.round(_horasCorr))} hr correctivo · ${_corrPct}%</span><span class="hr-split-leg"><i class="prev"></i>${fmtInt(Math.round(_horasPrev))} hr preventivo · ${_prevPct}%</span></div>`:html`<div class="kpi-sub">acumuladas 2026 · flota</div>`}<div class="kpi-accent-bar blue"></div></div>
-    <div class="kpi${_gcEmpty?' kpi-empty':''}"><div class="kpi-label">combustible livianos<select class="kpi-mes-sel" id="kpiCombMes" data-action="actualizarKpiCombustible" data-event="change">${new RawHTML(_gcOpts)}</select></div><div class="kpi-val amber" id="kpiCombVal">${_gcVal>0?formatMoney(_gcVal):'—'}</div><div class="kpi-sub" id="kpiCombSub">${_gcSub}</div><div class="kpi-accent-bar amber"></div></div>
-    ${(()=>{
-      // Regla operativa: si el service fue puro (sin reparaciones asociadas) se carga
-      // SOLO en los sheets de planning (TRABAJOS DE SERVICE); si hubo reparación, se
-      // carga en TRABAJOS REALIZADOS. Por eso "sinCarga" NO es una falla de carga,
-      // es la cantidad de services puros — y "cargadosService"+"cargadosOtraRazon"
-      // son los que tuvieron reparación asociada (parada conjunta).
-      const sc=window._serviceCumplimiento||{total:0,cargadosService:0,cargadosOtraRazon:0,sinCarga:0};
-      const _scTotal=sc.total||0;
-      const _scSolo=sc.sinCarga||0;
-      const _scConRep=(sc.cargadosService||0)+(sc.cargadosOtraRazon||0);
-      const _scEmpty=_scTotal===0;
-      return html`<div class="kpi${_scEmpty?' kpi-empty':''}"><div class="kpi-label">services realizados</div><div class="kpi-val">${_scTotal>0?fmtInt(_scTotal):'—'}</div><div class="kpi-sub">${_scTotal>0?html`${fmtInt(_scSolo)} solo service · ${fmtInt(_scConRep)} con reparación`:'sin datos del planning'}</div><div class="kpi-accent-bar blue"></div></div>`;
-    })()}
+    <div class="kpi${_kpiCostoEmpty?' kpi-empty':''}" id="kpiCostoCard"><div class="kpi-label">costo en repuestos</div><div class="kpi-val amber" id="kpiCostoVal">${totalCostoMes>0?formatMoney(totalCostoMes):'—'}</div><div class="kpi-sub" id="kpiCostoSub">${MES_ACTUAL.label} · ${fmtInt(entConCosto)} entregas con costo</div><div class="kpi-accent-bar amber"></div></div>
+    <div class="kpi${_kpiHorasEmpty?' kpi-empty':''}" id="kpiHorasCard"><div class="kpi-label">horas en taller</div><div class="kpi-val" id="kpiHorasVal">${horasTotalFlota>0?fmtInt(Math.round(horasTotalFlota))+' hr':'—'}</div><div class="kpi-sub${horasTotalFlota>0?' hr-split':''}" id="kpiHorasSub">${horasTotalFlota>0?new RawHTML(`<div class="hr-split-bar"><span class="corr" style="width:${_corrPct}%"></span><span class="prev" style="width:${_prevPct}%"></span></div><span class="hr-split-leg"><i class="corr"></i>${fmtInt(Math.round(_horasCorr))} hr correctivo · ${_corrPct}%</span><span class="hr-split-leg"><i class="prev"></i>${fmtInt(Math.round(_horasPrev))} hr preventivo · ${_prevPct}%</span>`):'acumuladas · flota'}</div><div class="kpi-accent-bar blue"></div></div>
+    <div class="kpi${_gcEmpty?' kpi-empty':''}" id="kpiCombCard"><div class="kpi-label">combustible livianos</div><div class="kpi-val amber" id="kpiCombVal">${_gcVal>0?formatMoney(_gcVal):'—'}</div><div class="kpi-sub" id="kpiCombSub">${_gcSub}</div><div class="kpi-accent-bar amber"></div></div>
+    <div class="kpi kpi-empty" id="kpiDispCard"><div class="kpi-label">disponibilidad global</div><div class="kpi-val" id="kpiDisp">—</div><div class="kpi-sub">cargando…</div><div class="kpi-accent-bar" id="kpiDispBar"></div></div>
   `);
 
   // Cablear status bar superior — telemetría en vivo del estado de la flota
@@ -3338,7 +3444,7 @@ const ACTIONS = {
   renderPedidosPendientesGlobal: () => renderPedidosPendientesGlobal(),
   closeServiceCriticoModal:      () => closeServiceCriticoModal(),
   openServiceCriticoModal:       () => openServiceCriticoModal(),
-  actualizarKpiCombustible:      (_, t) => actualizarKpiCombustible(t.value),
+  setKpiRango:                   (key)   => setKpiRango(key),
   toggleEqSec:                   (uid) => toggleEqSec(uid),
   toggleEquipoDetail:            (codigo, t) => toggleEquipoDetail(codigo, t),
   scrollToEquipo:                (codigo) => scrollToEquipo(codigo),
