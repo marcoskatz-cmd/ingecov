@@ -103,8 +103,9 @@ const SHEET_IDS = {
   combustible:    '19dqJ-tcdmXiOns99mJgMMmZNDT3kKS7EQXwHd7VDILc',
   // PROGRAMA DE TRABAJOS DE SERVICE 2026 — fuente nueva de service / operatividad.
   programaService:'1y6pqbXscej3139lkImWJsJHeJvFa0B5sneICEyyNPmI',
-  // Combustible livianos: lee del mirror sincronizado (mismo Sheet que CÓDIGOS).
-  combustibleLivianos:'1Z8kg4aC6KUNeWyxpPiD3xKntRYB4oghxsbnxqWQdVio', // INGECO Panel Mirror
+  // Combustible livianos: sheet operativo que se actualiza al día. Contiene
+  // solo 2026 (no hay histórico pre-2026 disponible en este sheet).
+  combustibleLivianos:'1bZkxrdVEcN4v5Aztf4RBxncJKWE20Jti8wjNdCmAl-E',
 };
 
 // Pestaña tabular plana (una fila = una carga). No requiere Apps Script consolidador.
@@ -113,7 +114,7 @@ const COMBUSTIBLE_SHEET='ENTREGA DE COMBUSTIBLE';
 // Combustible de livianos: el operario sube su .xlsx, un Apps Script lo
 // sincroniza cada 30 min a la pestaña COMBUSTIBLE_LIVIANOS_MIRROR del Mirror.
 // El panel lee esa pestaña; el flujo del operario no cambia.
-const COMBUSTIBLE_LIVIANOS_SHEET='COMBUSTIBLE_LIVIANOS_MIRROR';
+const COMBUSTIBLE_LIVIANOS_SHEET='Hoja 1';
 const COMBUSTIBLE_LIVIANOS_DESDE=new Date(2025,0,1); // 1 enero 2025
 
 // Pestañas del sheet PROGRAMA DE TRABAJOS DE SERVICE.
