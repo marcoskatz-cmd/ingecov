@@ -824,31 +824,62 @@ const TRABAJOS_HIST_PESTANAS_EQUIPOS=[
   'Topadora CAT D6E','Trituradora Metso HP300','Zaranda ASTEC GT145S',
 ];
 
-// Lee las pestañas por equipo del HIST de trabajos en paralelo y devuelve un
-// array de filas con shape compatible con PANEL_TRABAJOS (que es lo que
-// procesarPanelTrabajos espera). Filtra por año dentro del fetch para no
-// devolver data innecesaria. Una pestaña que falla se ignora.
+// Lee las pestañas por equipo del HIST de trabajos en paralelo. Filtra por año.
+//
+// Caso especial: las celdas de FECHA TRABAJO que contienen un RANGO
+// ("21/3/2025 - 26/3/2025") están en columnas con formato Date, y gviz
+// devuelve null para celdas con texto en columnas Date. Como CORS bloquea
+// el export XLSX desde el browser, no podemos leerlas directo. Aplicamos
+// heurística: para filas con código + tiempo pero sin fecha visible,
+// usamos la fecha de la próxima fila visible (o la anterior si no hay
+// próxima). Las filas sin código y sin tiempo son continuaciones de
+// descripción y se ignoran.
+//
+// Tradeoff: la fecha asignada puede caer 1 mes antes/después del rango
+// real. La alternativa (perder ~3.000 hr) es peor.
 async function fetchTrabajosHistPorEquipo(predicateAnio){
   const results=await Promise.all(
     TRABAJOS_HIST_PESTANAS_EQUIPOS.map(async pest=>{
       try{
-        // gvizRaw devuelve [[fechaA, lugarB, codC, descD, tiempoE], ...]
         const rows=await fetchGvizRaw(SHEET_IDS.trabajos_hist,pest);
-        const out=[];
+        // Pasada 1: filtrar a filas tipo "trabajo" (con código + tiempo > 0).
+        const trabajos=[];
         for(const r of (rows||[])){
-          const fechaStr=String(r&&r[0]||'').trim();
-          if(!fechaStr)continue;
-          const d=_parseDate(fechaStr);
+          if(!r)continue;
+          const cod=String(r[2]||'').trim();
+          const tiempoStr=String(r[4]||'').trim();
+          const tNum=parseFloat(tiempoStr.replace(',','.'));
+          if(!cod||!isFinite(tNum)||tNum<=0)continue;
+          trabajos.push({
+            fechaStr: String(r[0]||'').trim(),
+            lugar: String(r[1]||'').trim(),
+            cod, desc: String(r[3]||'').trim(), tiempoStr
+          });
+        }
+        // Pasada 2: completar fechas faltantes con la próxima visible (o anterior).
+        let ultimaConFecha='';
+        for(let i=0;i<trabajos.length;i++){
+          if(trabajos[i].fechaStr){ultimaConFecha=trabajos[i].fechaStr;continue;}
+          // Buscar próxima fila con fecha
+          let proxima='';
+          for(let j=i+1;j<trabajos.length;j++){
+            if(trabajos[j].fechaStr){proxima=trabajos[j].fechaStr;break;}
+          }
+          trabajos[i].fechaStr=proxima||ultimaConFecha;
+        }
+        // Pasada 3: filtrar por año y armar output
+        const out=[];
+        for(const t of trabajos){
+          if(!t.fechaStr)continue;
+          const d=_parseDate(t.fechaStr);
           if(!d||!predicateAnio(d.getFullYear()))continue;
           out.push({
-            'FECHA TRABAJO':fechaStr,
-            'LUGAR TRABAJO':String(r[1]||'').trim(),
-            'CÓDIGO':String(r[2]||'').trim(),
-            'DESCRIPCIÓN TRABAJOS':String(r[3]||'').trim(),
-            'TIEMPO TRABAJO':String(r[4]||'').trim(),
+            'FECHA TRABAJO':t.fechaStr,
+            'LUGAR TRABAJO':t.lugar,
+            'CÓDIGO':t.cod,
+            'DESCRIPCIÓN TRABAJOS':t.desc,
+            'TIEMPO TRABAJO':t.tiempoStr,
             'EQUIPO':pest,
-            // RAZÓN TRABAJO no existe en este shape; clasificarTrabajo cae
-            // al fallback por descripción.
           });
         }
         return out;
