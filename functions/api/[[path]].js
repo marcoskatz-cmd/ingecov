@@ -86,8 +86,8 @@ export async function onRequest({ request, env }) {
   // 4. Reenviar al Apps Script con email + shared secret
   const url = new URL(request.url);
   const params = new URLSearchParams(url.search);
-  params.set('_cfu', email);
-  params.set('_cfs', env.SHARED_SECRET);
+  params.set('cfuser', email);
+  params.set('cfsecret', env.SHARED_SECRET);
 
   // Endpoint de debug: si el query original tiene ?ep=__debug, devolvemos
   // info de qué está armando el Worker sin tocar el Apps Script. NUNCA
@@ -106,8 +106,8 @@ export async function onRequest({ request, env }) {
         user_email_from_jwt: email,
         target_url_built: env.APPS_SCRIPT_URL + '?' + (() => {
           const dbg = new URLSearchParams(url.search);
-          dbg.set('_cfu', email);
-          dbg.set('_cfs', '[REDACTED-len-' + (env.SHARED_SECRET || '').length + ']');
+          dbg.set('cfuser', email);
+          dbg.set('cfsecret', '[REDACTED-len-' + (env.SHARED_SECRET || '').length + ']');
           return dbg.toString();
         })(),
       }
