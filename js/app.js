@@ -1903,7 +1903,7 @@ async function loadAll(){
     // Carga primaria: TODO lo necesario para el primer render.
     // PANEL_REPUESTOS pasa a ser fuente única de entregas (reemplaza MESES_ENTREGAS).
     // PANEL_TRABAJOS se carga acá también para alimentar telemetría de flota (rankings + chart de horas).
-    const[pendientesRaw,entregadosRaw,codV,codL,codP,codS,panelRepuestosObj,panelTrabajosObj,serviceFrecRows,serviceTrimRows,trim1Rows,trim2Rows,panelProgramaObj,combustibleObj,combLivianosRows]=await Promise.all([
+    const[pendientesRaw,entregadosRaw,codV,codL,codP,codS,panelRepuestosLiveObj,panelRepuestosHistObj,panelTrabajosLiveObj,panelTrabajosHistObj,serviceFrecRows,serviceTrimRows,trim1Rows,trim2Rows,panelProgramaObj,combustibleObj,combLivianosRows]=await Promise.all([
       fetchGvizRaw(SHEET_IDS.pedidos,'PENDIENTES'),
       // ENTREGADOS tiene título y contadores en filas 1-10; headers reales en fila 11.
       // El range fuerza a gviz a usar la fila 11 como header (sin esto, los nombres se pierden).
@@ -1912,8 +1912,14 @@ async function loadAll(){
       fetchGvizRaw(SHEET_IDS.codigos,'TRANSPORTE LIVIANO').catch(()=>[]),
       fetchGvizRaw(SHEET_IDS.codigos,'TRANSPORTE PESADO').catch(()=>[]),
       fetchGvizRaw(SHEET_IDS.codigos,'SOPORTE').catch(()=>[]),
+      // Repuestos LIVE (2026 diario) + HIST (2024-2025 + 2026 parcial, cambia cada tanto).
+      // Filtramos abajo: live → fecha>=2026, hist → fecha en 2025.
       fetchGvizObj(SHEET_IDS.repuestos_hist,'PANEL_REPUESTOS').catch(()=>[]),
+      fetchGvizObj(SHEET_IDS.repuestos_hist_old,'PANEL_REPUESTOS').catch(()=>[]),
+      // Trabajos LIVE (2026 diario) + HIST (2024-2026, cambia cada tanto).
+      // Mismo filtrado por año.
       fetchGvizObj(SHEET_IDS.trabajos_reg,'PANEL_TRABAJOS').catch(()=>[]),
+      fetchGvizObj(SHEET_IDS.trabajos_hist,'PANEL_TRABAJOS').catch(()=>[]),
       // PROGRAMA DE TRABAJOS DE SERVICE 2026: rangos de operatividad + trimestre vigente.
       fetchGvizRaw(SHEET_IDS.programaService,SERVICE_FREC_SHEET).catch(()=>[]),
       fetchGvizRaw(SHEET_IDS.programaService,SERVICE_TRIM_SHEET).catch(()=>[]),
@@ -1927,6 +1933,31 @@ async function loadAll(){
       fetchGvizRaw(SHEET_IDS.combustibleLivianos,COMBUSTIBLE_LIVIANOS_SHEET).catch(()=>[]),
     ]);
     setLoadProgress(55);
+
+    // Combinar LIVE + HIST con filtro por año: del live tomamos >=2026, del hist
+    // tomamos solo 2025. Así evitamos duplicación (el hist también tiene 2026
+    // parcial) y cubrimos "desde 2025 en adelante" como pidió Marcos.
+    const _SIN_FECHA_TRAB=['FECHA TRABAJO','FECHA DE TRABAJO','FECHA'];
+    const _SIN_FECHA_REP =['FECHA','FECHA ENTREGA','FECHA DE ENTREGA'];
+    const _filtrarAnio=(rows,predicate,sinFecha)=>{
+      const out=[];
+      for(const r of (rows||[])){
+        const idx={};
+        for(const k of Object.keys(r))idx[normHead(k)]=r[k];
+        const get=keys=>{for(const k of keys){const v=idx[k];if(v!=null&&String(v).trim()!=='')return String(v).trim();}return'';};
+        const d=_parseDate(get(sinFecha));
+        if(d&&predicate(d.getFullYear()))out.push(r);
+      }
+      return out;
+    };
+    const panelTrabajosObj=[
+      ..._filtrarAnio(panelTrabajosLiveObj,y=>y>=2026,_SIN_FECHA_TRAB),
+      ..._filtrarAnio(panelTrabajosHistObj,y=>y===2025,_SIN_FECHA_TRAB),
+    ];
+    const panelRepuestosObj=[
+      ..._filtrarAnio(panelRepuestosLiveObj,y=>y>=2026,_SIN_FECHA_REP),
+      ..._filtrarAnio(panelRepuestosHistObj,y=>y===2025,_SIN_FECHA_REP),
+    ];
 
     // Procesar PANEL_REPUESTOS: produce todos los derivados de una sola pasada
     const ctx=procesarPanelRepuestos(panelRepuestosObj);
