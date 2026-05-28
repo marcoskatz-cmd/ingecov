@@ -89,8 +89,16 @@ const SHEET_IDS = {
   // cada 30 min que los copian a pestañas nativas dentro del Sheet
   // "INGECO Panel Mirror" (id abajo). Cero intervención manual.
   codigos:        '1Z8kg4aC6KUNeWyxpPiD3xKntRYB4oghxsbnxqWQdVio', // INGECO Panel Mirror
-  repuestos_hist: '1WCtB-8C1VP4-axoQ_ugk_ersCfPJFjMC1fEDXRHOKFE',
-  trabajos_reg:   '1cNWQ44UEDiotHyB65BfTMcFuOCfQXYQoSNNAdAKTsy8',
+  // Repuestos: el sheet LIVE (1TUE) tiene PANEL_REPUESTOS al día (se actualiza
+  // diariamente, 2026 completo). El sheet HIST (1WCtB) tiene años anteriores
+  // 2024-2025 en pestañas individuales pero no consolidado a PANEL_REPUESTOS.
+  repuestos_hist: '1TUEoOul4SI5O323LcMq2VkaxdcTMfTmZce7NToGESfc', // LIVE
+  repuestos_hist_old: '1WCtB-8C1VP4-axoQ_ugk_ersCfPJFjMC1fEDXRHOKFE', // HIST pre-2026
+  // Trabajos: el sheet LIVE (1ItkY) tiene PANEL_TRABAJOS al día (2026 completo
+  // hasta mayo). El sheet HIST (1cNWQ) tiene años anteriores en pestañas
+  // individuales por equipo.
+  trabajos_reg:   '1ItkY8miYOwQEsbbjZlNslb86f7HY3TEzywpQx6pD5tU', // LIVE
+  trabajos_hist:  '1cNWQ44UEDiotHyB65BfTMcFuOCfQXYQoSNNAdAKTsy8', // HIST pre-2026
   service:        '1zB9q0e9kxRKe52-I0u5Dqg7PUSE_nlxi3IYn7pxF0Iw',
   combustible:    '19dqJ-tcdmXiOns99mJgMMmZNDT3kKS7EQXwHd7VDILc',
   // PROGRAMA DE TRABAJOS DE SERVICE 2026 — fuente nueva de service / operatividad.
@@ -906,17 +914,33 @@ function cruzarServicesEnTrabajos(rawTrabajos,servicesPlanning){
   out.medianas.global=medianaGlobal;
   for(const k of Object.keys(horasPorPref))out.medianas.porPrefijo[k]=_mediana(horasPorPref[k]);
 
-  // 2) Indexar filas de TRABAJOS por codN
+  // 2) Indexar filas de TRABAJOS por codN + calcular cobertura por año.
+  // Sólo sumamos horas estimadas de services en AÑOS donde PANEL_TRABAJOS
+  // tiene >=100 hr reales. Si un año tiene apenas una o dos filas perdidas
+  // (ej. una fila con rango "2/1/2025 - 7/1/2025" en un panel que es
+  // mayoritariamente 2026), no tiene sentido sumar todos los services
+  // planificados de ese año porque no hay con qué contrastar.
   const trabajosPorCod={};
+  const horasPorAnio={};
   for(const f of filasTrab){
     if(!trabajosPorCod[f.codN])trabajosPorCod[f.codN]=[];
     trabajosPorCod[f.codN].push(f);
+    if(f.rango && f.tNum>0){
+      const y=f.rango.inicio.getFullYear();
+      horasPorAnio[y]=(horasPorAnio[y]||0)+f.tNum;
+    }
   }
+  const MIN_HORAS_ANIO=100;
+  const aniosConCobertura=new Set(
+    Object.keys(horasPorAnio).filter(y=>horasPorAnio[y]>=MIN_HORAS_ANIO).map(y=>+y)
+  );
 
   // 3) Cruce: service "en ventana" si su fecha cae dentro del rango del trabajo o
   // a ≤SERVICE_VENTANA_DIAS de cualquiera de los extremos.
   const ventanaMs=SERVICE_VENTANA_DIAS*86400000;
   for(const ev of servicesPlanning.eventos){
+    // Filtro por año: ignorar services en años sin cobertura sustancial de trabajos.
+    if(aniosConCobertura.size>0 && !aniosConCobertura.has(ev.fecha.getFullYear())) continue;
     out.cumplimiento.total++;
     if(!out.serviceFechasMatch[ev.cod])out.serviceFechasMatch[ev.cod]=new Set();
     out.serviceFechasMatch[ev.cod].add(ev.ymd);
