@@ -216,7 +216,7 @@ async function _gvizObjImpl(id,sheet,range){
 ═══════════════════════════════════════════════════════ */
 const USE_API = true;
 const API_URL = '/api/';
-const GOOGLE_CLIENT_ID = '1080058000144-k3b62ml3ccl00p0tnk109rmij6pflcs8.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = '1080058000144-ogmu40thse0j9jfe1i199ncj4c5nhkdk.apps.googleusercontent.com';
 
 // State del login. Se setea en handleGoogleCredential() cuando el usuario
 // se autentica con Google Identity Services.
