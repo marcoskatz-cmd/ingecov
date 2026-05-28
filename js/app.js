@@ -98,7 +98,7 @@ const SHEET_IDS = {
   // hasta mayo). El sheet HIST (1cNWQ) tiene años anteriores en pestañas
   // individuales por equipo.
   trabajos_reg:   '1ItkY8miYOwQEsbbjZlNslb86f7HY3TEzywpQx6pD5tU', // LIVE
-  trabajos_hist:  '1cNWQ44UEDiotHyB65BfTMcFuOCfQXYQoSNNAdAKTsy8', // HIST pre-2026
+  trabajos_hist:  '1cNWQ44UEDiotHyB65BfTMcFuOCfQXYQoSNNAdAKTsy8', // HIST: PANEL_TRABAJOS solo 2026, hay que leer pestañas por equipo para 2025
   service:        '1zB9q0e9kxRKe52-I0u5Dqg7PUSE_nlxi3IYn7pxF0Iw',
   combustible:    '19dqJ-tcdmXiOns99mJgMMmZNDT3kKS7EQXwHd7VDILc',
   // PROGRAMA DE TRABAJOS DE SERVICE 2026 — fuente nueva de service / operatividad.
@@ -795,6 +795,68 @@ function procesarPanelTrabajos(rawRows){
                            sumamos al preventivo (las planillas TRABAJOS DE
                            SERVICE no registran tiempo trabajado).
 ═══════════════════════════════════════════════════════ */
+// Pestañas POR EQUIPO del sheet HIST de trabajos (1cNWQ). El consolidador del
+// Drive periódicamente trunca PANEL_TRABAJOS dejando solo el año en curso, pero
+// estas pestañas operativas se mantienen con datos de años anteriores. Las
+// leemos en paralelo para reconstruir el histórico 2025. Si se agrega un equipo
+// nuevo al sheet, hay que sumarlo acá (o se pierde su histórico 2025).
+const TRABAJOS_HIST_PESTANAS_EQUIPOS=[
+  'Automóvil Chevrolet Prisma','Barredora Guillermo Fracchia','Batea Patronelli',
+  'Camión Ford Cargo 1831','Camión Ford Cargo 1832E','Camión Mercedes Benz 1720',
+  'Camión Mercedes Benz 1725','Camión Mercedes Benz L1114','Camión Mercedes Benz L1514',
+  'Camión Mercedes Benz L1620','Camión Scania LT111','Camión Volvo FM380',
+  'Camioneta Chevrolet S10','Camioneta Fiat Fiorino','Camioneta Fiat Strada',
+  'Camioneta Fiat Toro','Camioneta Ford Ranger','Camioneta Nissan Frontier',
+  'Camioneta Renault Kangoo','Camioneta Toyota Hilux','Camioneta Volkswagen Amarok',
+  'Cargador John Deere 544K','Cargador John Deere 624K','Cargador Volvo L110F',
+  'Cargador Volvo L90F','Carretón Marcelini SRC12NA','Carretón LEO-COR Agro 21',
+  'Compresor Atlas Copco','Compresor Ingersoll Rand','Compresor Schulz',
+  'Generador CETEC CD-530','Generador CRAM','Generador MWM MS3.9A',
+  'Motoniveladora CAT 140K','Motoniveladora CAT 140M','Motoniveladora CAT 14G',
+  'Planta Ammann Prime 140','Retroexcavadora John Deere 210G',
+  'Retroexcavadora Komatsu PC200','Retroexcavadora Komatsu PC210',
+  'Retropala CAT 416E','Retropala Hidromek 102B','Retropala John Deere 310J',
+  'Retropala John Deere 310K','Retropala John Deere 310L','Rodillo Bomag BW24RH',
+  'Rodillo CAT CB534D','Rodillo CAT CS-533C','Rodillo CAT CS-533E',
+  'Rodillo Dynapac CC424HF','Rodillo Dynapac CP221','Rodillo Dynapac CP224',
+  'Rodillo Volvo SD105','Terminadora Dynapac F121C','Terminadora Dynapac F2500C',
+  'Topadora CAT D6E','Trituradora Metso HP300','Zaranda ASTEC GT145S',
+];
+
+// Lee las pestañas por equipo del HIST de trabajos en paralelo y devuelve un
+// array de filas con shape compatible con PANEL_TRABAJOS (que es lo que
+// procesarPanelTrabajos espera). Filtra por año dentro del fetch para no
+// devolver data innecesaria. Una pestaña que falla se ignora.
+async function fetchTrabajosHistPorEquipo(predicateAnio){
+  const results=await Promise.all(
+    TRABAJOS_HIST_PESTANAS_EQUIPOS.map(async pest=>{
+      try{
+        // gvizRaw devuelve [[fechaA, lugarB, codC, descD, tiempoE], ...]
+        const rows=await fetchGvizRaw(SHEET_IDS.trabajos_hist,pest);
+        const out=[];
+        for(const r of (rows||[])){
+          const fechaStr=String(r&&r[0]||'').trim();
+          if(!fechaStr)continue;
+          const d=_parseDate(fechaStr);
+          if(!d||!predicateAnio(d.getFullYear()))continue;
+          out.push({
+            'FECHA TRABAJO':fechaStr,
+            'LUGAR TRABAJO':String(r[1]||'').trim(),
+            'CÓDIGO':String(r[2]||'').trim(),
+            'DESCRIPCIÓN TRABAJOS':String(r[3]||'').trim(),
+            'TIEMPO TRABAJO':String(r[4]||'').trim(),
+            'EQUIPO':pest,
+            // RAZÓN TRABAJO no existe en este shape; clasificarTrabajo cae
+            // al fallback por descripción.
+          });
+        }
+        return out;
+      }catch(_){return [];}
+    })
+  );
+  return results.flat();
+}
+
 const SERVICE_VENTANA_DIAS=7;
 function _prefijoCod(codN){const m=String(codN||'').match(/^([A-Z]+)/);return m?m[1]:'';}
 function _ymd(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -1950,13 +2012,31 @@ async function loadAll(){
       }
       return out;
     };
+    // PANEL_TRABAJOS del HIST suele estar truncado a 2026 (lo trunca el script
+    // consolidador del Drive). Para reconstruir el 2025, leemos las pestañas
+    // POR EQUIPO del HIST en paralelo. Si esto agrega latencia, se puede mover
+    // a lazy/segundo plano.
+    const panelTrabajosHist2025 = await fetchTrabajosHistPorEquipo(y=>y===2025);
     const panelTrabajosObj=[
       ..._filtrarAnio(panelTrabajosLiveObj,y=>y>=2026,_SIN_FECHA_TRAB),
       ..._filtrarAnio(panelTrabajosHistObj,y=>y===2025,_SIN_FECHA_TRAB),
+      ...panelTrabajosHist2025,
     ];
+    // El sheet HIST repuestos (1WCtB) tiene un header roto en col 0: aparece
+    // como "#ERROR!" en lugar de "N° ENTREGA". Renombramos la key antes del
+    // procesamiento para que _pickCol(['N° ENTREGA']) la encuentre y las
+    // entregas se cuenten en entregaCostos.
+    const _renormHistRep = rows => rows.map(r => {
+      const o = {};
+      for (const k of Object.keys(r)) {
+        const nk = (k === '#ERROR!' || k === '#VALUE!' || k === '') ? 'N° ENTREGA' : k;
+        o[nk] = r[k];
+      }
+      return o;
+    });
     const panelRepuestosObj=[
       ..._filtrarAnio(panelRepuestosLiveObj,y=>y>=2026,_SIN_FECHA_REP),
-      ..._filtrarAnio(panelRepuestosHistObj,y=>y===2025,_SIN_FECHA_REP),
+      ..._filtrarAnio(_renormHistRep(panelRepuestosHistObj),y=>y===2025,_SIN_FECHA_REP),
     ];
 
     // Procesar PANEL_REPUESTOS: produce todos los derivados de una sola pasada
