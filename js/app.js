@@ -186,17 +186,163 @@ async function _fetchGvizJson(id,sheet,range){
   return JSON.parse(txt.substring(txt.indexOf('{'),txt.lastIndexOf('}')+1));
 }
 
-async function fetchGvizRaw(id,sheet,range){
+// Implementaciones originales — gviz directo. El shim de la API las llama
+// como fallback cuando USE_API está activo pero el (id,sheet) no está mapeado.
+async function _gvizRawImpl(id,sheet,range){
   const json=await _fetchGvizJson(id,sheet,range);
   return(json.table.rows||[]).map(row=>(row.c||[]).map(_cellStr));
 }
 
-async function fetchGvizObj(id,sheet,range){
+async function _gvizObjImpl(id,sheet,range){
   const json=await _fetchGvizJson(id,sheet,range);
   const cols=json.table.cols.map(c=>(c.label||c.id||'').trim());
   return(json.table.rows||[]).map(row=>Object.fromEntries(
     cols.map((col,i)=>[col,_cellStr(row.c?row.c[i]:null)])
   ));
+}
+
+/* ═══════════════════════════════════════════════════════
+   API PRIVADA — Apps Script Web App
+   ──────────────────────────────────────────────────────
+   Cuando USE_API es true, fetchGvizRaw/Obj derivan al Web App
+   (que valida whitelist y lee los Sheets con la cuenta de Marcos)
+   en lugar de hacer gviz directo. Los Sheets pueden estar privados.
+
+   Para activar:
+     1. Deployar el proyecto Apps Script (ver apps-scripts/api/DEPLOY.md).
+     2. Pegar la URL del Web App en API_URL abajo.
+     3. Cambiar USE_API a true.
+     4. Commit + push.
+
+   El shim hace fallback a gviz directo para (id,sheet) pares no mapeados.
+   Eso permite migración parcial mientras se prueba — los pares migrados
+   van por API, los demás siguen por gviz hasta que se sumen al mapping.
+═══════════════════════════════════════════════════════ */
+const USE_API = false;
+const API_URL = ''; // pegar acá la URL del Web App: https://script.google.com/macros/s/.../exec
+
+/**
+ * Llama a la API. Si el server devuelve 403 (no autorizado), muestra la
+ * pantalla de auth gate y tira para detener el loadAll.
+ */
+async function fetchApi(endpoint, params){
+  if(!API_URL){
+    throw new Error('API_URL vacío — completar antes de activar USE_API');
+  }
+  const qs = new URLSearchParams({ ep: endpoint, ...(params||{}) });
+  const r = await fetch(`${API_URL}?${qs}`, { credentials: 'include' });
+  const body = await r.json().catch(()=>({ ok:false, error:'bad_response', message: 'respuesta no es JSON' }));
+  if (!body.ok) {
+    if (body.error === 'not_authorized' || body.error === 'no_session') {
+      showAuthGate(body.message || body.error);
+      throw new Error('not_authorized');
+    }
+    throw new Error(`API ${endpoint}: ${body.error} — ${body.message||''}`);
+  }
+  return body.data;
+}
+
+/**
+ * Pantalla a pantalla completa cuando el usuario no está en la whitelist.
+ * Reemplaza el dashboard.
+ */
+function showAuthGate(message){
+  const dashboard = document.getElementById('dashboard');
+  const loading   = document.getElementById('loadingState');
+  const error     = document.getElementById('errorState');
+  if (loading)   loading.style.display = 'none';
+  if (dashboard) dashboard.style.display = 'none';
+  if (error) {
+    error.style.display = 'block';
+    setHTML(error, html`
+      <div style="min-height:60vh;display:flex;align-items:center;justify-content:center;padding:40px">
+        <div style="max-width:520px;text-align:center">
+          <div style="font-size:48px;line-height:1;margin-bottom:16px">🔒</div>
+          <h2 style="margin:0 0 12px 0;font-size:20px;color:var(--text)">No tenés acceso al panel</h2>
+          <p style="margin:8px 0;color:var(--text2);font-size:13px;line-height:1.5">${message||'Usuario no autorizado'}</p>
+          <p style="margin:16px 0 0 0;color:var(--text3);font-size:12px">
+            Pedile a Marcos que te agregue:<br>
+            <a href="mailto:marcoskatz@grupoingeco.com.ar" style="color:var(--accent)">marcoskatz@grupoingeco.com.ar</a>
+          </p>
+        </div>
+      </div>`);
+  }
+}
+
+/**
+ * Mapeo (sheetId, sheetName) → endpoint API + extractor del payload.
+ * Devuelve null si el par no está mapeado (el shim hace fallback a gviz).
+ */
+function _findApiEndpoint(id, sheet){
+  if (id === SHEET_IDS.pedidos) {
+    if (sheet === 'PENDIENTES') return { ep: 'pedidos', extract: d => d.pendientes };
+    if (sheet === 'ENTREGADOS') return { ep: 'pedidos', extract: d => d.entregados };
+  }
+  if (id === SHEET_IDS.codigos) {
+    return { ep: 'codigos', extract: d => d.filter(r => r.__pestana === sheet) };
+  }
+  if (id === SHEET_IDS.repuestos_hist && sheet === 'PANEL_REPUESTOS') {
+    return { ep: 'panel_repuestos', extract: d => d };
+  }
+  if (id === SHEET_IDS.trabajos_reg && sheet === 'PANEL_TRABAJOS') {
+    return { ep: 'panel_trabajos', extract: d => d };
+  }
+  if (id === SHEET_IDS.indicadores) {
+    return { ep: 'indicadores', extract: d => d[sheet] || [] };
+  }
+  if (id === SHEET_IDS.programaService) {
+    if (sheet === SERVICE_FREC_SHEET) return { ep: 'service', extract: d => d.frecuencia };
+    if (sheet === SERVICE_TRIM_SHEET) return { ep: 'service', extract: d => d.trimestre };
+  }
+  if (id === SHEET_IDS.combustible && sheet === COMBUSTIBLE_SHEET) {
+    return { ep: 'combustible', extract: d => d };
+  }
+  if (id === SHEET_IDS.combustibleLivianos && sheet === COMBUSTIBLE_LIVIANOS_SHEET) {
+    return { ep: 'combustible_livianos', extract: d => d };
+  }
+  return null;
+}
+
+/** Convierte array de objects a matrix (preserva orden de columnas). */
+function _objectsToMatrix(objects){
+  if (!Array.isArray(objects) || !objects.length) return [];
+  const headers = Object.keys(objects[0]);
+  return objects.map(o => headers.map(h => o[h] == null ? '' : o[h]));
+}
+
+async function fetchGvizRaw(id, sheet, range){
+  if (USE_API) {
+    const map = _findApiEndpoint(id, sheet);
+    if (map) {
+      const data = await fetchApi(map.ep);
+      return _objectsToMatrix(map.extract(data));
+    }
+    // Sin mapping → fallback a gviz directo (queda registrado en consola).
+    console.debug('[API] fallback a gviz para', id, sheet);
+  }
+  return _gvizRawImpl(id, sheet, range);
+}
+
+async function fetchGvizObj(id, sheet, range){
+  if (USE_API) {
+    const map = _findApiEndpoint(id, sheet);
+    if (map) {
+      const data = await fetchApi(map.ep);
+      return map.extract(data);
+    }
+    console.debug('[API] fallback a gviz para', id, sheet);
+  }
+  return _gvizObjImpl(id, sheet, range);
+}
+
+/** Fuerza refresh server-side de todos los paneles consolidados. */
+async function apiRefreshAll(){
+  if (!USE_API) return;
+  try {
+    await fetchApi('refresh', { panel: 'all' });
+  } catch (e) {
+    console.warn('[API] refresh falló:', e.message);
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -1662,6 +1808,11 @@ function setLoadProgress(pct){
 }
 
 async function loadAll(){
+  // Si ya hay datos cargados, este es un refresh manual (click en "sync") y
+  // no el initial load. Cuando USE_API está activo, eso fuerza un refresh
+  // server-side (corre los consolidadores e invalida cache server) antes
+  // de re-fetchear los endpoints.
+  const esManualRefresh = !!window._estadoEquipos;
   const btn=document.getElementById('refreshBtn');
   btn.classList.add('loading');btn.textContent='↻ cargando...';
   document.getElementById('loadingState').style.display='block';
@@ -1670,6 +1821,7 @@ async function loadAll(){
   setLoadProgress(0);
 
   try{
+    if (esManualRefresh) await apiRefreshAll();
     setLoadProgress(15);
     // Carga primaria: TODO lo necesario para el primer render.
     // PANEL_REPUESTOS pasa a ser fuente única de entregas (reemplaza MESES_ENTREGAS).
