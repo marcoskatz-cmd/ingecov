@@ -1398,7 +1398,7 @@
     <div class="header-actions">
       <div class="auto-wrap">
         <span>auto</span>
-        <select class="auto-select" id="autoSelect" onchange="setAutoRefresh()" title="Auto-refresh">
+        <select class="auto-select" id="autoSelect" data-action="setAutoRefresh" data-event="change" title="Auto-refresh">
           <option value="0">off</option>
           <option value="300">5 min</option>
           <option value="600">10 min</option>
@@ -1407,11 +1407,11 @@
         </select>
         <span class="auto-countdown" id="autoCountdown">—</span>
       </div>
-      <button class="icon-btn" onclick="toggleTheme()" title="Cambiar tema" aria-label="Cambiar tema">
+      <button class="icon-btn" data-action="toggleTheme" title="Cambiar tema" aria-label="Cambiar tema">
         <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
       </button>
-      <button class="refresh-btn" id="refreshBtn" onclick="loadAll()">sync</button>
+      <button class="refresh-btn" id="refreshBtn" data-action="loadAll">sync</button>
     </div>
   </div>
   <div class="status-bar">
@@ -1446,7 +1446,7 @@
 
     <!-- KPIs -->
     <div class="section">
-      <div class="section-label" onclick="toggleSection('secKpis')">
+      <div class="section-label" data-action="toggleSection" data-arg="secKpis">
         <span class="section-chevron">▾</span>resumen operativo
       </div>
       <div class="section-content" id="secKpis">
@@ -1456,7 +1456,7 @@
 
     <!-- Telemetría de flota (gráficos + rankings) -->
     <div class="section">
-      <div class="section-label" onclick="toggleSection('secTelemetria')">
+      <div class="section-label" data-action="toggleSection" data-arg="secTelemetria">
         <span class="section-chevron">▾</span>telemetría de flota
         <span class="section-badge" id="telemetriaBadge">—</span>
       </div>
@@ -1488,7 +1488,7 @@
 
     <!-- Índice de equipos -->
     <div class="section">
-      <div class="section-label" onclick="toggleSection('secEquipos')">
+      <div class="section-label" data-action="toggleSection" data-arg="secEquipos">
         <span class="section-chevron">▾</span>equipos
         <span class="section-badge" id="equipoCount">—</span>
       </div>
@@ -1498,36 +1498,35 @@
         <div class="controls-bar">
           <div class="search-wrap">
             <input type="text" id="equipoBuscador" placeholder="Buscar por código o nombre..."
-              oninput="onSearch(this.value)" autocomplete="off"
-              onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='var(--border)'">
-            <button class="search-clear" id="searchClear" onclick="clearSearch()" title="Limpiar búsqueda">×</button>
+              data-action="onSearch" data-event="input" autocomplete="off">
+            <button class="search-clear" id="searchClear" data-action="clearSearch" title="Limpiar búsqueda">×</button>
           </div>
-          <button class="view-btn active" id="btnGrid" onclick="setViewMode('grid')" title="Vista cuadros">⊞</button>
-          <button class="view-btn" id="btnList" onclick="setViewMode('list')" title="Vista lista">☰</button>
+          <button class="view-btn active" id="btnGrid" data-action="setViewMode" data-arg="grid" title="Vista cuadros">⊞</button>
+          <button class="view-btn" id="btnList" data-action="setViewMode" data-arg="list" title="Vista lista">☰</button>
         </div>
 
         <!-- Filtros por categoría (hoja de origen) -->
         <div class="filter-bar" id="filterBarCat">
-          <button class="filter-btn active" onclick="setFiltroCategoria('todas',this)">Todas <span class="f-count" id="fcCatTodas">—</span></button>
-          <button class="filter-btn" onclick="setFiltroCategoria('viales',this)">Viales, asfalto y trituración <span class="f-count" id="fcCatViales">0</span></button>
-          <button class="filter-btn" onclick="setFiltroCategoria('liviano',this)">Transporte liviano <span class="f-count" id="fcCatLiviano">0</span></button>
-          <button class="filter-btn" onclick="setFiltroCategoria('pesado',this)">Transporte pesado <span class="f-count" id="fcCatPesado">0</span></button>
-          <button class="filter-btn" onclick="setFiltroCategoria('soporte',this)">Soporte <span class="f-count" id="fcCatSoporte">0</span></button>
+          <button class="filter-btn active" data-action="setFiltroCategoria" data-arg="todas">Todas <span class="f-count" id="fcCatTodas">—</span></button>
+          <button class="filter-btn" data-action="setFiltroCategoria" data-arg="viales">Viales, asfalto y trituración <span class="f-count" id="fcCatViales">0</span></button>
+          <button class="filter-btn" data-action="setFiltroCategoria" data-arg="liviano">Transporte liviano <span class="f-count" id="fcCatLiviano">0</span></button>
+          <button class="filter-btn" data-action="setFiltroCategoria" data-arg="pesado">Transporte pesado <span class="f-count" id="fcCatPesado">0</span></button>
+          <button class="filter-btn" data-action="setFiltroCategoria" data-arg="soporte">Soporte <span class="f-count" id="fcCatSoporte">0</span></button>
         </div>
 
         <!-- Filtros por estado (los inactivos y sin estado viven en su propia sección) -->
         <div class="filter-bar" id="filterBar">
-          <button class="filter-btn active" onclick="setFiltroEstado('todos',this)">Todos <span class="f-count" id="fcTodos">—</span></button>
-          <button class="filter-btn" onclick="setFiltroEstado('operativo',this)"><span style="color:var(--green)">●</span> Operativo <span class="f-count" id="fcOper">0</span></button>
-          <button class="filter-btn" onclick="setFiltroEstado('reparacion',this)"><span style="color:var(--amber)">●</span> En reparación <span class="f-count" id="fcRep">0</span></button>
+          <button class="filter-btn active" data-action="setFiltroEstado" data-arg="todos">Todos <span class="f-count" id="fcTodos">—</span></button>
+          <button class="filter-btn" data-action="setFiltroEstado" data-arg="operativo"><span style="color:var(--green)">●</span> Operativo <span class="f-count" id="fcOper">0</span></button>
+          <button class="filter-btn" data-action="setFiltroEstado" data-arg="reparacion"><span style="color:var(--amber)">●</span> En reparación <span class="f-count" id="fcRep">0</span></button>
         </div>
 
         <!-- Filtros por tenencia (propio / alquilado, viene de CÓDIGOS columna OBSERVACIÓN) -->
         <div class="filter-bar" id="filterBarTen">
-          <button class="filter-btn active" onclick="setFiltroTenencia('todas',this)">Toda tenencia <span class="f-count" id="fcTenTodas">—</span></button>
-          <button class="filter-btn" onclick="setFiltroTenencia('propio',this)"><span style="color:var(--green)">◆</span> Propio <span class="f-count" id="fcTenProp">0</span></button>
-          <button class="filter-btn" onclick="setFiltroTenencia('alquilado',this)"><span style="color:var(--amber)">◆</span> Alquilado <span class="f-count" id="fcTenAlq">0</span></button>
-          <button class="filter-btn" id="btnTenDesc" onclick="setFiltroTenencia('desconocido',this)" style="display:none">Sin clasificar <span class="f-count" id="fcTenDesc">0</span></button>
+          <button class="filter-btn active" data-action="setFiltroTenencia" data-arg="todas">Toda tenencia <span class="f-count" id="fcTenTodas">—</span></button>
+          <button class="filter-btn" data-action="setFiltroTenencia" data-arg="propio"><span style="color:var(--green)">◆</span> Propio <span class="f-count" id="fcTenProp">0</span></button>
+          <button class="filter-btn" data-action="setFiltroTenencia" data-arg="alquilado"><span style="color:var(--amber)">◆</span> Alquilado <span class="f-count" id="fcTenAlq">0</span></button>
+          <button class="filter-btn" id="btnTenDesc" data-action="setFiltroTenencia" data-arg="desconocido" style="display:none">Sin clasificar <span class="f-count" id="fcTenDesc">0</span></button>
         </div>
 
         <!-- Filtros por ubicación (poblado dinámicamente) -->
@@ -1545,7 +1544,7 @@
                 <div class="equipo-detail-title" id="eqDetailTitle">—</div>
                 <div class="equipo-detail-sub" id="eqDetailSub"></div>
               </div>
-              <button class="equipo-detail-close" onclick="closeEquipoDetail()" title="Cerrar (Esc)">×</button>
+              <button class="equipo-detail-close" data-action="closeEquipoDetail" title="Cerrar (Esc)">×</button>
             </div>
             <div class="equipo-detail-body" id="eqDetailBody"></div>
           </div>
@@ -1555,16 +1554,16 @@
 
     <!-- Equipos inactivos (en desuso / no operativos) -->
     <div class="section">
-      <div class="section-label" onclick="toggleSection('secInactivos')">
+      <div class="section-label" data-action="toggleSection" data-arg="secInactivos">
         <span class="section-chevron">▾</span>equipos inactivos
         <span class="section-badge" id="inactivosBadge">—</span>
       </div>
       <div class="section-content" id="secInactivos">
         <div class="filter-bar" id="filterBarInact">
-          <button class="filter-btn active" onclick="setFiltroInactivo('todos',this)">Todos <span class="f-count" id="fcInactTodos">—</span></button>
-          <button class="filter-btn" onclick="setFiltroInactivo('desuso',this)"><span style="color:var(--text3)">●</span> En desuso <span class="f-count" id="fcInactDesuso">0</span></button>
-          <button class="filter-btn" onclick="setFiltroInactivo('no-operativo',this)"><span style="color:var(--red)">●</span> No operativo <span class="f-count" id="fcInactNoOp">0</span></button>
-          <button class="filter-btn" onclick="setFiltroInactivo('sin-estado',this)"><span style="color:var(--text-mute)">●</span> Sin estado <span class="f-count" id="fcInactSinEst">0</span></button>
+          <button class="filter-btn active" data-action="setFiltroInactivo" data-arg="todos">Todos <span class="f-count" id="fcInactTodos">—</span></button>
+          <button class="filter-btn" data-action="setFiltroInactivo" data-arg="desuso"><span style="color:var(--text3)">●</span> En desuso <span class="f-count" id="fcInactDesuso">0</span></button>
+          <button class="filter-btn" data-action="setFiltroInactivo" data-arg="no-operativo"><span style="color:var(--red)">●</span> No operativo <span class="f-count" id="fcInactNoOp">0</span></button>
+          <button class="filter-btn" data-action="setFiltroInactivo" data-arg="sin-estado"><span style="color:var(--text-mute)">●</span> Sin estado <span class="f-count" id="fcInactSinEst">0</span></button>
         </div>
         <div id="inactivosBody"></div>
       </div>
@@ -1572,23 +1571,23 @@
 
     <!-- Pedidos pendientes global -->
     <div class="section">
-      <div class="section-label" onclick="toggleSection('secPedidosPend')">
+      <div class="section-label" data-action="toggleSection" data-arg="secPedidosPend">
         <span class="section-chevron">▾</span>pedidos pendientes
         <span class="section-badge" id="pedidosPendBadge">—</span>
       </div>
       <div class="section-content" id="secPedidosPend">
         <div class="pend-controls">
-          <select id="pendFiltroEq" onchange="renderPedidosPendientesGlobal()">
+          <select id="pendFiltroEq" data-action="renderPedidosPendientesGlobal" data-event="change">
             <option value="">Todos los equipos</option>
           </select>
-          <select id="pendFiltroEst" onchange="renderPedidosPendientesGlobal()">
+          <select id="pendFiltroEst" data-action="renderPedidosPendientesGlobal" data-event="change">
             <option value="">Todos los estados</option>
             <option value="pendiente">Pendiente</option>
             <option value="parcial">Parcial</option>
             <option value="comprado">Comprado</option>
           </select>
           <input type="text" id="pendBuscador" placeholder="Buscar en descripción..."
-            oninput="renderPedidosPendientesGlobal()" autocomplete="off">
+            data-action="renderPedidosPendientesGlobal" data-event="input" autocomplete="off">
         </div>
         <div class="pend-summary" id="pendSummary">—</div>
         <div id="pedidosPendBody"></div>
@@ -1600,17 +1599,97 @@
 </main>
 
 <!-- Modal: equipos con service en estado crítico -->
-<div class="sv-modal-overlay" id="svModalOverlay" onclick="if(event.target===this)closeServiceCriticoModal()" role="dialog" aria-modal="true" aria-labelledby="svModalTitle">
+<div class="sv-modal-overlay" id="svModalOverlay" data-action="closeServiceCriticoModalIfBg" role="dialog" aria-modal="true" aria-labelledby="svModalTitle">
   <div class="sv-modal">
     <div class="sv-modal-head">
       <div class="sv-modal-title" id="svModalTitle">Service <b>crítico</b> · <span id="svModalCount">0</span> equipos</div>
-      <button class="sv-modal-close" onclick="closeServiceCriticoModal()" title="Cerrar (Esc)" aria-label="Cerrar">×</button>
+      <button class="sv-modal-close" data-action="closeServiceCriticoModal" title="Cerrar (Esc)" aria-label="Cerrar">×</button>
     </div>
     <div class="sv-modal-list" id="svModalList"></div>
   </div>
 </div>
 
 <script>
+/* ═══════════════════════════════════════════════════════
+   FRAME-BUSTER (compensa frame-ancestors no soportado por CSP meta)
+═══════════════════════════════════════════════════════ */
+if (window.top !== window.self) {
+  try { window.top.location = window.self.location; }
+  catch { document.body && (document.body.textContent = ''); }
+}
+
+/* ═══════════════════════════════════════════════════════
+   TEMPLATING SEGURO + TRUSTED TYPES
+   - html`...` devuelve un RawHTML con valores interpolados escapados.
+   - setHTML(el, content) hace innerHTML pasando por la policy Trusted Types
+     cuando el browser la soporta. Si content NO es RawHTML (es decir,
+     viene como string sin envolver), se escapa entero como texto plano.
+   - esc(v) escapa un valor para HTML; es la primitiva en la que se basa todo.
+═══════════════════════════════════════════════════════ */
+const TT = window.trustedTypes
+  ? window.trustedTypes.createPolicy('ingecov-html', { createHTML: s => s })
+  : null;
+
+class RawHTML { constructor(value){ this.value = value; } }
+
+function esc(v) {
+  if (v == null) return '';
+  if (v instanceof RawHTML) return v.value;
+  if (Array.isArray(v)) return v.map(esc).join('');
+  return String(v).replace(/[&<>"']/g, c => (
+    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]
+  ));
+}
+
+function html(strings, ...values) {
+  let out = '';
+  for (let i = 0; i < strings.length; i++) {
+    out += strings[i];
+    if (i < values.length) out += esc(values[i]);
+  }
+  return new RawHTML(out);
+}
+
+function setHTML(el, content) {
+  if (!el) return;
+  const s = content instanceof RawHTML ? content.value : esc(content);
+  el.innerHTML = TT ? TT.createHTML(s) : s;
+}
+
+/* ═══════════════════════════════════════════════════════
+   ERROR BOUNDARY GLOBAL
+   Loguea + muestra un toast minimal sin interrumpir la app.
+═══════════════════════════════════════════════════════ */
+function showErrorToast(msg) {
+  try {
+    let stack = document.getElementById('__errStack');
+    if (!stack) {
+      stack = document.createElement('div');
+      stack.id = '__errStack';
+      stack.style.cssText = 'position:fixed;right:12px;bottom:12px;z-index:99999;display:flex;flex-direction:column;gap:6px;max-width:360px;pointer-events:none';
+      document.body.appendChild(stack);
+    }
+    const toast = document.createElement('div');
+    toast.style.cssText = 'background:#2a1414;border:1px solid #6b1a1a;color:#ffb4b4;padding:10px 12px;border-radius:6px;font:12px/1.4 IBM Plex Sans,system-ui,sans-serif;box-shadow:0 4px 12px rgba(0,0,0,.4);cursor:pointer;pointer-events:auto;word-break:break-word';
+    toast.textContent = String(msg || 'Error');
+    toast.title = 'Click para copiar';
+    toast.addEventListener('click', () => {
+      navigator.clipboard?.writeText(String(msg || ''));
+      toast.style.opacity = '.5';
+    });
+    stack.appendChild(toast);
+    setTimeout(() => toast.remove(), 8000);
+  } catch (_) { /* ignore */ }
+}
+window.addEventListener('error', (e) => {
+  console.error('[INGECO] error:', e.error || e.message, (e.filename || '') + ':' + (e.lineno || ''));
+  showErrorToast(e.error?.message || e.message || 'Error');
+});
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('[INGECO] promise rechazada:', e.reason);
+  showErrorToast(String(e.reason?.message || e.reason || 'Promise rechazada'));
+});
+
 /* ═══════════════════════════════════════════════════════
    CONFIGURACIÓN — SHEET IDs
 ═══════════════════════════════════════════════════════ */
@@ -2817,8 +2896,12 @@ function toggleEqSec(uid){
 let _secCounter=0;
 function eqSection(title,content,open=true){
   const uid='sec'+(++_secCounter);
-  return`<div><div class="eq-sub-label" onclick="toggleEqSec('${uid}')"><span class="eq-chev" id="echev_${uid}">${open?'▾':'▸'}</span>${title}</div>
-  <div id="eqsec_${uid}" class="eq-sec-body" ${open?'':'style="display:none"'}>${content}</div></div>`;
+  // content y title pueden venir como RawHTML (de html``) o como string ya armado.
+  // Los envolvemos en RawHTML si son strings que la app construyó, para no doble-escapar.
+  const titleH = title instanceof RawHTML ? title : new RawHTML(String(title));
+  const contH  = content instanceof RawHTML ? content : new RawHTML(String(content));
+  return html`<div><div class="eq-sub-label" data-action="toggleEqSec" data-arg="${uid}"><span class="eq-chev" id="echev_${uid}">${open?'▾':'▸'}</span>${titleH}</div>
+  <div id="eqsec_${uid}" class="eq-sec-body" ${open?new RawHTML(''):new RawHTML('style="display:none"')}>${contH}</div></div>`;
 }
 
 // FILTRO DE ESTADO
@@ -2984,17 +3067,17 @@ function aplicarFiltros(){
   (function renderFiltroUbi(){
     const bar=document.getElementById('filterBarUbi');if(!bar)return;
     const ordenados=Object.entries(ubiGrupos).sort((a,b)=>b[1].count-a[1].count);
-    const esc=s=>String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    // esc() ahora es global (helper de templating seguro definido al inicio del script).
     const btns=[
-      `<button class="filter-btn${_filtroUbicacion==='todas'?' active':''}" onclick="setFiltroUbicacion('todas',this)">Todas ubicaciones <span class="f-count">${totalUbiFacet}</span></button>`,
+      html`<button class="filter-btn${_filtroUbicacion==='todas'?' active':''}" data-action="setFiltroUbicacion" data-arg="todas">Todas ubicaciones <span class="f-count">${totalUbiFacet}</span></button>`,
       ...ordenados.map(([k,v])=>
-        `<button class="filter-btn${_filtroUbicacion===k?' active':''}" onclick="setFiltroUbicacion('${esc(k)}',this)" title="${esc(v.label)}">${esc(v.label)} <span class="f-count">${v.count}</span></button>`
+        html`<button class="filter-btn${_filtroUbicacion===k?' active':''}" data-action="setFiltroUbicacion" data-arg="${k}" title="${v.label}">${v.label} <span class="f-count">${v.count}</span></button>`
       ),
     ];
     if(sinUbiAbs>0){
-      btns.push(`<button class="filter-btn${_filtroUbicacion==='__sin__'?' active':''}" onclick="setFiltroUbicacion('__sin__',this)">Sin ubicación <span class="f-count">${sinUbiFacet}</span></button>`);
+      btns.push(html`<button class="filter-btn${_filtroUbicacion==='__sin__'?' active':''}" data-action="setFiltroUbicacion" data-arg="__sin__">Sin ubicación <span class="f-count">${sinUbiFacet}</span></button>`);
     }
-    bar.innerHTML=btns.join('');
+    setHTML(bar, btns);
   })();
 
   // Total visible (todos los filtros aplicados)
@@ -3058,30 +3141,29 @@ function renderInactivos(){
 
   const vis=inactivos.filter(x=>_filtroInactivo==='todos'||x.subtipo===_filtroInactivo);
   if(!vis.length){
-    body.innerHTML='<div class="no-data">Sin equipos inactivos'+(_filtroInactivo!=='todos'?' en este filtro':'')+'.</div>';
+    setHTML(body, html`<div class="no-data">Sin equipos inactivos${_filtroInactivo!=='todos'?' en este filtro':''}.</div>`);
     return;
   }
-  const esc=s=>String(s||'').replace(/</g,'&lt;');
+  // esc() es global (helper de templating seguro definido al inicio del script).
   // Recuadros con el mismo formato que la grilla principal de equipos.
-  body.innerHTML=`<div class="equipo-grid">${vis.map(x=>{
+  setHTML(body, html`<div class="equipo-grid">${vis.map(x=>{
     const est=ESTADO_COLOR(x.estado);
-    const ce=x.codigo.replace(/'/g,"\\'");
     const estLabel=x.subtipo==='sin-estado'?'Sin estado':(x.estado||'—');
-    return`<div class="equipo-card" id="eqcard_${x.codigo.replace(/[^a-z0-9]/gi,'_')}"
+    return html`<div class="equipo-card" id="eqcard_${x.codigo.replace(/[^a-z0-9]/gi,'_')}"
       data-cod="${x.codigo}" data-nom="${x.nombre}"
-      onclick="toggleEquipoDetail('${ce}',this)">
+      data-action="toggleEquipoDetail" data-arg="${x.codigo}">
       <div class="eq-status-strip ${est}"></div>
-      <div class="eq-code">${esc(x.codigo)}</div>
-      <div class="eq-name">${esc(x.nombre)||'—'}</div>
+      <div class="eq-code">${x.codigo}</div>
+      <div class="eq-name">${x.nombre||'—'}</div>
       <div class="eq-meta">
-        <span style="color:${ESTADO_CSS[est]}">${esc(estLabel)}</span>
-        ${x.categoria?`<span>${CAT_LABEL[x.categoria]||esc(x.categoria)}</span>`:''}
-        ${x.patente?`<span class="eq-patente" title="Patente">${esc(x.patente)}</span>`:''}
-        ${x.ubicacion?`<span>${esc(x.ubicacion)}</span>`:''}
-        ${x.costoTotal>0?`<span style="color:var(--amber)" title="Costo acumulado en repuestos">${formatMoney(x.costoTotal)}</span>`:''}
+        <span style="color:${ESTADO_CSS[est]}">${estLabel}</span>
+        ${x.categoria?html`<span>${CAT_LABEL[x.categoria]||x.categoria}</span>`:''}
+        ${x.patente?html`<span class="eq-patente" title="Patente">${x.patente}</span>`:''}
+        ${x.ubicacion?html`<span>${x.ubicacion}</span>`:''}
+        ${x.costoTotal>0?html`<span style="color:var(--amber)" title="Costo acumulado en repuestos">${formatMoney(x.costoTotal)}</span>`:''}
       </div>
     </div>`;
-  }).join('')}</div>`;
+  })}</div>`);
 }
 
 // VISTA
@@ -3116,69 +3198,67 @@ function renderEquipoIndex(equipos){
 
   if(_viewMode==='list'){
     grid.className='';
-    grid.innerHTML=eq.length?`<div class="equipo-list-wrap">${eq.map(e=>{
+    setHTML(grid, eq.length?html`<div class="equipo-list-wrap">${eq.map(e=>{
       const info=(window._estadoEquipos||{})[normCod(e.codigo)];
       const hor=(window._horometros||{})[normCod(e.codigo)];
       const est=ESTADO_COLOR(info?.estado);const estCss=ESTADO_CSS[est];
       const patente=getPatente(e.codigo);
       const titulo=buildEquipoNombre(e.clasificacion,e.marca,e.modelo,e.nombre);
-      const ce=e.codigo.replace(/'/g,"\\'");
       const tienePend=(window._equiposConPendientes||new Set()).has(normCod(e.codigo));
       const ten=info?.tenencia;
       const tenLabel=info?.observacion||(ten==='propio'?'Propio':ten==='alquilado'?'Alquilado':'');
-      const tenBadge=(ten==='propio'||ten==='alquilado')?`<span class="eq-tenencia ${ten}" title="Tenencia: ${tenLabel}">${tenLabel}</span>`:'';
+      const tenBadge=(ten==='propio'||ten==='alquilado')?html`<span class="eq-tenencia ${ten}" title="Tenencia: ${tenLabel}">${tenLabel}</span>`:'';
       const _dim = !(e.costoTotal>0) && !tienePend;
       const op=operatividadEquipo(normCod(e.codigo));
-      return`<div class="equipo-list-row${tienePend?' has-pending':''}${_dim?' dim':''}" id="eqcard_${e.codigo.replace(/[^a-z0-9]/gi,'_')}"
+      return html`<div class="equipo-list-row${tienePend?' has-pending':''}${_dim?' dim':''}" id="eqcard_${e.codigo.replace(/[^a-z0-9]/gi,'_')}"
         data-cod="${e.codigo}" data-nom="${e.nombre}" data-est="${est==='green'?'operativo':est==='amber'?'reparacion':est==='red'?'parado':'sin-estado'}"
         title="${tienePend?'Tiene pedidos pendientes':''}"
-        onclick="toggleEquipoDetail('${ce}',this)">
+        data-action="toggleEquipoDetail" data-arg="${e.codigo}">
         <span class="eq-list-dot" style="background:${estCss}" title="${info?.estado||'Sin estado'}"></span>
         <span class="eq-list-code">${e.codigo}</span>
         <span class="eq-list-name">${titulo}</span>
         <div class="eq-list-meta">
-          ${tienePend?'<span class="pending-dot" title="Pedidos pendientes"></span>':''}
-          ${op.nivel!=='sin-datos'?`<span style="color:${op.color};font-weight:600" title="Operatividad de service · ${op.label}">● ${op.label}</span>`:''}
+          ${tienePend?html`<span class="pending-dot" title="Pedidos pendientes"></span>`:''}
+          ${op.nivel!=='sin-datos'?html`<span style="color:${op.color};font-weight:600" title="Operatividad de service · ${op.label}">● ${op.label}</span>`:''}
           ${tenBadge}
-          ${patente?`<span class="eq-patente">${patente}</span>`:''}
-          ${info?.ubicacion?`<span>${info.ubicacion}</span>`:''}
-          ${e.costoTotal>0?`<span style="color:var(--amber)">${formatMoney(e.costoTotal)}</span>`:''}
-          ${hor?.actual?`<span style="color:var(--blue)">${hor.actual}</span>`:''}
+          ${patente?html`<span class="eq-patente">${patente}</span>`:''}
+          ${info?.ubicacion?html`<span>${info.ubicacion}</span>`:''}
+          ${e.costoTotal>0?html`<span style="color:var(--amber)">${formatMoney(e.costoTotal)}</span>`:''}
+          ${hor?.actual?html`<span style="color:var(--blue)">${hor.actual}</span>`:''}
         </div>
       </div>`;
-    }).join('')}</div>`:'<div class="no-data">Sin equipos</div>';
+    })}</div>`:html`<div class="no-data">Sin equipos</div>`);
   }else{
     grid.className='equipo-grid';
-    grid.innerHTML=eq.length?eq.map(e=>{
+    setHTML(grid, eq.length?eq.map(e=>{
       const info=(window._estadoEquipos||{})[normCod(e.codigo)];
       const hor=(window._horometros||{})[normCod(e.codigo)];
       const est=ESTADO_COLOR(info?.estado);
       const patente=getPatente(e.codigo);
       const titulo=buildEquipoNombre(e.clasificacion||info?.clasificacion||TIPO_EQUIPO(e.codigo),e.marca,e.modelo,e.nombre);
-      const ce=e.codigo.replace(/'/g,"\\'");
       const tienePend=(window._equiposConPendientes||new Set()).has(normCod(e.codigo));
       const ten=info?.tenencia;
       const tenLabel=info?.observacion||(ten==='propio'?'Propio':ten==='alquilado'?'Alquilado':'');
-      const tenBadge=(ten==='propio'||ten==='alquilado')?`<span class="eq-tenencia ${ten}" title="Tenencia: ${tenLabel}">${tenLabel}</span>`:'';
+      const tenBadge=(ten==='propio'||ten==='alquilado')?html`<span class="eq-tenencia ${ten}" title="Tenencia: ${tenLabel}">${tenLabel}</span>`:'';
       const _dim = !(e.costoTotal>0) && !tienePend;
       const op=operatividadEquipo(normCod(e.codigo));
-      return`<div class="equipo-card${tienePend?' has-pending':''}${_dim?' dim':''}" id="eqcard_${e.codigo.replace(/[^a-z0-9]/gi,'_')}"
+      return html`<div class="equipo-card${tienePend?' has-pending':''}${_dim?' dim':''}" id="eqcard_${e.codigo.replace(/[^a-z0-9]/gi,'_')}"
         data-cod="${e.codigo}" data-nom="${e.nombre}" data-est="${est==='green'?'operativo':est==='amber'?'reparacion':est==='red'?'parado':'sin-estado'}"
         title="${tienePend?'Tiene pedidos pendientes':''}"
-        onclick="toggleEquipoDetail('${ce}',this)">
+        data-action="toggleEquipoDetail" data-arg="${e.codigo}">
         <div class="eq-status-strip ${est}"></div>
         <div class="eq-code">${e.codigo}</div>
         <div class="eq-name">${titulo}</div>
         <div class="eq-meta">
-          ${op.nivel!=='sin-datos'?`<span style="color:${op.color};font-weight:600" title="Operatividad de service · ${op.label}">● ${op.label}</span>`:''}
+          ${op.nivel!=='sin-datos'?html`<span style="color:${op.color};font-weight:600" title="Operatividad de service · ${op.label}">● ${op.label}</span>`:''}
           ${tenBadge}
-          ${patente?`<span class="eq-patente" title="Patente">${patente}</span>`:''}
-          ${info?.estado?`<span style="color:${ESTADO_CSS[est]}">${info.estado}</span>`:''}
-          ${e.costoTotal>0?`<span style="color:var(--amber)">${formatMoney(e.costoTotal)}</span>`:''}
-          ${hor?.actual?`<span style="color:var(--blue)" title="Horómetro actual">${hor.actual}</span>`:''}
+          ${patente?html`<span class="eq-patente" title="Patente">${patente}</span>`:''}
+          ${info?.estado?html`<span style="color:${ESTADO_CSS[est]}">${info.estado}</span>`:''}
+          ${e.costoTotal>0?html`<span style="color:var(--amber)">${formatMoney(e.costoTotal)}</span>`:''}
+          ${hor?.actual?html`<span style="color:var(--blue)" title="Horómetro actual">${hor.actual}</span>`:''}
         </div>
       </div>`;
-    }).join(''):'<div class="no-data">Sin equipos</div>';
+    }):html`<div class="no-data">Sin equipos</div>`);
   }
   aplicarFiltros();
 }
@@ -3340,7 +3420,7 @@ async function loadAll(){
   }catch(e){
     document.getElementById('loadingState').style.display='none';
     document.getElementById('errorState').style.display='block';
-    document.getElementById('errorState').innerHTML=`<div style="color:var(--red);margin-bottom:8px">⚠ Error al cargar datos</div><div style="font-size:12px;color:var(--text3)">${e.message}</div><div style="margin-top:12px"><button onclick="loadAll()" class="refresh-btn">Reintentar</button></div>`;
+    setHTML(document.getElementById('errorState'), html`<div style="color:var(--red);margin-bottom:8px">⚠ Error al cargar datos</div><div style="font-size:12px;color:var(--text3)">${e.message}</div><div style="margin-top:12px"><button data-action="loadAll" class="refresh-btn">Reintentar</button></div>`);
     setLoadProgress(100);
   }
   btn.classList.remove('loading');btn.textContent='↻ actualizar';
@@ -3486,16 +3566,19 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
     .join('');
   const _gcSub=_gcDefault?`${fmtInt(_gcCargas[_gcDefault]||0)} cargas · ${ymLabel(_gcDefault)}`:'gasto · vehículos livianos';
   const _gcEmpty=!(_gcVal>0)&&!(window._gastoCombLivianos>0);
-  document.getElementById('kpiGrid').innerHTML=`
+  const svKpiAttrs = serviceCritico>0
+    ? html` data-action="openServiceCriticoModal" title="Ver lista de equipos críticos"`
+    : '';
+  setHTML(document.getElementById('kpiGrid'), html`
     <div class="kpi${totalEquipos?'':' kpi-empty'}"><div class="kpi-label">operativos</div><div class="kpi-val green">${fmtInt(operativosAbs)}<span style="font-size:18px;color:var(--text3);font-weight:400"> / ${totalEquipos?fmtInt(totalEquipos):'—'}</span></div><div class="kpi-sub">estado verde en CÓDIGOS</div><div class="kpi-accent-bar green"></div></div>
     <div class="kpi${pendActivos?'':' kpi-empty'}"><div class="kpi-label">pedidos activos</div><div class="kpi-val ${pendActivos>10?'red':'amber'}">${fmtInt(pendActivos)}</div><div class="kpi-sub">pendiente · parcial · comprado</div><div class="kpi-accent-bar ${pendActivos>10?'red':'amber'}"></div></div>
     <div class="kpi${enReparacion?'':' kpi-empty'}"><div class="kpi-label">equipos en reparación</div><div class="kpi-val amber">${fmtInt(enReparacion)}</div><div class="kpi-sub">estado naranja en CÓDIGOS</div><div class="kpi-accent-bar amber"></div></div>
-    <div class="kpi${_kpiServiceEmpty?' kpi-empty':''}${serviceCritico>0?' kpi-clickable':''}"${serviceCritico>0?' onclick="openServiceCriticoModal()" title="Ver lista de equipos críticos"':''}><div class="kpi-label">service crítico</div><div class="kpi-val ${serviceClass}">${fmtInt(serviceCritico)}</div><div class="kpi-sub">${serviceSub}</div><div class="kpi-accent-bar ${serviceClass}"></div></div>
+    <div class="kpi${_kpiServiceEmpty?' kpi-empty':''}${serviceCritico>0?' kpi-clickable':''}"${svKpiAttrs}><div class="kpi-label">service crítico</div><div class="kpi-val ${serviceClass}">${fmtInt(serviceCritico)}</div><div class="kpi-sub">${serviceSub}</div><div class="kpi-accent-bar ${serviceClass}"></div></div>
     <div class="kpi${_kpiCostoEmpty?' kpi-empty':''}"><div class="kpi-label">costo en repuestos</div><div class="kpi-val amber">${totalCostoMes>0?formatMoney(totalCostoMes):'—'}</div><div class="kpi-sub">${MES_ACTUAL.label} · ${fmtInt(entConCosto)} entregas con costo</div><div class="kpi-accent-bar amber"></div></div>
-    <div class="kpi${_kpiHorasEmpty?' kpi-empty':''}"><div class="kpi-label">horas en taller</div><div class="kpi-val">${horasTotalFlota>0?fmtInt(Math.round(horasTotalFlota))+' hr':'—'}</div>${horasTotalFlota>0?`<div class="kpi-sub hr-split"><div class="hr-split-bar"><span class="corr" style="width:${_corrPct}%"></span><span class="prev" style="width:${_prevPct}%"></span></div><span class="hr-split-leg"><i class="corr"></i>${fmtInt(Math.round(_horasCorr))} hr correctivo · ${_corrPct}%</span><span class="hr-split-leg"><i class="prev"></i>${fmtInt(Math.round(_horasPrev))} hr preventivo · ${_prevPct}%</span></div>`:`<div class="kpi-sub">acumuladas 2026 · flota</div>`}<div class="kpi-accent-bar blue"></div></div>
-    <div class="kpi${_gcEmpty?' kpi-empty':''}"><div class="kpi-label">combustible livianos<select class="kpi-mes-sel" id="kpiCombMes" onchange="actualizarKpiCombustible(this.value)">${_gcOpts}</select></div><div class="kpi-val amber" id="kpiCombVal">${_gcVal>0?formatMoney(_gcVal):'—'}</div><div class="kpi-sub" id="kpiCombSub">${_gcSub}</div><div class="kpi-accent-bar amber"></div></div>
+    <div class="kpi${_kpiHorasEmpty?' kpi-empty':''}"><div class="kpi-label">horas en taller</div><div class="kpi-val">${horasTotalFlota>0?fmtInt(Math.round(horasTotalFlota))+' hr':'—'}</div>${horasTotalFlota>0?html`<div class="kpi-sub hr-split"><div class="hr-split-bar"><span class="corr" style="width:${_corrPct}%"></span><span class="prev" style="width:${_prevPct}%"></span></div><span class="hr-split-leg"><i class="corr"></i>${fmtInt(Math.round(_horasCorr))} hr correctivo · ${_corrPct}%</span><span class="hr-split-leg"><i class="prev"></i>${fmtInt(Math.round(_horasPrev))} hr preventivo · ${_prevPct}%</span></div>`:html`<div class="kpi-sub">acumuladas 2026 · flota</div>`}<div class="kpi-accent-bar blue"></div></div>
+    <div class="kpi${_gcEmpty?' kpi-empty':''}"><div class="kpi-label">combustible livianos<select class="kpi-mes-sel" id="kpiCombMes" data-action="actualizarKpiCombustible" data-event="change">${new RawHTML(_gcOpts)}</select></div><div class="kpi-val amber" id="kpiCombVal">${_gcVal>0?formatMoney(_gcVal):'—'}</div><div class="kpi-sub" id="kpiCombSub">${_gcSub}</div><div class="kpi-accent-bar amber"></div></div>
     <div class="kpi kpi-empty" id="kpiDispCard"><div class="kpi-label">disponibilidad global</div><div class="kpi-val" id="kpiDisp">—</div><div class="kpi-sub">cargando…</div><div class="kpi-accent-bar" id="kpiDispBar"></div></div>
-  `;
+  `);
 
   // Cablear status bar superior — telemetría en vivo del estado de la flota
   (function updateStatusBar(){
@@ -3597,14 +3680,14 @@ async function toggleEquipoDetail(codigo,cardEl){
   // tags complementarios (patente y descripción del catálogo cuando agrega info).
   const mostrarDesc=descripcion&&normCod(descripcion)!==normCod(nombre);
   const subTags=[
-    patente?`<span class="eq-detail-tag">📋 ${patente}</span>`:'',
-    mostrarDesc?`<span class="eq-detail-tag" style="opacity:.85">${descripcion}</span>`:'',
-  ].filter(Boolean).join('');
+    patente?html`<span class="eq-detail-tag">📋 ${patente}</span>`:'',
+    mostrarDesc?html`<span class="eq-detail-tag" style="opacity:.85">${descripcion}</span>`:'',
+  ].filter(Boolean);
 
   document.getElementById('eqDetailTitle').textContent=nombre;
-  document.getElementById('eqDetailSub').innerHTML=`<span>${codigo}</span>${subTags}`;
-  document.getElementById('eqDetailBody').innerHTML=
-    '<div style="padding:2rem;text-align:center;font-family:\'IBM Plex Mono\',monospace;font-size:12px;color:var(--text3)">cargando historial...</div>';
+  setHTML(document.getElementById('eqDetailSub'), html`<span>${codigo}</span>${subTags}`);
+  setHTML(document.getElementById('eqDetailBody'),
+    html`<div style="padding:2rem;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text3)">cargando historial...</div>`);
   panel.classList.add('open');
   setTimeout(()=>panel.scrollIntoView({behavior:'smooth',block:'nearest'}),60);
   _secCounter=0;
@@ -4073,13 +4156,17 @@ async function toggleEquipoDetail(codigo,cardEl){
       </table></div>`
     : `<div class="no-data">Sin cargas de combustible registradas para este equipo.</div>`;
 
-  document.getElementById('eqDetailBody').innerHTML=
-    kpisHTML+infoBar+horHTML+
-    eqSection('servicios y reparaciones en taller',contServicio,true)+
-    eqSection(`pedidos y entregas de repuestos 2026 (${todosPedidos.length})`,contPedidos,true)+
-    (hayCualquiera?eqSection('costos y horas de mantenimiento mes a mes',contGrafico,true):'')+
-    eqSection(`cargas de combustible${comb?.cargas?.length?` (${comb.cargas.length})`:''}`,contCombustible,false)+
-    eqSection('fuentes de información',contFuentes,false);
+  setHTML(document.getElementById('eqDetailBody'),
+    new RawHTML(
+      (kpisHTML instanceof RawHTML ? kpisHTML.value : String(kpisHTML))+
+      (infoBar instanceof RawHTML ? infoBar.value : String(infoBar))+
+      (horHTML instanceof RawHTML ? horHTML.value : String(horHTML))+
+      eqSection('servicios y reparaciones en taller',contServicio,true).value+
+      eqSection(`pedidos y entregas de repuestos 2026 (${todosPedidos.length})`,contPedidos,true).value+
+      (hayCualquiera?eqSection('costos y horas de mantenimiento mes a mes',contGrafico,true).value:'')+
+      eqSection(`cargas de combustible${comb?.cargas?.length?` (${comb.cargas.length})`:''}`,contCombustible,false).value+
+      eqSection('fuentes de información',contFuentes,false).value
+    ));
 
   if(hayCualquiera&&typeof Chart!=='undefined')setTimeout(()=>renderEquipoCombo(chartUid,codigo,horasPorMes),100);
 }
@@ -4140,9 +4227,9 @@ function renderTelemetriaFlota(){
   const totHp=dataHorasPrev.reduce((s,v)=>s+v,0);
   const totalsEl=document.getElementById('comboTotals');
   if(totalsEl){
-    totalsEl.innerHTML=ymsAll.length
-      ?`acumulado 2026 · <span class="v-costo">${formatMoney(totC)}</span> en repuestos<span class="sep">·</span><span class="v-corr">${totHc.toFixed(0)} hr</span> correctivo<span class="sep">·</span><span class="v-prev">${totHp.toFixed(0)} hr</span> preventivo`
-      :'sin datos para graficar';
+    setHTML(totalsEl, ymsAll.length
+      ?html`acumulado 2026 · <span class="v-costo">${formatMoney(totC)}</span> en repuestos<span class="sep">·</span><span class="v-corr">${totHc.toFixed(0)} hr</span> correctivo<span class="sep">·</span><span class="v-prev">${totHp.toFixed(0)} hr</span> preventivo`
+      :'sin datos para graficar');
   }
 
   if(_chartComboFlota){_chartComboFlota.destroy();_chartComboFlota=null;}
@@ -4269,18 +4356,17 @@ function renderTelemetriaFlota(){
     .slice(0,10);
   const maxCosto=topCosto[0]?.[1]||1;
   const _eqByCodN=codN=>(window._equiposOrdenados||[]).find(e=>normCod(e.codigo)===codN);
-  document.getElementById('rankCosto').innerHTML=topCosto.length
+  setHTML(document.getElementById('rankCosto'), topCosto.length
     ?topCosto.map(([codN,v],i)=>{
       const eq=_eqByCodN(codN);const codDisplay=eq?eq.codigo:codN;
-      const ce=codDisplay.replace(/'/g,"\\'");
-      return`<div class="rank-row" onclick="scrollToEquipo('${ce}')" title="Ver detalle">
+      return html`<div class="rank-row" data-action="scrollToEquipo" data-arg="${codDisplay}" title="Ver detalle">
         <span class="rank-pos${i<3?' top':''}">${String(i+1).padStart(2,'0')}</span>
         <span class="rank-cod">${codDisplay}</span>
         <div class="rank-bar-wrap"><div class="rank-bar-fill" style="width:${Math.round(v/maxCosto*100)}%;background:${AMBER};box-shadow:0 0 8px ${AMBER}80"></div></div>
         <span class="rank-val">${formatMoney(v)}</span>
       </div>`;
-    }).join('')
-    :'<div class="no-data">Sin datos de costos.</div>';
+    })
+    :html`<div class="no-data">Sin datos de costos.</div>`);
 
   // ─── Ranking 2: top 10 más horas en taller ───────────────────────
   const horasPorEq=window._horasPorEquipo||{};
@@ -4289,18 +4375,17 @@ function renderTelemetriaFlota(){
     .sort((a,b)=>b[1]-a[1])
     .slice(0,10);
   const maxHoras=topHoras[0]?.[1]||1;
-  document.getElementById('rankHoras').innerHTML=topHoras.length
+  setHTML(document.getElementById('rankHoras'), topHoras.length
     ?topHoras.map(([codN,v],i)=>{
       const eq=_eqByCodN(codN);const codDisplay=eq?eq.codigo:codN;
-      const ce=codDisplay.replace(/'/g,"\\'");
-      return`<div class="rank-row" onclick="scrollToEquipo('${ce}')" title="Ver detalle">
+      return html`<div class="rank-row" data-action="scrollToEquipo" data-arg="${codDisplay}" title="Ver detalle">
         <span class="rank-pos${i<3?' top':''}">${String(i+1).padStart(2,'0')}</span>
         <span class="rank-cod">${codDisplay}</span>
         <div class="rank-bar-wrap"><div class="rank-bar-fill" style="width:${Math.round(v/maxHoras*100)}%;background:${ACCENT};box-shadow:0 0 8px ${ACCENT}80"></div></div>
         <span class="rank-val">${v.toFixed(1)} hr</span>
       </div>`;
-    }).join('')
-    :'<div class="no-data">Sin datos de horas trabajadas.<br><span style="font-size:10px;color:var(--amber)">Si PANEL_TRABAJOS está vacío, actualizalo desde el menú del Sheet maestro.</span></div>';
+    })
+    :html`<div class="no-data">Sin datos de horas trabajadas.<br><span style="font-size:10px;color:var(--amber)">Si PANEL_TRABAJOS está vacío, actualizalo desde el menú del Sheet maestro.</span></div>`);
 
   // Badge resumen en el header de la sección
   const badge=document.getElementById('telemetriaBadge');
@@ -4364,23 +4449,21 @@ function renderPedidosPendientesGlobal(){
   const summary=document.getElementById('pendSummary');
   if(summary){
     const totMostrados=filtrados.length;
-    summary.innerHTML=`Mostrando <span class="count">${totMostrados}</span> de ${activos.length} pedidos activos`;
+    setHTML(summary, html`Mostrando <span class="count">${totMostrados}</span> de ${activos.length} pedidos activos`);
   }
 
   // Render tabla
   const body=document.getElementById('pedidosPendBody');
   if(!filtrados.length){
-    body.innerHTML='<div class="no-data" style="padding:24px">'
-      +(activos.length?'Sin resultados con los filtros aplicados.':'No hay pedidos pendientes.')
-      +'</div>';
+    setHTML(body, html`<div class="no-data" style="padding:24px">${activos.length?'Sin resultados con los filtros aplicados.':'No hay pedidos pendientes.'}</div>`);
     return;
   }
   const estadoBadge=est=>{
     const e=(est||'').toLowerCase();
-    if(e.includes('pendiente'))return '<span class="badge badge-amber">Pendiente</span>';
-    if(e.includes('parcial'))  return '<span class="badge badge-blue">Parcial</span>';
-    if(e.includes('comprado')) return '<span class="badge badge-green">Comprado</span>';
-    return `<span class="badge badge-gray">${est||'—'}</span>`;
+    if(e.includes('pendiente'))return html`<span class="badge badge-amber">Pendiente</span>`;
+    if(e.includes('parcial'))  return html`<span class="badge badge-blue">Parcial</span>`;
+    if(e.includes('comprado')) return html`<span class="badge badge-green">Comprado</span>`;
+    return html`<span class="badge badge-gray">${est||'—'}</span>`;
   };
   const hoy=new Date();
   const diasDesde=fecha=>{
@@ -4388,15 +4471,15 @@ function renderPedidosPendientesGlobal(){
     return Math.round((hoy-d)/86400000);
   };
   const renderDias=dias=>{
-    if(dias==null)return'<span style="color:var(--text3)">—</span>';
+    if(dias==null)return html`<span style="color:var(--text3)">—</span>`;
     let color='var(--text2)';
     if(dias<=7)color='var(--text2)';
     else if(dias<=21)color='var(--amber)';
     else color='var(--red)';
-    return`<span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:${color};font-weight:500">${dias}d</span>`;
+    return html`<span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:${color};font-weight:500">${dias}d</span>`;
   };
 
-  body.innerHTML=`<div class="table-wrap"><table>
+  setHTML(body, html`<div class="table-wrap"><table>
     <thead><tr>
       <th style="width:70px">N°</th>
       <th style="width:90px">Fecha</th>
@@ -4407,11 +4490,10 @@ function renderPedidosPendientesGlobal(){
       <th style="width:90px">Estado</th>
     </tr></thead>
     <tbody>${filtrados.map(p=>{
-      const ce=(p.codigoRaw||'').replace(/'/g,"\\'");
       const codClickable=p.codigoRaw&&p.codigoRaw!=='—'
-        ?`<a class="mono" style="color:var(--accent);cursor:pointer;text-decoration:none" onclick="scrollToEquipo('${ce}')">${p.codigoRaw}</a>`
-        :`<span class="mono" style="color:var(--text3)">—</span>`;
-      return`<tr>
+        ?html`<a class="mono" style="color:var(--accent);cursor:pointer;text-decoration:none" data-action="scrollToEquipo" data-arg="${p.codigoRaw}">${p.codigoRaw}</a>`
+        :html`<span class="mono" style="color:var(--text3)">—</span>`;
+      return html`<tr>
         <td class="mono" style="font-size:11px">#${p.nro}</td>
         <td class="mono" style="font-size:10.5px;color:var(--text3);white-space:nowrap">${formatFechaCorta(p.fecha)}</td>
         <td>${codClickable}</td>
@@ -4420,8 +4502,8 @@ function renderPedidosPendientesGlobal(){
         <td style="text-align:center">${renderDias(diasDesde(p.fecha))}</td>
         <td>${estadoBadge(p.estado)}</td>
       </tr>`;
-    }).join('')}</tbody>
-  </table></div>`;
+    })}</tbody>
+  </table></div>`);
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -4549,13 +4631,10 @@ function openServiceCriticoModal(){
   const overlay=document.getElementById('svModalOverlay');
   if(!wrap||!overlay)return;
   count.textContent=fmtInt(list.length);
-  const _esc=s=>String(s==null?'':s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   if(!list.length){
-    wrap.innerHTML='<div style="padding:36px;text-align:center;color:var(--text3);font-size:13px">Sin equipos en estado crítico.</div>';
+    setHTML(wrap, html`<div style="padding:36px;text-align:center;color:var(--text3);font-size:13px">Sin equipos en estado crítico.</div>`);
   }else{
-    wrap.innerHTML=list.map(c=>{
+    setHTML(wrap, list.map(c=>{
       const restCls = (c.restantes!=null && c.restantes>0) ? ' amber' : '';
       const restStr = c.restantes==null ? '—'
         : c.restantes<=0 ? `−${fmtInt(Math.abs(c.restantes))}`
@@ -4563,15 +4642,14 @@ function openServiceCriticoModal(){
       const restLbl = c.restantes==null ? 'sin estimado'
         : c.restantes<=0 ? 'pasado'
         : 'restantes';
-      const ce=c.codigo.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-      return `<div class="sv-row" onclick="_irAEquipoDesdeKpi('${ce}')" title="Abrir detalle del equipo">
-        <div class="sv-cod">${_esc(c.codigo)}</div>
-        <div class="sv-nom">${_esc(c.nombre||'—')}</div>
-        <div class="sv-hr"><small>actual</small>${_esc(c.hrActualFmt||'—')}</div>
-        <div class="sv-hr"><small>próximo</small>${_esc(c.estimadoFmt||'—')}</div>
+      return html`<div class="sv-row" data-action="_irAEquipoDesdeKpi" data-arg="${c.codigo}" title="Abrir detalle del equipo">
+        <div class="sv-cod">${c.codigo}</div>
+        <div class="sv-nom">${c.nombre||'—'}</div>
+        <div class="sv-hr"><small>actual</small>${c.hrActualFmt||'—'}</div>
+        <div class="sv-hr"><small>próximo</small>${c.estimadoFmt||'—'}</div>
         <div class="sv-rest${restCls}"><small>${restLbl}</small>${restStr}</div>
       </div>`;
-    }).join('');
+    }));
   }
   overlay.classList.add('open');
   document.body.style.overflow='hidden';
@@ -4603,6 +4681,60 @@ document.addEventListener('keydown',e=>{
     if(ov&&ov.classList.contains('open'))closeServiceCriticoModal();
   }
 });
+
+/* ═══════════════════════════════════════════════════════
+   ACTIONS — capa de adaptación entre data-action y funciones
+   Mantiene compatibilidad de firmas con los onclick/onchange viejos:
+   - el segundo arg pasado a la función real era 'this' del elemento.
+   - inputs/selects con data-event="input"/"change" reciben el value
+     desde t.value (no desde data-arg).
+═══════════════════════════════════════════════════════ */
+const ACTIONS = {
+  setAutoRefresh:                () => setAutoRefresh(),
+  toggleTheme:                   () => toggleTheme(),
+  loadAll:                       () => loadAll(),
+  toggleSection:                 (id) => toggleSection(id),
+  onSearch:                      (_, t) => onSearch(t.value),
+  clearSearch:                   () => clearSearch(),
+  setViewMode:                   (mode) => setViewMode(mode),
+  setFiltroCategoria:            (key, t) => setFiltroCategoria(key, t),
+  setFiltroEstado:               (key, t) => setFiltroEstado(key, t),
+  setFiltroTenencia:             (key, t) => setFiltroTenencia(key, t),
+  setFiltroInactivo:             (key, t) => setFiltroInactivo(key, t),
+  setFiltroUbicacion:            (key, t) => setFiltroUbicacion(key, t),
+  closeEquipoDetail:             () => closeEquipoDetail(),
+  renderPedidosPendientesGlobal: () => renderPedidosPendientesGlobal(),
+  closeServiceCriticoModal:      () => closeServiceCriticoModal(),
+  openServiceCriticoModal:       () => openServiceCriticoModal(),
+  actualizarKpiCombustible:      (_, t) => actualizarKpiCombustible(t.value),
+  toggleEqSec:                   (uid) => toggleEqSec(uid),
+  toggleEquipoDetail:            (codigo, t) => toggleEquipoDetail(codigo, t),
+  scrollToEquipo:                (codigo) => scrollToEquipo(codigo),
+  _irAEquipoDesdeKpi:            (codigo) => _irAEquipoDesdeKpi(codigo),
+  closeServiceCriticoModalIfBg:  (_, t, e) => { if (e.target === t) closeServiceCriticoModal(); },
+};
+
+function _dispatchAction(e) {
+  const t = e.target.closest('[data-action]');
+  if (!t) return;
+  const expected = t.dataset.event || 'click';
+  if (e.type !== expected) return;
+  const fn = ACTIONS[t.dataset.action];
+  if (!fn) {
+    console.warn('[INGECO] data-action sin handler:', t.dataset.action);
+    return;
+  }
+  try {
+    fn(t.dataset.arg, t, e);
+  } catch (err) {
+    console.error('[INGECO] error en action', t.dataset.action, err);
+    showErrorToast(err?.message || String(err));
+  }
+}
+
+document.addEventListener('click',  _dispatchAction);
+document.addEventListener('change', _dispatchAction);
+document.addEventListener('input',  _dispatchAction);
 
 loadAll();
 </script>
