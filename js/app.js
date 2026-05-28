@@ -778,6 +778,32 @@ function _prefijoCod(codN){const m=String(codN||'').match(/^([A-Z]+)/);return m?
 function _ymd(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function _ym(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;}
 function _mediana(arr){const s=[...arr].sort((a,b)=>a-b);const n=s.length;if(!n)return null;return n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2;}
+// Parsea fecha simple o rango ("3/3/2026 - 12/3/2026", "3/3/2026 – 12/3/2026").
+// Devuelve {inicio, fin} (Date) o null. Para fecha simple, inicio === fin.
+// _parseDate por sí solo devuelve solo la primera fecha que matchea — para rangos
+// con guion/em-dash, perdería un extremo. Acá detectamos el separador y partimos.
+function _parseFechaRango(s){
+  if(s==null)return null;
+  const str=String(s).trim();
+  if(!str)return null;
+  const partes=str.split(/\s*[-–—]\s*/);
+  if(partes.length>=2){
+    const ini=_parseDate(partes[0]);
+    const fin=_parseDate(partes[partes.length-1]);
+    if(ini&&fin)return{inicio:ini<=fin?ini:fin,fin:ini<=fin?fin:ini};
+    if(ini)return{inicio:ini,fin:ini};
+    if(fin)return{inicio:fin,fin:fin};
+  }
+  const d=_parseDate(str);
+  return d?{inicio:d,fin:d}:null;
+}
+// Distancia mínima en ms entre un punto y un rango [inicio, fin]. 0 si está dentro.
+function _distAlRango(punto,rango){
+  if(!rango)return Infinity;
+  if(punto<rango.inicio)return rango.inicio-punto;
+  if(punto>rango.fin)return punto-rango.fin;
+  return 0;
+}
 
 // Lee los 3 sheets de planning y devuelve eventos únicos {cod, fecha, ym}.
 // trim1Rows/trim2Rows vienen como arrays de arrays (gvizRaw); cols [1]=codigo,
@@ -842,7 +868,7 @@ function cruzarServicesEnTrabajos(rawTrabajos,servicesPlanning){
   const SIN_RAZON=['RAZON TRABAJO','RAZON DE TRABAJO','RAZON','MOTIVO TRABAJO','MOTIVO'];
   const SIN_COD=['CODIGO','COD','CODIGO EQUIPO'];
   const horasPorPref={};const horasGlobal=[];
-  const filasTrab=[]; // {codN, fecha:Date|null, razon, tNum}
+  const filasTrab=[]; // {codN, rango:{inicio,fin}|null, razon, tNum}
   for(const r of (rawTrabajos||[])){
     const idx={};
     for(const k of Object.keys(r))idx[normHead(k)]=r[k];
@@ -851,8 +877,10 @@ function cruzarServicesEnTrabajos(rawTrabajos,servicesPlanning){
     if(!codN)continue;
     const tNum=parseFloat(String(get(SIN_TIEMPO)).replace(',','.'));
     const razon=get(SIN_RAZON);
-    const fecha=_parseDate(get(SIN_FECHA));
-    filasTrab.push({codN,fecha,razon,tNum:isFinite(tNum)&&tNum>0?tNum:0});
+    // Soporta rangos "3/3/2026 - 12/3/2026": el cruce contra services planificados
+    // matchea si el service cae adentro del rango (o dentro de ±7d del rango).
+    const rango=_parseFechaRango(get(SIN_FECHA));
+    filasTrab.push({codN,rango,razon,tNum:isFinite(tNum)&&tNum>0?tNum:0});
     if(isFinite(tNum)&&tNum>0&&/service|mantenimiento/i.test(razon)){
       const pref=_prefijoCod(codN);
       if(!horasPorPref[pref])horasPorPref[pref]=[];
@@ -864,21 +892,22 @@ function cruzarServicesEnTrabajos(rawTrabajos,servicesPlanning){
   out.medianas.global=medianaGlobal;
   for(const k of Object.keys(horasPorPref))out.medianas.porPrefijo[k]=_mediana(horasPorPref[k]);
 
-  // 2) Indexar filas de TRABAJOS por codN -> array de {fecha, razon}
+  // 2) Indexar filas de TRABAJOS por codN
   const trabajosPorCod={};
   for(const f of filasTrab){
     if(!trabajosPorCod[f.codN])trabajosPorCod[f.codN]=[];
     trabajosPorCod[f.codN].push(f);
   }
 
-  // 3) Cruce
+  // 3) Cruce: service "en ventana" si su fecha cae dentro del rango del trabajo o
+  // a ≤SERVICE_VENTANA_DIAS de cualquiera de los extremos.
   const ventanaMs=SERVICE_VENTANA_DIAS*86400000;
   for(const ev of servicesPlanning.eventos){
     out.cumplimiento.total++;
     if(!out.serviceFechasMatch[ev.cod])out.serviceFechasMatch[ev.cod]=new Set();
     out.serviceFechasMatch[ev.cod].add(ev.ymd);
     const filas=trabajosPorCod[ev.cod]||[];
-    const enVentana=filas.filter(f=>f.fecha&&Math.abs(f.fecha-ev.fecha)<=ventanaMs);
+    const enVentana=filas.filter(f=>f.rango&&_distAlRango(ev.fecha,f.rango)<=ventanaMs);
     if(enVentana.length===0){
       out.cumplimiento.sinCarga++;
       const pref=_prefijoCod(ev.cod);
@@ -2479,9 +2508,9 @@ async function toggleEquipoDetail(codigo,cardEl){
   const _svcFechasArr = _svcFechas ? [..._svcFechas].map(ymd=>{const [y,m,d]=ymd.split('-');return new Date(+y,+m-1,+d);}) : [];
   const _matchSvcPlan = (fechaStr)=>{
     if(!_svcFechasArr.length)return false;
-    const d = _parseDate(fechaStr);
-    if(!d)return false;
-    for(const fp of _svcFechasArr) if(Math.abs(d-fp)<=_ventanaMs) return true;
+    const rango = _parseFechaRango(fechaStr);
+    if(!rango)return false;
+    for(const fp of _svcFechasArr) if(_distAlRango(fp,rango)<=_ventanaMs) return true;
     return false;
   };
 
