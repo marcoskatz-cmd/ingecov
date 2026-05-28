@@ -76,17 +76,25 @@ function getPedidos(params) {
 }
 
 /**
- * Códigos de equipos: el Sheet tiene varias pestañas (una por categoría).
- * Las concatenamos todas, agregando una columna __pestana para que el front
- * sepa de dónde vino cada fila (el HTML viejo hacía esto categorizando por
- * pestaña).
+ * Códigos de equipos: pestañas espejadas desde el .xlsx por syncCodigosEquipos
+ * en el Sheet MIRROR_SHEET_ID. Filtramos solo las 4 esperadas (CODIGOS_TABS)
+ * para no mezclar con otras pestañas que viven en el mismo mirror Sheet
+ * (ej. COMBUSTIBLE_LIVIANOS_MIRROR).
  */
 function getCodigos(params) {
   return cachedFetch('codigos', params, function() {
-    const ss = SpreadsheetApp.openById(SHEET_IDS.codigos);
+    const mirrorId = getProperty('MIRROR_SHEET_ID');
+    if (!mirrorId) {
+      throw new ApiError('mirror_not_configured',
+        'Falta Script Property MIRROR_SHEET_ID — ver DEPLOY.md', 500);
+    }
+    const ss = SpreadsheetApp.openById(mirrorId);
+    const esperadas = {};
+    for (let i = 0; i < CODIGOS_TABS.length; i++) esperadas[CODIGOS_TABS[i]] = true;
     const out = [];
     ss.getSheets().forEach(function(sh) {
       const name = sh.getName();
+      if (!esperadas[name]) return;
       const rows = sheetToObjects_(sh);
       rows.forEach(function(r) {
         r.__pestana = name;
@@ -152,7 +160,7 @@ function getCombustibleLivianos(params) {
 
 /**
  * Refresh: corre el/los consolidador(es) e invalida las caches relacionadas.
- * params.panel ∈ {'all', 'trabajos', 'repuestos', 'combustible_livianos'}
+ * params.panel ∈ {'all', 'trabajos', 'repuestos', 'combustible_livianos', 'codigos'}
  */
 function refreshHandler(params) {
   const panel = (params && params.panel) || 'all';
@@ -172,10 +180,14 @@ function refreshHandler(params) {
     invalidateCacheKey('combustible_livianos');
     ran.push('combustible_livianos');
   }
-  // Cuando refrescamos repuestos también invalidamos pedidos/codigos por las
-  // dudas que algún sync indirecto los toque (cheap insurance).
+  if (panel === 'all' || panel === 'codigos') {
+    syncCodigosEquipos();
+    invalidateCacheKey('codigos');
+    ran.push('codigos');
+  }
+  // Cuando refrescamos todo también invalidamos endpoints sin sync propio.
   if (panel === 'all') {
-    invalidateCacheKeys(['pedidos', 'codigos', 'combustible', 'service', 'indicadores']);
+    invalidateCacheKeys(['pedidos', 'combustible', 'service', 'indicadores']);
   }
   return { refreshed: ran, panel: panel };
 }

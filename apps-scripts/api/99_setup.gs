@@ -30,6 +30,8 @@ function setupTriggers() {
     .timeBased().everyMinutes(30).create();
   ScriptApp.newTrigger('syncCombustibleLivianos')
     .timeBased().everyMinutes(30).create();
+  ScriptApp.newTrigger('syncCodigosEquipos')
+    .timeBased().everyMinutes(30).create();
 
   Logger.log('Triggers creados:');
   ScriptApp.getProjectTriggers().forEach(function(t) {
@@ -49,6 +51,7 @@ function initializeProperties() {
   const defaults = {
     ALLOWED_EMAILS:                 'marcoskatz@grupoingeco.com.ar,nicobdallagata@gmail.com',
     XLSX_COMBUSTIBLE_LIVIANOS_ID:   '16KmV7k9gsqBgtd3YpesD2w9Hq2BEasac',
+    XLSX_CODIGOS_EQUIPOS_ID:        '1I4ejRAoMnpou-cRvefgfVCzPg9Obkmi2',
     MIRROR_SHEET_ID:                '',  // <-- EDITAR manualmente con el ID del Sheet mirror que creés
     CACHE_TTL_SECONDS:              '1800',
     MIRROR_STRATEGY:                'export', // 'export' (default) o 'copy' si Drive.Files.export no extrae la pestaña correcta
@@ -80,8 +83,8 @@ function checkSetup() {
   // Properties
   Logger.log('Script Properties:');
   const props = PropertiesService.getScriptProperties().getProperties();
-  ['ALLOWED_EMAILS', 'XLSX_COMBUSTIBLE_LIVIANOS_ID', 'MIRROR_SHEET_ID',
-   'CACHE_TTL_SECONDS', 'MIRROR_STRATEGY'].forEach(function(k) {
+  ['ALLOWED_EMAILS', 'XLSX_COMBUSTIBLE_LIVIANOS_ID', 'XLSX_CODIGOS_EQUIPOS_ID',
+   'MIRROR_SHEET_ID', 'CACHE_TTL_SECONDS', 'MIRROR_STRATEGY'].forEach(function(k) {
     const v = props[k] == null ? '(faltante)' : props[k];
     Logger.log('  ' + k + ' = ' + v);
   });
@@ -110,7 +113,11 @@ function checkSetup() {
       const ss = SpreadsheetApp.openById(mirrorId);
       Logger.log('  OK mirror: "' + ss.getName() + '"');
       const sh = ss.getSheetByName(SHEETS.combustible_mirror);
-      Logger.log('  Pestaña ' + SHEETS.combustible_mirror + ': ' + (sh ? 'existe' : 'FALTA — crear manualmente'));
+      Logger.log('  Pestaña ' + SHEETS.combustible_mirror + ': ' + (sh ? 'existe' : 'FALTA — se crea automáticamente en el primer sync'));
+      CODIGOS_TABS.forEach(function(name) {
+        const t = ss.getSheetByName(name);
+        Logger.log('  Pestaña "' + name + '": ' + (t ? 'existe' : 'FALTA — se crea automáticamente en el primer sync'));
+      });
     } catch (e) {
       Logger.log('  ERROR mirror: ' + e.message);
     }

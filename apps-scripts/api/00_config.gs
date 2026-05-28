@@ -11,20 +11,31 @@
  * Script Properties para poder editarse sin redeploy.
  */
 
-// Sheets que el panel consume. Estos IDs son los mismos que estaban en
-// js/app.js antes del migrate a la API.
+// Sheets nativos que el Apps Script lee con openById.
+// CÓDIGOS DE EQUIPOS y COMBUSTIBLE LIVIANOS son .xlsx externos; su ID original
+// vive en Script Properties (XLSX_*) y un trigger los espeja a pestañas
+// nativas dentro del Sheet identificado por MIRROR_SHEET_ID.
 const SHEET_IDS = {
   pedidos:             '1VFJwFLLEaOE9tTuwah7QkaDTrYkeYtOH8brUgSyHeFY',
   indicadores:         '1GpP2ejMVXncr2OLmKK_IP-zqr5AARi1Q3YdQIPlsUUE',
-  codigos:             '1I4ejRAoMnpou-cRvefgfVCzPg9Obkmi2',
+  // codigos eliminado de acá: se lee del mirror (pestañas en MIRROR_SHEET_ID
+  // mantenidas por syncCodigosEquipos, que copia el .xlsx XLSX_CODIGOS_EQUIPOS_ID).
   repuestos_hist:      '1TUEoOul4SI5O323LcMq2VkaxdcTMfTmZce7NToGESfc',
   trabajos_reg:        '1cNWQ44UEDiotHyB65BfTMcFuOCfQXYQoSNNAdAKTsy8',
   service:             '1zB9q0e9kxRKe52-I0u5Dqg7PUSE_nlxi3IYn7pxF0Iw',
   combustible:         '19dqJ-tcdmXiOns99mJgMMmZNDT3kKS7EQXwHd7VDILc',
   programaService:     '1y6pqbXscej3139lkImWJsJHeJvFa0B5sneICEyyNPmI',
-  // combustibleLivianos NO va acá porque es un .xlsx — su ID y el del mirror
-  // viven en Script Properties para que cualquier cambio sea sin redeploy.
 };
+
+// Pestañas esperadas en el .xlsx de CÓDIGOS DE EQUIPOS (= nombres de categoría
+// que usa el panel). El sync espera estos nombres EXACTOS; si la persona que
+// mantiene el .xlsx renombra una pestaña, hay que actualizar acá.
+const CODIGOS_TABS = [
+  'VIALES, ASFALTO Y TRITURACIÓN',
+  'TRANSPORTE LIVIANO',
+  'TRANSPORTE PESADO',
+  'SOPORTE',
+];
 
 // Nombres de pestañas (matchean lo que el panel HTML esperaba).
 const SHEETS = {

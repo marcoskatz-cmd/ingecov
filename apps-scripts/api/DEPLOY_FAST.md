@@ -44,6 +44,7 @@ Versión condensada del [DEPLOY.md](./DEPLOY.md). Si querés entender qué hace 
 |---|---|
 | `ALLOWED_EMAILS` | `marcoskatz@grupoingeco.com.ar,nicobdallagata@gmail.com` |
 | `XLSX_COMBUSTIBLE_LIVIANOS_ID` | `16KmV7k9gsqBgtd3YpesD2w9Hq2BEasac` |
+| `XLSX_CODIGOS_EQUIPOS_ID` | `1I4ejRAoMnpou-cRvefgfVCzPg9Obkmi2` |
 | `MIRROR_SHEET_ID` | **(pegar acá el ID que anotaste en el paso 1)** |
 | `CACHE_TTL_SECONDS` | `1800` |
 | `MIRROR_STRATEGY` | `export` |
@@ -71,6 +72,16 @@ Versión condensada del [DEPLOY.md](./DEPLOY.md). Si querés entender qué hace 
 1. Dropdown de funciones → `checkSetup` → Run.
 2. View → **Executions** → click en la ejecución reciente → ver logs.
 3. Todos los Sheets deben decir `OK ...`. Si alguno dice `ERROR`, copiá el mensaje y mandámelo.
+
+---
+
+## Paso 6.5 · Probar el sync de CÓDIGOS DE EQUIPOS (~1 min)
+
+1. Dropdown de funciones → `syncCodigosEquipos` → Run.
+2. View → Executions → ver logs. Tiene que decir algo como `[codigos] N filas volcadas | 4 pestañas OK / 0 faltantes`.
+3. Abrir "INGECO Panel Mirror" en otra pestaña — deben haberse creado las 4 pestañas (VIALES, ASFALTO Y TRITURACIÓN / TRANSPORTE LIVIANO / TRANSPORTE PESADO / SOPORTE) con datos.
+
+Si dice "pestañas faltantes": el .xlsx original cambió nombres de pestaña. Avisame y ajustamos `CODIGOS_TABS` en el código.
 
 ---
 

@@ -1,17 +1,10 @@
 /**
  * INGECO Panel API — ALL-IN-ONE
  * ----------------------------------------------------------------------------
- * Este archivo concatena los 9 .gs del proyecto en uno solo. Pegar TODO esto
- * en el Code.gs por defecto al crear el proyecto Apps Script. Funciona igual
- * que tenerlos separados — Apps Script es un único scope global, los archivos
- * son solo organización visual.
+ * Concatenación de los 10 .gs del proyecto. Pegar TODO en el Code.gs por
+ * defecto al crear el proyecto Apps Script.
  *
- * Si después querés separarlos para mantener: cortar cada bloque y crear un
- * archivo nuevo en el editor con el nombre indicado en el comentario superior
- * de cada sección.
- *
- * Generado automáticamente desde apps-scripts/api/<n>.gs — no editar acá,
- * editar los archivos fuente.
+ * Generado automáticamente desde apps-scripts/api/<n>.gs — no editar acá.
  * ============================================================================
  */
 
@@ -32,20 +25,31 @@
  * Script Properties para poder editarse sin redeploy.
  */
 
-// Sheets que el panel consume. Estos IDs son los mismos que estaban en
-// js/app.js antes del migrate a la API.
+// Sheets nativos que el Apps Script lee con openById.
+// CÓDIGOS DE EQUIPOS y COMBUSTIBLE LIVIANOS son .xlsx externos; su ID original
+// vive en Script Properties (XLSX_*) y un trigger los espeja a pestañas
+// nativas dentro del Sheet identificado por MIRROR_SHEET_ID.
 const SHEET_IDS = {
   pedidos:             '1VFJwFLLEaOE9tTuwah7QkaDTrYkeYtOH8brUgSyHeFY',
   indicadores:         '1GpP2ejMVXncr2OLmKK_IP-zqr5AARi1Q3YdQIPlsUUE',
-  codigos:             '1I4ejRAoMnpou-cRvefgfVCzPg9Obkmi2',
+  // codigos eliminado de acá: se lee del mirror (pestañas en MIRROR_SHEET_ID
+  // mantenidas por syncCodigosEquipos, que copia el .xlsx XLSX_CODIGOS_EQUIPOS_ID).
   repuestos_hist:      '1TUEoOul4SI5O323LcMq2VkaxdcTMfTmZce7NToGESfc',
   trabajos_reg:        '1cNWQ44UEDiotHyB65BfTMcFuOCfQXYQoSNNAdAKTsy8',
   service:             '1zB9q0e9kxRKe52-I0u5Dqg7PUSE_nlxi3IYn7pxF0Iw',
   combustible:         '19dqJ-tcdmXiOns99mJgMMmZNDT3kKS7EQXwHd7VDILc',
   programaService:     '1y6pqbXscej3139lkImWJsJHeJvFa0B5sneICEyyNPmI',
-  // combustibleLivianos NO va acá porque es un .xlsx — su ID y el del mirror
-  // viven en Script Properties para que cualquier cambio sea sin redeploy.
 };
+
+// Pestañas esperadas en el .xlsx de CÓDIGOS DE EQUIPOS (= nombres de categoría
+// que usa el panel). El sync espera estos nombres EXACTOS; si la persona que
+// mantiene el .xlsx renombra una pestaña, hay que actualizar acá.
+const CODIGOS_TABS = [
+  'VIALES, ASFALTO Y TRITURACIÓN',
+  'TRANSPORTE LIVIANO',
+  'TRANSPORTE PESADO',
+  'SOPORTE',
+];
 
 // Nombres de pestañas (matchean lo que el panel HTML esperaba).
 const SHEETS = {
@@ -356,17 +360,25 @@ function getPedidos(params) {
 }
 
 /**
- * Códigos de equipos: el Sheet tiene varias pestañas (una por categoría).
- * Las concatenamos todas, agregando una columna __pestana para que el front
- * sepa de dónde vino cada fila (el HTML viejo hacía esto categorizando por
- * pestaña).
+ * Códigos de equipos: pestañas espejadas desde el .xlsx por syncCodigosEquipos
+ * en el Sheet MIRROR_SHEET_ID. Filtramos solo las 4 esperadas (CODIGOS_TABS)
+ * para no mezclar con otras pestañas que viven en el mismo mirror Sheet
+ * (ej. COMBUSTIBLE_LIVIANOS_MIRROR).
  */
 function getCodigos(params) {
   return cachedFetch('codigos', params, function() {
-    const ss = SpreadsheetApp.openById(SHEET_IDS.codigos);
+    const mirrorId = getProperty('MIRROR_SHEET_ID');
+    if (!mirrorId) {
+      throw new ApiError('mirror_not_configured',
+        'Falta Script Property MIRROR_SHEET_ID — ver DEPLOY.md', 500);
+    }
+    const ss = SpreadsheetApp.openById(mirrorId);
+    const esperadas = {};
+    for (let i = 0; i < CODIGOS_TABS.length; i++) esperadas[CODIGOS_TABS[i]] = true;
     const out = [];
     ss.getSheets().forEach(function(sh) {
       const name = sh.getName();
+      if (!esperadas[name]) return;
       const rows = sheetToObjects_(sh);
       rows.forEach(function(r) {
         r.__pestana = name;
@@ -432,7 +444,7 @@ function getCombustibleLivianos(params) {
 
 /**
  * Refresh: corre el/los consolidador(es) e invalida las caches relacionadas.
- * params.panel ∈ {'all', 'trabajos', 'repuestos', 'combustible_livianos'}
+ * params.panel ∈ {'all', 'trabajos', 'repuestos', 'combustible_livianos', 'codigos'}
  */
 function refreshHandler(params) {
   const panel = (params && params.panel) || 'all';
@@ -452,10 +464,14 @@ function refreshHandler(params) {
     invalidateCacheKey('combustible_livianos');
     ran.push('combustible_livianos');
   }
-  // Cuando refrescamos repuestos también invalidamos pedidos/codigos por las
-  // dudas que algún sync indirecto los toque (cheap insurance).
+  if (panel === 'all' || panel === 'codigos') {
+    syncCodigosEquipos();
+    invalidateCacheKey('codigos');
+    ran.push('codigos');
+  }
+  // Cuando refrescamos todo también invalidamos endpoints sin sync propio.
   if (panel === 'all') {
-    invalidateCacheKeys(['pedidos', 'codigos', 'combustible', 'service', 'indicadores']);
+    invalidateCacheKeys(['pedidos', 'combustible', 'service', 'indicadores']);
   }
   return { refreshed: ran, panel: panel };
 }
@@ -922,6 +938,96 @@ function _writeToMirror(mirrorId, rows) {
 
 
 // ============================================================================
+// ARCHIVO: 23_sync_codigos_equipos.gs
+// ============================================================================
+
+/**
+ * Sync de CÓDIGOS DE EQUIPOS.
+ *
+ * El archivo original es un .xlsx mantenido por otra persona (Marcos no lo
+ * edita). SpreadsheetApp.openById no puede leer .xlsx directamente. La
+ * solución: hacer una copia temporal como Sheet nativo, leer las 4 pestañas
+ * esperadas (CODIGOS_TABS), volcar a las mismas pestañas en MIRROR_SHEET_ID
+ * (junto a COMBUSTIBLE_LIVIANOS_MIRROR), y borrar la copia.
+ *
+ * Trigger cada 30 min (mismo período que los otros consolidadores).
+ *
+ * Costo por corrida: ~2-3 segundos (Drive.Files.copy + read 4 sheets + remove).
+ *
+ * REQUIERE: Drive API habilitada en Services (ya está activa para el sync
+ * de combustible livianos).
+ */
+
+function syncCodigosEquipos() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(60 * 1000)) {
+    Logger.log('[codigos] otra corrida en curso, salto');
+    return;
+  }
+  let tempId = null;
+  try {
+    const xlsxId   = getProperty('XLSX_CODIGOS_EQUIPOS_ID');
+    const mirrorId = getProperty('MIRROR_SHEET_ID');
+    if (!xlsxId || !mirrorId) {
+      throw new Error('Faltan Script Properties XLSX_CODIGOS_EQUIPOS_ID y/o MIRROR_SHEET_ID');
+    }
+
+    // Copia temporal del .xlsx como Sheet nativo (preserva las 4 pestañas).
+    const copy = Drive.Files.copy(
+      { mimeType: 'application/vnd.google-apps.spreadsheet' },
+      xlsxId
+    );
+    tempId = copy.id;
+
+    const src = SpreadsheetApp.openById(tempId);
+    const dst = SpreadsheetApp.openById(mirrorId);
+
+    let totalFilas = 0;
+    let pestanasOk = 0;
+    let pestanasFaltantes = 0;
+
+    CODIGOS_TABS.forEach(function(name) {
+      const srcSheet = src.getSheetByName(name);
+      if (!srcSheet) {
+        Logger.log('[codigos] pestaña "' + name + '" no existe en el .xlsx — salto');
+        pestanasFaltantes++;
+        return;
+      }
+      const data = srcSheet.getDataRange().getValues();
+      let dstSheet = dst.getSheetByName(name);
+      if (!dstSheet) dstSheet = dst.insertSheet(name);
+      dstSheet.clear();
+      if (data.length) {
+        // Normalizar a misma cantidad de columnas (algunas .xlsx vienen con
+        // filas dispares — Sheets pide rectangular).
+        let maxCols = 0;
+        data.forEach(function(r) { if (r.length > maxCols) maxCols = r.length; });
+        const normalized = data.map(function(r) {
+          if (r.length === maxCols) return r;
+          const padded = r.slice();
+          while (padded.length < maxCols) padded.push('');
+          return padded;
+        });
+        dstSheet.getRange(1, 1, normalized.length, maxCols).setValues(normalized);
+        dstSheet.setFrozenRows(1);
+        totalFilas += data.length;
+        pestanasOk++;
+      }
+    });
+
+    Logger.log('[codigos] ' + totalFilas + ' filas volcadas | ' +
+               pestanasOk + ' pestañas OK / ' + pestanasFaltantes + ' faltantes');
+  } finally {
+    if (tempId) {
+      try { Drive.Files.remove(tempId); }
+      catch (e) { Logger.log('[codigos] no se pudo borrar copia temp ' + tempId + ': ' + e.message); }
+    }
+    lock.releaseLock();
+  }
+}
+
+
+// ============================================================================
 // ARCHIVO: 99_setup.gs
 // ============================================================================
 
@@ -957,6 +1063,8 @@ function setupTriggers() {
     .timeBased().everyMinutes(30).create();
   ScriptApp.newTrigger('syncCombustibleLivianos')
     .timeBased().everyMinutes(30).create();
+  ScriptApp.newTrigger('syncCodigosEquipos')
+    .timeBased().everyMinutes(30).create();
 
   Logger.log('Triggers creados:');
   ScriptApp.getProjectTriggers().forEach(function(t) {
@@ -976,6 +1084,7 @@ function initializeProperties() {
   const defaults = {
     ALLOWED_EMAILS:                 'marcoskatz@grupoingeco.com.ar,nicobdallagata@gmail.com',
     XLSX_COMBUSTIBLE_LIVIANOS_ID:   '16KmV7k9gsqBgtd3YpesD2w9Hq2BEasac',
+    XLSX_CODIGOS_EQUIPOS_ID:        '1I4ejRAoMnpou-cRvefgfVCzPg9Obkmi2',
     MIRROR_SHEET_ID:                '',  // <-- EDITAR manualmente con el ID del Sheet mirror que creés
     CACHE_TTL_SECONDS:              '1800',
     MIRROR_STRATEGY:                'export', // 'export' (default) o 'copy' si Drive.Files.export no extrae la pestaña correcta
@@ -1007,8 +1116,8 @@ function checkSetup() {
   // Properties
   Logger.log('Script Properties:');
   const props = PropertiesService.getScriptProperties().getProperties();
-  ['ALLOWED_EMAILS', 'XLSX_COMBUSTIBLE_LIVIANOS_ID', 'MIRROR_SHEET_ID',
-   'CACHE_TTL_SECONDS', 'MIRROR_STRATEGY'].forEach(function(k) {
+  ['ALLOWED_EMAILS', 'XLSX_COMBUSTIBLE_LIVIANOS_ID', 'XLSX_CODIGOS_EQUIPOS_ID',
+   'MIRROR_SHEET_ID', 'CACHE_TTL_SECONDS', 'MIRROR_STRATEGY'].forEach(function(k) {
     const v = props[k] == null ? '(faltante)' : props[k];
     Logger.log('  ' + k + ' = ' + v);
   });
@@ -1037,7 +1146,11 @@ function checkSetup() {
       const ss = SpreadsheetApp.openById(mirrorId);
       Logger.log('  OK mirror: "' + ss.getName() + '"');
       const sh = ss.getSheetByName(SHEETS.combustible_mirror);
-      Logger.log('  Pestaña ' + SHEETS.combustible_mirror + ': ' + (sh ? 'existe' : 'FALTA — crear manualmente'));
+      Logger.log('  Pestaña ' + SHEETS.combustible_mirror + ': ' + (sh ? 'existe' : 'FALTA — se crea automáticamente en el primer sync'));
+      CODIGOS_TABS.forEach(function(name) {
+        const t = ss.getSheetByName(name);
+        Logger.log('  Pestaña "' + name + '": ' + (t ? 'existe' : 'FALTA — se crea automáticamente en el primer sync'));
+      });
     } catch (e) {
       Logger.log('  ERROR mirror: ' + e.message);
     }
