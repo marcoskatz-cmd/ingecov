@@ -202,47 +202,43 @@ async function _gvizObjImpl(id,sheet,range){
 }
 
 /* ═══════════════════════════════════════════════════════
-   API PRIVADA — Apps Script Web App
+   API PRIVADA — Cloudflare Pages Function + Apps Script
    ──────────────────────────────────────────────────────
-   Cuando USE_API es true, fetchGvizRaw/Obj derivan al Web App
-   (que valida whitelist y lee los Sheets con la cuenta de Marcos)
-   en lugar de hacer gviz directo. Los Sheets pueden estar privados.
+   Auth: Google Identity Services (Sign in with Google).
+     - El panel hace login con Google al cargar.
+     - Recibe un ID token (JWT firmado por Google).
+     - Cada fetch a /api/ va con Authorization: Bearer <jwt>.
+     - El Worker (Pages Function) valida el JWT + chequea whitelist.
+     - Si OK, reenvía al Apps Script con shared secret.
 
-   Para activar:
-     1. Deployar el proyecto Apps Script (ver apps-scripts/api/DEPLOY.md).
-     2. Pegar la URL del Web App en API_URL abajo.
-     3. Cambiar USE_API a true.
-     4. Commit + push.
-
-   El shim hace fallback a gviz directo para (id,sheet) pares no mapeados.
-   Eso permite migración parcial mientras se prueba — los pares migrados
-   van por API, los demás siguen por gviz hasta que se sumen al mapping.
+   API_URL es relativo (/api/) porque el panel y el Worker viven en el
+   mismo dominio Cloudflare Pages → cero CORS.
 ═══════════════════════════════════════════════════════ */
-// API privada via Cloudflare Worker (Pages Function en /api/).
-//   - El panel hace fetch a /api/?ep=X (mismo origen → cero CORS).
-//   - El Worker está protegido por Cloudflare Access (whitelist por email).
-//   - El Worker reenvía al Apps Script con un shared secret para que el
-//     Apps Script confíe en el email del usuario que CF Access ya validó.
-//
-// Cuando el panel se sirve desde Cloudflare Pages (mantenimiento-ingeco.pages.dev),
-// USE_API=true. Si alguien lo abre desde un origen sin la Pages Function (por
-// ejemplo en localhost sin wrangler), el flag funciona con fallback a gviz.
 const USE_API = true;
 const API_URL = '/api/';
+const GOOGLE_CLIENT_ID = '1080058000144-k3b62ml3ccl00p0tnk109rmij6pflcs8.apps.googleusercontent.com';
+
+// State del login. Se setea en handleGoogleCredential() cuando el usuario
+// se autentica con Google Identity Services.
+let _idToken = null;
+let _userEmail = null;
 
 /**
- * Llama a la API. Si el server devuelve 403 (no autorizado), muestra la
- * pantalla de auth gate y tira para detener el loadAll.
+ * Llama a la API. Manda el ID token de Google en Authorization.
+ * Si el server devuelve 401/403, muestra la pantalla de auth gate.
  */
 async function fetchApi(endpoint, params){
-  if(!API_URL){
-    throw new Error('API_URL vacío — completar antes de activar USE_API');
+  if (!_idToken) {
+    showSignInScreen('Necesitás iniciar sesión.');
+    throw new Error('not_signed_in');
   }
   const qs = new URLSearchParams({ ep: endpoint, ...(params||{}) });
-  const r = await fetch(`${API_URL}?${qs}`, { credentials: 'include' });
+  const r = await fetch(`${API_URL}?${qs}`, {
+    headers: { 'Authorization': `Bearer ${_idToken}` },
+  });
   const body = await r.json().catch(()=>({ ok:false, error:'bad_response', message: 'respuesta no es JSON' }));
   if (!body.ok) {
-    if (body.error === 'not_authorized' || body.error === 'no_session') {
+    if (['not_authorized','no_session','no_token','invalid_token','email_unverified'].includes(body.error)) {
       showAuthGate(body.message || body.error);
       throw new Error('not_authorized');
     }
@@ -3285,4 +3281,82 @@ document.addEventListener('click',  _dispatchAction);
 document.addEventListener('change', _dispatchAction);
 document.addEventListener('input',  _dispatchAction);
 
-loadAll();
+/* ═══════════════════════════════════════════════════════
+   GOOGLE SIGN IN — bootstrap
+═══════════════════════════════════════════════════════ */
+// Bootstrap: si USE_API está activo, hay que loguearse antes de hacer loadAll.
+// Si USE_API es false, arranca como antes (gviz directo, sin auth).
+if (USE_API) {
+  // Esperar a que Google Identity Services cargue (script externo async).
+  (function waitForGIS(){
+    if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
+      initGoogleSignIn();
+    } else {
+      setTimeout(waitForGIS, 100);
+    }
+  })();
+} else {
+  loadAll();
+}
+
+function initGoogleSignIn(){
+  google.accounts.id.initialize({
+    client_id: GOOGLE_CLIENT_ID,
+    callback: handleGoogleCredential,
+    auto_select: true,
+    cancel_on_tap_outside: false,
+    use_fedcm_for_prompt: true,
+  });
+  google.accounts.id.prompt((notification) => {
+    // Si One Tap no se muestra (browser bloquea, usuario no logueado en
+    // Google, etc.), mostrar pantalla con botón "Iniciar sesión".
+    if (notification.isNotDisplayed() || notification.isSkippedMoment() || notification.isDismissedMoment()) {
+      showSignInScreen();
+    }
+  });
+}
+
+function handleGoogleCredential(response){
+  _idToken = response.credential;
+  // Decodear el payload (sin verificar — la verificación real la hace el Worker).
+  try {
+    const payload = JSON.parse(atob(response.credential.split('.')[1]));
+    _userEmail = payload.email;
+  } catch (e) {
+    console.error('[INGECO] no se pudo decodear ID token:', e);
+  }
+  // Limpiar la pantalla de sign-in si estaba activa, iniciar carga del panel.
+  const err = document.getElementById('errorState');
+  if (err) { err.style.display = 'none'; err.textContent = ''; }
+  loadAll();
+}
+
+function showSignInScreen(extraMsg){
+  const err = document.getElementById('errorState');
+  const dashboard = document.getElementById('dashboard');
+  const loading = document.getElementById('loadingState');
+  if (loading)   loading.style.display = 'none';
+  if (dashboard) dashboard.style.display = 'none';
+  if (!err) return;
+  err.style.display = 'block';
+  setHTML(err, html`
+    <div style="min-height:60vh;display:flex;align-items:center;justify-content:center;padding:40px">
+      <div style="max-width:520px;text-align:center">
+        <div style="font-size:48px;line-height:1;margin-bottom:16px">🔐</div>
+        <h2 style="margin:0 0 12px 0;font-size:20px;color:var(--text)">Iniciar sesión</h2>
+        <p style="margin:8px 0 16px 0;color:var(--text2);font-size:13px;line-height:1.5">
+          El panel INGECO requiere autenticación con Google.
+          ${extraMsg ? html`<br><small style="color:var(--text3)">${extraMsg}</small>` : ''}
+        </p>
+        <div id="g_id_signin_btn" style="display:inline-block"></div>
+      </div>
+    </div>
+  `);
+  // Renderizar el botón oficial de Google Sign In.
+  if (google && google.accounts && google.accounts.id) {
+    google.accounts.id.renderButton(
+      document.getElementById('g_id_signin_btn'),
+      { theme: 'filled_blue', size: 'large', text: 'signin_with', shape: 'pill' }
+    );
+  }
+}
