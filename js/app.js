@@ -717,6 +717,7 @@ function procesarPanelTrabajos(rawRows){
     horasFlota:{prev:0,corr:0,total:0},
     horasPrevPorMes:{},horasCorrPorMes:{},
     horasPrevPorEquipo:{},horasCorrPorEquipo:{},
+    horasPorMesYEquipo:{}, // {ym: {codN: horas}} — para listado de horas filtrado por rango
   };
   if(!rawRows||!rawRows.length)return out;
   const SINONIMOS={
@@ -765,13 +766,17 @@ function procesarPanelTrabajos(rawRows){
       if(esPrev)out.horasPrevPorEquipo[codN]=(out.horasPrevPorEquipo[codN]||0)+tNum;
       else      out.horasCorrPorEquipo[codN]=(out.horasCorrPorEquipo[codN]||0)+tNum;
     }
-    // horas por mes a nivel flota
+    // horas por mes a nivel flota + por mes y equipo (para listado filtrado)
     const d=_parseDate(fecha);
     if(d){
       const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
       out.horasPorMesFlota[ym]=(out.horasPorMesFlota[ym]||0)+tNum;
       if(esPrev)out.horasPrevPorMes[ym]=(out.horasPrevPorMes[ym]||0)+tNum;
       else      out.horasCorrPorMes[ym]=(out.horasCorrPorMes[ym]||0)+tNum;
+      if(codN){
+        out.horasPorMesYEquipo[ym]=out.horasPorMesYEquipo[ym]||{};
+        out.horasPorMesYEquipo[ym][codN]=(out.horasPorMesYEquipo[ym][codN]||0)+tNum;
+      }
     }
   }
   out.totalFilas=totalFilas;
@@ -971,6 +976,7 @@ function cruzarServicesEnTrabajos(rawTrabajos,servicesPlanning){
     horasAgregadasFlota:0,
     horasAgregadasPorEquipo:{},
     horasAgregadasPorMes:{},
+    horasAgregadasPorMesYEquipo:{}, // {ym: {codN: horas}} para listado filtrado
     serviceFechasMatch:{}, // codN -> Set<ymd> con TODAS las fechas con service planificado del equipo
     cumplimiento:{total:0,cargadosService:0,cargadosOtraRazon:0,sinCarga:0},
     medianas:{global:null,porPrefijo:{}},
@@ -1048,6 +1054,8 @@ function cruzarServicesEnTrabajos(rawTrabajos,servicesPlanning){
         out.horasAgregadasFlota+=h;
         out.horasAgregadasPorEquipo[ev.cod]=(out.horasAgregadasPorEquipo[ev.cod]||0)+h;
         out.horasAgregadasPorMes[ev.ym]=(out.horasAgregadasPorMes[ev.ym]||0)+h;
+        out.horasAgregadasPorMesYEquipo[ev.ym]=out.horasAgregadasPorMesYEquipo[ev.ym]||{};
+        out.horasAgregadasPorMesYEquipo[ev.ym][ev.cod]=(out.horasAgregadasPorMesYEquipo[ev.ym][ev.cod]||0)+h;
       }
       continue;
     }
@@ -2091,6 +2099,7 @@ async function loadAll(){
     window._horasCorrPorMes    = tctx.horasCorrPorMes;
     window._horasPrevPorEquipo = tctx.horasPrevPorEquipo;
     window._horasCorrPorEquipo = tctx.horasCorrPorEquipo;
+    window._horasPorMesYEquipo = tctx.horasPorMesYEquipo;
 
     // Procesar SERVICES PLANIFICADOS y cruzar con PANEL_TRABAJOS.
     // Suma al preventivo horas estimadas de los services que el planning dice
@@ -2110,6 +2119,12 @@ async function loadAll(){
       for(const ym of Object.keys(sctx.horasAgregadasPorMes)){
         window._horasPorMesFlota[ym]=(window._horasPorMesFlota[ym]||0)+sctx.horasAgregadasPorMes[ym];
         window._horasPrevPorMes[ym]=(window._horasPrevPorMes[ym]||0)+sctx.horasAgregadasPorMes[ym];
+      }
+      for(const ym of Object.keys(sctx.horasAgregadasPorMesYEquipo||{})){
+        window._horasPorMesYEquipo[ym]=window._horasPorMesYEquipo[ym]||{};
+        for(const k of Object.keys(sctx.horasAgregadasPorMesYEquipo[ym])){
+          window._horasPorMesYEquipo[ym][k]=(window._horasPorMesYEquipo[ym][k]||0)+sctx.horasAgregadasPorMesYEquipo[ym][k];
+        }
       }
     }
 
@@ -2323,7 +2338,7 @@ function _actualizarKpisDeRango(){
   const subC=document.getElementById('kpiCostoSub');
   if(valC)valC.textContent=costo>0?formatMoney(costo):'—';
   if(subC)subC.textContent=`${labelRango} · ${fmtInt(entConCosto)} entregas con costo`;
-  if(cardC)cardC.classList.toggle('kpi-empty',!(costo>0));
+  if(cardC){cardC.classList.toggle('kpi-empty',!(costo>0));cardC.classList.toggle('kpi-clickable',costo>0);}
   // --- Horas en taller ---
   const horasTotal=_sumarPorMes(window._horasPorMesFlota||{},yms);
   const horasCorr=_sumarPorMes(window._horasCorrPorMes||{},yms);
@@ -2343,7 +2358,7 @@ function _actualizarKpisDeRango(){
       subH.textContent=`${labelRango} · sin horas registradas`;
     }
   }
-  if(cardH)cardH.classList.toggle('kpi-empty',!(horasTotal>0));
+  if(cardH){cardH.classList.toggle('kpi-empty',!(horasTotal>0));cardH.classList.toggle('kpi-clickable',horasTotal>0);}
   // --- Combustible livianos ---
   const gastoComb=_sumarPorMes(window._gastoCombLivianosPorMes||{},yms);
   const cargasComb=_sumarPorMes(window._cargasCombLivianosPorMes||{},yms);
@@ -2352,7 +2367,7 @@ function _actualizarKpisDeRango(){
   const subG=document.getElementById('kpiCombSub');
   if(valG)valG.textContent=gastoComb>0?formatMoney(gastoComb):'—';
   if(subG)subG.textContent=gastoComb>0?`${fmtInt(cargasComb)} cargas · ${labelRango}`:'sin cargas en el rango';
-  if(cardG)cardG.classList.toggle('kpi-empty',!(gastoComb>0));
+  if(cardG){cardG.classList.toggle('kpi-empty',!(gastoComb>0));cardG.classList.toggle('kpi-clickable',gastoComb>0);}
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -2484,9 +2499,9 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
     <div class="kpi${pendActivos?'':' kpi-empty'}"><div class="kpi-label">pedidos activos</div><div class="kpi-val ${pendActivos>10?'red':'amber'}">${fmtInt(pendActivos)}</div><div class="kpi-sub">pendiente · parcial · comprado</div><div class="kpi-accent-bar ${pendActivos>10?'red':'amber'}"></div></div>
     <div class="kpi${enReparacion?'':' kpi-empty'}"><div class="kpi-label">equipos en reparación</div><div class="kpi-val amber">${fmtInt(enReparacion)}</div><div class="kpi-sub">estado naranja en CÓDIGOS</div><div class="kpi-accent-bar amber"></div></div>
     <div class="kpi${_kpiServiceEmpty?' kpi-empty':''}${serviceCritico>0?' kpi-clickable':''}"${svKpiAttrs}><div class="kpi-label">service crítico</div><div class="kpi-val ${serviceClass}">${fmtInt(serviceCritico)}</div><div class="kpi-sub">${serviceSub}</div><div class="kpi-accent-bar ${serviceClass}"></div></div>
-    <div class="kpi${_kpiCostoEmpty?' kpi-empty':''}" id="kpiCostoCard"><div class="kpi-label">costo en repuestos</div><div class="kpi-val amber" id="kpiCostoVal">${totalCostoMes>0?formatMoney(totalCostoMes):'—'}</div><div class="kpi-sub" id="kpiCostoSub">${MES_ACTUAL.label} · ${fmtInt(entConCosto)} entregas con costo</div><div class="kpi-accent-bar amber"></div></div>
-    <div class="kpi${_kpiHorasEmpty?' kpi-empty':''}" id="kpiHorasCard"><div class="kpi-label">horas en taller</div><div class="kpi-val" id="kpiHorasVal">${horasTotalFlota>0?fmtInt(Math.round(horasTotalFlota))+' hr':'—'}</div><div class="kpi-sub${horasTotalFlota>0?' hr-split':''}" id="kpiHorasSub">${horasTotalFlota>0?new RawHTML(`<div class="hr-split-bar"><span class="corr" style="width:${_corrPct}%"></span><span class="prev" style="width:${_prevPct}%"></span></div><span class="hr-split-leg"><i class="corr"></i>${fmtInt(Math.round(_horasCorr))} hr correctivo · ${_corrPct}%</span><span class="hr-split-leg"><i class="prev"></i>${fmtInt(Math.round(_horasPrev))} hr preventivo · ${_prevPct}%</span>`):'acumuladas · flota'}</div><div class="kpi-accent-bar blue"></div></div>
-    <div class="kpi${_gcEmpty?' kpi-empty':''}" id="kpiCombCard"><div class="kpi-label">combustible livianos</div><div class="kpi-val amber" id="kpiCombVal">${_gcVal>0?formatMoney(_gcVal):'—'}</div><div class="kpi-sub" id="kpiCombSub">${_gcSub}</div><div class="kpi-accent-bar amber"></div></div>
+    <div class="kpi${_kpiCostoEmpty?' kpi-empty':' kpi-clickable'}" id="kpiCostoCard" data-action="abrirDetalleKpi" data-arg="costo" title="Ver desglose por equipo"><div class="kpi-label">costo en repuestos</div><div class="kpi-val amber" id="kpiCostoVal">${totalCostoMes>0?formatMoney(totalCostoMes):'—'}</div><div class="kpi-sub" id="kpiCostoSub">${MES_ACTUAL.label} · ${fmtInt(entConCosto)} entregas con costo</div><div class="kpi-accent-bar amber"></div></div>
+    <div class="kpi${_kpiHorasEmpty?' kpi-empty':' kpi-clickable'}" id="kpiHorasCard" data-action="abrirDetalleKpi" data-arg="horas" title="Ver desglose por equipo"><div class="kpi-label">horas en taller</div><div class="kpi-val" id="kpiHorasVal">${horasTotalFlota>0?fmtInt(Math.round(horasTotalFlota))+' hr':'—'}</div><div class="kpi-sub${horasTotalFlota>0?' hr-split':''}" id="kpiHorasSub">${horasTotalFlota>0?new RawHTML(`<div class="hr-split-bar"><span class="corr" style="width:${_corrPct}%"></span><span class="prev" style="width:${_prevPct}%"></span></div><span class="hr-split-leg"><i class="corr"></i>${fmtInt(Math.round(_horasCorr))} hr correctivo · ${_corrPct}%</span><span class="hr-split-leg"><i class="prev"></i>${fmtInt(Math.round(_horasPrev))} hr preventivo · ${_prevPct}%</span>`):'acumuladas · flota'}</div><div class="kpi-accent-bar blue"></div></div>
+    <div class="kpi${_gcEmpty?' kpi-empty':' kpi-clickable'}" id="kpiCombCard" data-action="abrirDetalleKpi" data-arg="combustible" title="Ver desglose por equipo"><div class="kpi-label">combustible livianos</div><div class="kpi-val amber" id="kpiCombVal">${_gcVal>0?formatMoney(_gcVal):'—'}</div><div class="kpi-sub" id="kpiCombSub">${_gcSub}</div><div class="kpi-accent-bar amber"></div></div>
     <div class="kpi kpi-empty" id="kpiDispCard"><div class="kpi-label">disponibilidad global</div><div class="kpi-val" id="kpiDisp">—</div><div class="kpi-sub">cargando…</div><div class="kpi-accent-bar" id="kpiDispBar"></div></div>
   `);
 
@@ -3555,6 +3570,128 @@ window.diag=function(codigo){
 /* ═══════════════════════════════════════════════════════════════════
    MODAL: Service crítico — lista clickeable de equipos pasados/al borde
 ═══════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════
+   MODAL DE DETALLE DE KPI · listado de equipos clickeable
+═══════════════════════════════════════════════════════ */
+// Devuelve nombre legible del equipo a partir del cód normalizado.
+function _equipoLabel(codN){
+  const info=(window._estadoEquipos||{})[codN]||{};
+  const eq=(window._equiposOrdenados||[]).find(e=>normCod(e.codigo)===codN);
+  const rawCod=info.rawCod||eq?.codigo||codN;
+  const nombre=buildEquipoNombre(eq?.clasificacion||info.clasificacion,eq?.marca||info.marca,eq?.modelo||info.modelo,eq?.nombre||info.equipo);
+  return{rawCod,nombre:nombre||codN};
+}
+// Listado de equipos por costo en repuestos para un rango de YMs.
+function _listadoEquiposCosto(yms){
+  const cpm=window._costosPorMes||{};
+  const acc={};
+  for(const ym of yms){
+    const m=cpm[ym]||{};
+    for(const codN of Object.keys(m))acc[codN]=(acc[codN]||0)+(m[codN]||0);
+  }
+  const arr=Object.entries(acc).filter(([_,v])=>v>0).map(([codN,v])=>{
+    const{rawCod,nombre}=_equipoLabel(codN);
+    return{codN,rawCod,nombre,valor:v};
+  });
+  arr.sort((a,b)=>b.valor-a.valor);
+  return arr;
+}
+// Listado de equipos por horas en taller para un rango de YMs.
+function _listadoEquiposHoras(yms){
+  const hpme=window._horasPorMesYEquipo||{};
+  const acc={};
+  for(const ym of yms){
+    const m=hpme[ym]||{};
+    for(const codN of Object.keys(m))acc[codN]=(acc[codN]||0)+(m[codN]||0);
+  }
+  const arr=Object.entries(acc).filter(([_,v])=>v>0).map(([codN,v])=>{
+    const{rawCod,nombre}=_equipoLabel(codN);
+    return{codN,rawCod,nombre,valor:v};
+  });
+  arr.sort((a,b)=>b.valor-a.valor);
+  return arr;
+}
+// Listado de equipos por gasto en combustible livianos para un rango de YMs.
+function _listadoEquiposCombustible(yms){
+  const cpe=window._combustiblePorEquipo||{};
+  const ymsSet=new Set(yms);
+  const acc={};
+  for(const codN of Object.keys(cpe)){
+    const e=cpe[codN];
+    if(!e||!e.cargas)continue;
+    let total=0;
+    for(const c of e.cargas){
+      const d=_parseDate(c.fecha);
+      if(!d)continue;
+      const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      if(ymsSet.has(ym))total+=(c.costo||0);
+    }
+    if(total>0)acc[codN]=total;
+  }
+  const arr=Object.entries(acc).map(([codN,v])=>{
+    const{rawCod,nombre}=_equipoLabel(codN);
+    return{codN,rawCod,nombre,valor:v};
+  });
+  arr.sort((a,b)=>b.valor-a.valor);
+  return arr;
+}
+const _KPI_DETAIL_CFG={
+  costo:{label:'Costo en repuestos',getList:_listadoEquiposCosto,formatVal:v=>formatMoney(v),unitLabel:'$'},
+  horas:{label:'Horas en taller',  getList:_listadoEquiposHoras,formatVal:v=>fmtInt(Math.round(v))+' hr',unitLabel:'hr'},
+  combustible:{label:'Combustible livianos',getList:_listadoEquiposCombustible,formatVal:v=>formatMoney(v),unitLabel:'$'},
+};
+function abrirDetalleKpi(tipo){
+  const cfg=_KPI_DETAIL_CFG[tipo];
+  if(!cfg)return;
+  const yms=_ymsEnRango(window._kpiRangoKey||'mesActual');
+  const labelRango=_labelRango(window._kpiRangoKey||'mesActual');
+  const lista=cfg.getList(yms);
+  const total=lista.reduce((s,x)=>s+x.valor,0);
+  const overlay=document.getElementById('kpiDetailOverlay');
+  const titleEl=document.getElementById('kpiDetailTitle');
+  const subEl=document.getElementById('kpiDetailSub');
+  const listEl=document.getElementById('kpiDetailList');
+  if(!overlay||!listEl)return;
+  titleEl.textContent=`${cfg.label} · ${labelRango}`;
+  setHTML(subEl, html`<span class="v-total">${cfg.formatVal(total)}</span> · ${fmtInt(lista.length)} ${lista.length===1?'equipo':'equipos'}`);
+  if(!lista.length){
+    setHTML(listEl, html`<div style="padding:36px;text-align:center;color:var(--text3);font-size:13px">Sin datos en el rango seleccionado.</div>`);
+  }else{
+    const maxVal=lista[0].valor||1;
+    setHTML(listEl, lista.map(x=>{
+      const pct=Math.round(x.valor/maxVal*100);
+      const pctTotal=total>0?Math.round(x.valor/total*100):0;
+      return html`<div class="kd-row" data-action="_irAEquipoDesdeKpiDetail" data-arg="${x.rawCod}" title="Abrir detalle del equipo">
+        <div class="kd-cod">${x.rawCod}</div>
+        <div class="kd-nom">${x.nombre}</div>
+        <div class="kd-val">${cfg.formatVal(x.valor)}<small>${pctTotal}% del total</small></div>
+        <div class="kd-bar"><div class="kd-bar-fill" style="width:${pct}%"></div></div>
+      </div>`;
+    }));
+  }
+  overlay.classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function cerrarDetalleKpi(){
+  const overlay=document.getElementById('kpiDetailOverlay');
+  if(!overlay)return;
+  overlay.classList.remove('open');
+  document.body.style.overflow='';
+}
+function _irAEquipoDesdeKpiDetail(codigo){
+  cerrarDetalleKpi();
+  const id='eqcard_'+String(codigo).replace(/[^a-z0-9]/gi,'_');
+  const open=()=>{
+    const card=document.getElementById(id);
+    if(!card)return false;
+    card.classList.remove('hidden');
+    toggleEquipoDetail(codigo,card);
+    card.scrollIntoView({behavior:'smooth',block:'center'});
+    return true;
+  };
+  if(!open())setTimeout(open,80);
+}
+
 function openServiceCriticoModal(){
   const list=window._serviceCriticosList||[];
   const wrap=document.getElementById('svModalList');
@@ -3605,12 +3742,13 @@ function _irAEquipoDesdeKpi(codigo){
   };
   if(!open())setTimeout(open,80);
 }
-// Esc cierra el modal de service crítico.
+// Esc cierra el modal de service crítico o el modal de detalle de KPI.
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){
-    const ov=document.getElementById('svModalOverlay');
-    if(ov&&ov.classList.contains('open'))closeServiceCriticoModal();
-  }
+  if(e.key!=='Escape')return;
+  const ovSv=document.getElementById('svModalOverlay');
+  if(ovSv&&ovSv.classList.contains('open'))closeServiceCriticoModal();
+  const ovKd=document.getElementById('kpiDetailOverlay');
+  if(ovKd&&ovKd.classList.contains('open'))cerrarDetalleKpi();
 });
 
 /* ═══════════════════════════════════════════════════════
@@ -3643,6 +3781,10 @@ const ACTIONS = {
   scrollToEquipo:                (codigo) => scrollToEquipo(codigo),
   _irAEquipoDesdeKpi:            (codigo) => _irAEquipoDesdeKpi(codigo),
   closeServiceCriticoModalIfBg:  (_, t, e) => { if (e.target === t) closeServiceCriticoModal(); },
+  abrirDetalleKpi:               (tipo) => abrirDetalleKpi(tipo),
+  cerrarDetalleKpi:              () => cerrarDetalleKpi(),
+  cerrarDetalleKpiIfBg:          (_, t, e) => { if (e.target === t) cerrarDetalleKpi(); },
+  _irAEquipoDesdeKpiDetail:      (codigo) => _irAEquipoDesdeKpiDetail(codigo),
 };
 
 function _dispatchAction(e) {

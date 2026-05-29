@@ -28,12 +28,12 @@
         referrerpolicy="no-referrer"></script>
 <!-- init.js: setea el tema en <html> ANTES del paint para evitar FOUC.
      Sin defer a propósito. -->
-<script src="./js/init.js?v=20"></script>
+<script src="./js/init.js?v=21"></script>
 <!-- app.js: toda la lógica de la app. Con defer corre tras parsear el DOM,
      equivalente a estar al final del <body>. Bump del query ?v= cuando se cambia
      app.js para forzar a clientes con HTTP cache a re-fetchear (el SW solo
      invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/app.js?v=20" defer></script>
+<script src="./js/app.js?v=21" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -599,6 +599,32 @@
     font-family:'JetBrains Mono',monospace;font-size:9px;
     color:var(--text3);text-transform:uppercase;letter-spacing:.08em;
     padding:3px 6px;border:1px solid var(--border2);text-align:center;
+  }
+  /* Modal genérico de detalle de KPI (costo/horas/combustible por equipo) */
+  .kd-row{
+    display:grid;grid-template-columns:80px 1fr 120px;gap:14px;
+    align-items:center;padding:10px 22px;
+    border-bottom:1px solid var(--divider);cursor:pointer;
+    transition:background var(--t-fast) var(--ease);
+  }
+  .kd-row:hover{background:var(--bg-elev);}
+  .kd-row:last-child{border-bottom:none;}
+  .kd-cod{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--accent);}
+  .kd-nom{font-size:13px;color:var(--text);line-height:1.35;}
+  .kd-val{
+    font-family:'JetBrains Mono',monospace;font-size:13px;
+    color:var(--amber);font-weight:600;text-align:right;
+  }
+  .kd-val small{display:block;color:var(--text3);font-size:9px;text-transform:uppercase;letter-spacing:.1em;font-weight:500;margin-top:2px;font-family:'IBM Plex Sans',sans-serif;}
+  .kd-bar{height:3px;background:var(--bg3);grid-column:1/-1;margin-top:4px;}
+  .kd-bar-fill{height:100%;background:var(--amber);transition:width var(--t-fast) var(--ease);}
+  .kd-modal-sub{
+    font-family:'JetBrains Mono',monospace;font-size:11px;
+    color:var(--text2);padding:8px 22px 14px;border-bottom:1px solid var(--divider);
+  }
+  .kd-modal-sub .v-total{color:var(--amber);font-weight:600;font-size:15px;}
+  @media (max-width:680px){
+    .kd-row{grid-template-columns:64px 1fr auto;gap:10px;padding:10px 14px;}
   }
   @media (max-width:680px){
     .sv-row{grid-template-columns:74px 1fr auto;gap:10px;padding:10px 14px;}
@@ -1683,6 +1709,19 @@
       <button class="sv-modal-close" data-action="closeServiceCriticoModal" title="Cerrar (Esc)" aria-label="Cerrar">×</button>
     </div>
     <div class="sv-modal-list" id="svModalList"></div>
+  </div>
+</div>
+
+<!-- Modal de detalle de KPI: muestra ranking de equipos para costo/horas/combustible
+     según el rango activo. Click en una fila → cierra y abre detalle del equipo. -->
+<div class="sv-modal-overlay" id="kpiDetailOverlay" data-action="cerrarDetalleKpiIfBg" role="dialog" aria-modal="true" aria-labelledby="kpiDetailTitle">
+  <div class="sv-modal">
+    <div class="sv-modal-head">
+      <div class="sv-modal-title" id="kpiDetailTitle">Detalle</div>
+      <button class="sv-modal-close" data-action="cerrarDetalleKpi" title="Cerrar (Esc)" aria-label="Cerrar">×</button>
+    </div>
+    <div class="kd-modal-sub" id="kpiDetailSub"></div>
+    <div class="sv-modal-list" id="kpiDetailList"></div>
   </div>
 </div>
 
