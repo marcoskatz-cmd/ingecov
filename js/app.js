@@ -2053,14 +2053,36 @@ async function loadAll(){
       return out;
     };
     // PANEL_TRABAJOS del HIST suele estar truncado a 2026 (lo trunca el script
-    // consolidador del Drive). Para reconstruir el 2025, leemos las pestañas
-    // POR EQUIPO del HIST en paralelo. Si esto agrega latencia, se puede mover
-    // a lazy/segundo plano.
-    const panelTrabajosHist2025 = await fetchTrabajosHistPorEquipo(y=>y===2025);
+    // consolidador del Drive). Para reconstruir el 2025 (y completar 2026 con
+    // trabajos que están en las pestañas pero no en el archivo mensual del
+    // Drive), leemos las pestañas POR EQUIPO del HIST y deduplicamos contra
+    // el LIVE por (cod, fecha-normalizada, tiempo). El LIVE 2026 gana — solo
+    // sumamos del HIST las filas que no aparecen ya en LIVE.
+    const panelTrabajosLive2026 = _filtrarAnio(panelTrabajosLiveObj,y=>y>=2026,_SIN_FECHA_TRAB);
+    const panelTrabajosHist_25y26 = await fetchTrabajosHistPorEquipo(y=>y===2025||y===2026);
+    // Generar set de claves del LIVE para dedup. Key = cod+ymd+tiempoStr.
+    const _keyTrab = (cod, fechaStr, tiempoStr) => {
+      const d=_parseDate(fechaStr);
+      const ymd=d?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`:fechaStr;
+      const t=parseFloat(String(tiempoStr||'').replace(',','.'));
+      const tKey=isFinite(t)?String(Math.round(t*10)):tiempoStr;
+      return `${normCod(cod)}|${ymd}|${tKey}`;
+    };
+    const liveKeys = new Set();
+    const normHead2 = s => normHead(s);
+    for (const r of panelTrabajosLive2026) {
+      const idx={}; for(const k of Object.keys(r))idx[normHead2(k)]=r[k];
+      const get=keys=>{for(const k of keys){const v=idx[k];if(v!=null&&String(v).trim()!=='')return String(v).trim();}return'';};
+      liveKeys.add(_keyTrab(get(['CODIGO','COD','CODIGO EQUIPO']), get(_SIN_FECHA_TRAB), get(['TIEMPO TRABAJO','TIEMPO TRABAJO HR','TIEMPO (HR)','TIEMPO HR','TIEMPO','HORAS','HS'])));
+    }
+    const panelTrabajosHistDedup = panelTrabajosHist_25y26.filter(r => {
+      const k = _keyTrab(r['CÓDIGO']||'', r['FECHA TRABAJO']||'', r['TIEMPO TRABAJO']||'');
+      return !liveKeys.has(k);
+    });
     const panelTrabajosObj=[
-      ..._filtrarAnio(panelTrabajosLiveObj,y=>y>=2026,_SIN_FECHA_TRAB),
+      ...panelTrabajosLive2026,
       ..._filtrarAnio(panelTrabajosHistObj,y=>y===2025,_SIN_FECHA_TRAB),
-      ...panelTrabajosHist2025,
+      ...panelTrabajosHistDedup,
     ];
     // El sheet HIST repuestos (1WCtB) tiene un header roto en col 0: aparece
     // como "#ERROR!" en lugar de "N° ENTREGA". Renombramos la key antes del
