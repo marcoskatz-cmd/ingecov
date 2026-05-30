@@ -829,7 +829,7 @@ const TRABAJOS_HIST_PESTANAS_EQUIPOS=[
   'Topadora CAT D6E','Trituradora Metso HP300','Zaranda ASTEC GT145S',
 ];
 
-// Lee las pestañas por equipo del HIST de trabajos en paralelo. Filtra por año.
+// Lee las pestañas por equipo del HIST de trabajos. Filtra por año.
 //
 // Caso especial: las celdas de FECHA TRABAJO que contienen un RANGO
 // ("21/3/2025 - 26/3/2025") están en columnas con formato Date, y gviz
@@ -840,58 +840,90 @@ const TRABAJOS_HIST_PESTANAS_EQUIPOS=[
 // próxima). Las filas sin código y sin tiempo son continuaciones de
 // descripción y se ignoran.
 //
-// Tradeoff: la fecha asignada puede caer 1 mes antes/después del rango
-// real. La alternativa (perder ~3.000 hr) es peor.
+// Concurrencia limitada + retry con backoff: gviz hace rate limiting cuando
+// le tiramos 58 requests paralelos, devolviendo errores intermitentes en
+// algunas pestañas. Antes el catch silencioso devolvía [] perdiendo todo el
+// contenido de la pestaña fallida — los totales variaban 2.000+ hr entre
+// reloads. Ahora procesamos en lotes de 6 con retry hasta 3 veces con
+// backoff exponencial. Si una pestaña sigue fallando, queda registrada en
+// window._fetchTrabajosHistErrores para diagnóstico.
+async function _fetchGvizRawConRetry(id,sheet,maxRetries=3){
+  let ultimaErr;
+  for(let i=0;i<maxRetries;i++){
+    try{ return await fetchGvizRaw(id,sheet); }
+    catch(e){
+      ultimaErr=e;
+      // Backoff exponencial: 400ms, 800ms, 1600ms
+      await new Promise(r=>setTimeout(r,400*Math.pow(2,i)));
+    }
+  }
+  throw ultimaErr;
+}
+async function _procesarPestanaHistTrabajos(pest,predicateAnio){
+  const rows=await _fetchGvizRawConRetry(SHEET_IDS.trabajos_hist,pest);
+  // Pasada 1: filtrar a filas tipo "trabajo" (con código + tiempo > 0).
+  const trabajos=[];
+  for(const r of (rows||[])){
+    if(!r)continue;
+    const cod=String(r[2]||'').trim();
+    const tiempoStr=String(r[4]||'').trim();
+    const tNum=parseFloat(tiempoStr.replace(',','.'));
+    if(!cod||!isFinite(tNum)||tNum<=0)continue;
+    trabajos.push({
+      fechaStr: String(r[0]||'').trim(),
+      lugar: String(r[1]||'').trim(),
+      cod, desc: String(r[3]||'').trim(), tiempoStr
+    });
+  }
+  // Pasada 2: completar fechas faltantes con la próxima visible (o anterior).
+  let ultimaConFecha='';
+  for(let i=0;i<trabajos.length;i++){
+    if(trabajos[i].fechaStr){ultimaConFecha=trabajos[i].fechaStr;continue;}
+    let proxima='';
+    for(let j=i+1;j<trabajos.length;j++){
+      if(trabajos[j].fechaStr){proxima=trabajos[j].fechaStr;break;}
+    }
+    trabajos[i].fechaStr=proxima||ultimaConFecha;
+  }
+  // Pasada 3: filtrar por año y armar output
+  const out=[];
+  for(const t of trabajos){
+    if(!t.fechaStr)continue;
+    const d=_parseDate(t.fechaStr);
+    if(!d||!predicateAnio(d.getFullYear()))continue;
+    out.push({
+      'FECHA TRABAJO':t.fechaStr,
+      'LUGAR TRABAJO':t.lugar,
+      'CÓDIGO':t.cod,
+      'DESCRIPCIÓN TRABAJOS':t.desc,
+      'TIEMPO TRABAJO':t.tiempoStr,
+      'EQUIPO':pest,
+    });
+  }
+  return out;
+}
 async function fetchTrabajosHistPorEquipo(predicateAnio){
-  const results=await Promise.all(
-    TRABAJOS_HIST_PESTANAS_EQUIPOS.map(async pest=>{
-      try{
-        const rows=await fetchGvizRaw(SHEET_IDS.trabajos_hist,pest);
-        // Pasada 1: filtrar a filas tipo "trabajo" (con código + tiempo > 0).
-        const trabajos=[];
-        for(const r of (rows||[])){
-          if(!r)continue;
-          const cod=String(r[2]||'').trim();
-          const tiempoStr=String(r[4]||'').trim();
-          const tNum=parseFloat(tiempoStr.replace(',','.'));
-          if(!cod||!isFinite(tNum)||tNum<=0)continue;
-          trabajos.push({
-            fechaStr: String(r[0]||'').trim(),
-            lugar: String(r[1]||'').trim(),
-            cod, desc: String(r[3]||'').trim(), tiempoStr
-          });
-        }
-        // Pasada 2: completar fechas faltantes con la próxima visible (o anterior).
-        let ultimaConFecha='';
-        for(let i=0;i<trabajos.length;i++){
-          if(trabajos[i].fechaStr){ultimaConFecha=trabajos[i].fechaStr;continue;}
-          // Buscar próxima fila con fecha
-          let proxima='';
-          for(let j=i+1;j<trabajos.length;j++){
-            if(trabajos[j].fechaStr){proxima=trabajos[j].fechaStr;break;}
-          }
-          trabajos[i].fechaStr=proxima||ultimaConFecha;
-        }
-        // Pasada 3: filtrar por año y armar output
-        const out=[];
-        for(const t of trabajos){
-          if(!t.fechaStr)continue;
-          const d=_parseDate(t.fechaStr);
-          if(!d||!predicateAnio(d.getFullYear()))continue;
-          out.push({
-            'FECHA TRABAJO':t.fechaStr,
-            'LUGAR TRABAJO':t.lugar,
-            'CÓDIGO':t.cod,
-            'DESCRIPCIÓN TRABAJOS':t.desc,
-            'TIEMPO TRABAJO':t.tiempoStr,
-            'EQUIPO':pest,
-          });
-        }
-        return out;
-      }catch(_){return [];}
-    })
-  );
-  return results.flat();
+  const CONCURRENCY=6;
+  const todos=[];
+  const errores=[];
+  // Procesamos en lotes de CONCURRENCY pestañas. Esperamos cada lote completo
+  // antes del próximo, así nunca tenemos más de CONCURRENCY requests en vuelo.
+  for(let i=0;i<TRABAJOS_HIST_PESTANAS_EQUIPOS.length;i+=CONCURRENCY){
+    const lote=TRABAJOS_HIST_PESTANAS_EQUIPOS.slice(i,i+CONCURRENCY);
+    const resultados=await Promise.all(lote.map(async pest=>{
+      try{ return{pest,rows:await _procesarPestanaHistTrabajos(pest,predicateAnio),ok:true}; }
+      catch(e){ return{pest,rows:[],ok:false,error:e.message}; }
+    }));
+    for(const r of resultados){
+      if(r.ok)todos.push(...r.rows);
+      else errores.push({pest:r.pest,error:r.error});
+    }
+  }
+  window._fetchTrabajosHistErrores=errores;
+  if(errores.length){
+    console.warn(`[INGECO] ${errores.length}/${TRABAJOS_HIST_PESTANAS_EQUIPOS.length} pestañas del HIST fallaron después de 3 retries:`,errores.map(e=>e.pest).join(', '));
+  }
+  return todos;
 }
 
 const SERVICE_VENTANA_DIAS=7;
