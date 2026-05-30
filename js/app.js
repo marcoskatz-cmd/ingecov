@@ -214,13 +214,28 @@ async function _gvizObjImpl(id,sheet,range){
   ));
 }
 
-// fetchGvizRaw/Obj son alias de las implementaciones gviz directas. El
-// panel lee Sheets que están como "anyone with link can view" (sin login).
+// fetchGvizRaw/Obj son alias de las implementaciones gviz directas, envueltas
+// en retry con backoff exponencial para resistir el rate limiting intermitente
+// de gviz cuando se piden muchas pestañas en paralelo. Antes el panel perdía
+// silenciosamente fetches (catch → []) y eso producía variaciones grandes
+// entre reloads (ej. _entregaCostos a veces tenía 335 entries y a veces 807).
 // Privacidad: hay un PIN gate en index.html que filtra usuarios casuales.
 // Si alguien con F12 mira los SHEET_IDS y los abre directo, igual los ve —
 // es disuasor, no seguridad criptográfica. Decisión documentada y aceptada.
-const fetchGvizRaw = _gvizRawImpl;
-const fetchGvizObj = _gvizObjImpl;
+const _withRetry = (fn, maxRetries=3) => async (...args) => {
+  let lastErr;
+  for(let i=0;i<maxRetries;i++){
+    try{ return await fn(...args); }
+    catch(e){
+      lastErr=e;
+      // Backoff exponencial: 400ms, 800ms, 1600ms
+      await new Promise(r=>setTimeout(r, 400*Math.pow(2,i)));
+    }
+  }
+  throw lastErr;
+};
+const fetchGvizRaw = _withRetry(_gvizRawImpl);
+const fetchGvizObj = _withRetry(_gvizObjImpl);
 async function apiRefreshAll(){ /* no-op: ya no hay API privada */ }
 
 /* ═══════════════════════════════════════════════════════
@@ -2090,31 +2105,18 @@ async function loadAll(){
     // Drive), leemos las pestañas POR EQUIPO del HIST y deduplicamos contra
     // el LIVE por (cod, fecha-normalizada, tiempo). El LIVE 2026 gana — solo
     // sumamos del HIST las filas que no aparecen ya en LIVE.
-    const panelTrabajosLive2026 = _filtrarAnio(panelTrabajosLiveObj,y=>y>=2026,_SIN_FECHA_TRAB);
-    const panelTrabajosHist_25y26 = await fetchTrabajosHistPorEquipo(y=>y===2025||y===2026);
-    // Generar set de claves del LIVE para dedup. Key = cod+ymd+tiempoStr.
-    const _keyTrab = (cod, fechaStr, tiempoStr) => {
-      const d=_parseDate(fechaStr);
-      const ymd=d?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`:fechaStr;
-      const t=parseFloat(String(tiempoStr||'').replace(',','.'));
-      const tKey=isFinite(t)?String(Math.round(t*10)):tiempoStr;
-      return `${normCod(cod)}|${ymd}|${tKey}`;
-    };
-    const liveKeys = new Set();
-    const normHead2 = s => normHead(s);
-    for (const r of panelTrabajosLive2026) {
-      const idx={}; for(const k of Object.keys(r))idx[normHead2(k)]=r[k];
-      const get=keys=>{for(const k of keys){const v=idx[k];if(v!=null&&String(v).trim()!=='')return String(v).trim();}return'';};
-      liveKeys.add(_keyTrab(get(['CODIGO','COD','CODIGO EQUIPO']), get(_SIN_FECHA_TRAB), get(['TIEMPO TRABAJO','TIEMPO TRABAJO HR','TIEMPO (HR)','TIEMPO HR','TIEMPO','HORAS','HS'])));
-    }
-    const panelTrabajosHistDedup = panelTrabajosHist_25y26.filter(r => {
-      const k = _keyTrab(r['CÓDIGO']||'', r['FECHA TRABAJO']||'', r['TIEMPO TRABAJO']||'');
-      return !liveKeys.has(k);
-    });
+    // Filtro simple por año: LIVE para 2026 (al día), HIST pestañas por equipo
+    // solo para 2025 (el LIVE no tiene histórico). Sin dedup compleja porque
+    // las descripciones entre LIVE (consolidador) y pestañas (carga manual por
+    // equipo) difieren con frecuencia → cualquier dedup por texto generaría
+    // falsos positivos o falsos negativos. Trade-off aceptado: las ~700 hr de
+    // 2026 que están solo en pestañas por equipo (cargas manuales sin pasar por
+    // la planilla mensual del Drive) no aparecen en el panel.
+    const panelTrabajosHist2025 = await fetchTrabajosHistPorEquipo(y=>y===2025);
     const panelTrabajosObj=[
-      ...panelTrabajosLive2026,
+      ..._filtrarAnio(panelTrabajosLiveObj,y=>y>=2026,_SIN_FECHA_TRAB),
       ..._filtrarAnio(panelTrabajosHistObj,y=>y===2025,_SIN_FECHA_TRAB),
-      ...panelTrabajosHistDedup,
+      ...panelTrabajosHist2025,
     ];
     // El sheet HIST repuestos (1WCtB) tiene un header roto en col 0: aparece
     // como "#ERROR!" en lugar de "N° ENTREGA". Renombramos la key antes del
@@ -2714,7 +2716,7 @@ async function toggleEquipoDetail(codigo,cardEl){
     codigo:    ['CODIGO','COD','CODIGO EQUIPO','COD EQUIPO'],
     nroPedido: ['N° PEDIDO','Nº PEDIDO','N PEDIDO','NRO PEDIDO','NUMERO PEDIDO','PEDIDO','N° DE PEDIDO'],
     fechaPed:  ['FECHA PEDIDO','FECHA DEL PEDIDO','FECHA DE PEDIDO','F PEDIDO','F. PEDIDO','FECHA INGRESO','FECHA DE INGRESO','FECHA DEL INGRESO','F INGRESO','F. INGRESO','INGRESO','FECHA CREACION','FECHA DE CREACION','FECHA'],
-    desc:      ['DESCRIPCIÓN DE REPUESTOS','DESCRIPCION DE REPUESTOS','DESCRIPCION REPUESTOS','DESCRIPCION','DESCRIPCIÓN','DETALLE DE REPUESTOS','DETALLE','REPUESTOS','REPUESTOS PEDIDOS'],
+    desc:      ['DESCRIPCIÓN DE REPUESTOS ENTREGADOS','DESCRIPCION DE REPUESTOS ENTREGADOS','DESCRIPCIÓN DE REPUESTOS','DESCRIPCION DE REPUESTOS','DESCRIPCION REPUESTOS','DESCRIPCION','DESCRIPCIÓN','DETALLE DE REPUESTOS','DETALLE','REPUESTOS','REPUESTOS PEDIDOS'],
     nroEntrega:['N° ENTREGA','Nº ENTREGA','N ENTREGA','NRO ENTREGA','NUMERO ENTREGA','ENTREGA','N° DE ENTREGA'],
     fechaEnt:  ['FECHA ENTREGA','FECHA DE ENTREGA','F ENTREGA','F. ENTREGA'],
   };
