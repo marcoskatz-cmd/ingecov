@@ -223,7 +223,18 @@ function _copiarVerbatim_(snap, v){
 
     // Recién acá tocamos el snapshot (lectura OK ⇒ no dejamos la pestaña a medias).
     const dst = _resetTab_(snap, v.tab);
-    dst.getRange(1, 1, data.length, data[0].length).setValues(data);
+    const rng = dst.getRange(1, 1, data.length, data[0].length);
+    // FORMATO TEXTO ('@') ANTES de setValues. CRÍTICO: el snapshot lo creó
+    // SpreadsheetApp.create() con locale por defecto (US, m/d/yyyy). Sin esto,
+    // setValues("13/1/2026") re-parsea la columna como fecha y gviz al RE-LEER
+    // la re-tipa como 'date' interpretando m/d/yyyy → día>12 (13/1, 25/3...) =
+    // mes inválido → gviz devuelve null → el browser descarta la fila. Eso
+    // tiraba ~520 de 840 filas de COMB_LIVIANOS (28M en vez de 76M). Con texto
+    // plano gviz devuelve la cadena verbatim y _parseDate/parseMoney del browser
+    // la parsean en formato argentino. Es además la fidelidad que el builder
+    // buscaba: getDisplayValues = strings idénticos a cell.f, sin re-formateo.
+    rng.setNumberFormat('@');
+    rng.setValues(data);
     dst.setFrozenRows(v.mode === 'obj' ? 1 : 0);
 
     return { tab:v.tab, rows:data.length, status:'OK', detalle:'' };
@@ -287,7 +298,9 @@ function _construirHist58_(snap){
     }
 
     const dst = _resetTab_(snap, 'TRAB_HIST58');
-    dst.getRange(1, 1, out.length, SNAP_HIST58_HEADER.length).setValues(out);
+    const rng = dst.getRange(1, 1, out.length, SNAP_HIST58_HEADER.length);
+    rng.setNumberFormat('@');  // texto plano: ver nota en _copiarVerbatim_ (anti re-tipado de fechas)
+    rng.setValues(out);
     dst.setFrozenRows(1);
 
     const det = pestOk + '/' + SNAP_TRAB58.length + ' pestañas'
@@ -351,7 +364,9 @@ function _construirServiceEq_(snap){
     }
 
     const dst = _resetTab_(snap, 'SERVICE_EQ');
-    dst.getRange(1, 1, out.length, SNAP_SVCEQ_HEADER.length).setValues(out);
+    const rng = dst.getRange(1, 1, out.length, SNAP_SVCEQ_HEADER.length);
+    rng.setNumberFormat('@');  // texto plano: ver nota en _copiarVerbatim_ (anti re-tipado de fechas)
+    rng.setValues(out);
     dst.setFrozenRows(1);
 
     return { tab:'SERVICE_EQ', rows:out.length, status:'OK', detalle: filas + ' equipos-mes' };
