@@ -2199,6 +2199,24 @@ async function loadAll(){
       }
     }
 
+    // Espejo de horas zaranda → trituradora. La trituradora (TRT-01) no tiene
+    // horómetro propio: comparte tren de chancado con la zaranda (ZRN-01) y corre
+    // las mismas horas. Copiamos la última lectura de la zaranda a la trituradora,
+    // así se actualiza sola en cada carga de combustible de la zaranda. No tocamos
+    // litros/costo de la trituradora (consume su propio gasoil) ni el promedio
+    // (su L/hr no es medible con un horómetro muerto).
+    {
+      const zrn=window._combustiblePorEquipo['ZRN01'];
+      if(zrn&&zrn.ultimaHr!=null){
+        let trt=window._combustiblePorEquipo['TRT01'];
+        if(!trt){ trt={unidad:'hr',cargas:[],ultimaHr:null,ultimaFecha:null,ultimaFechaSort:null,totalLitros:0,promedio:null}; window._combustiblePorEquipo['TRT01']=trt; }
+        trt.ultimaHr=zrn.ultimaHr;
+        trt.ultimaFecha=zrn.ultimaFecha;
+        trt.ultimaFechaSort=zrn.ultimaFechaSort;
+        trt.horasEspejoDe='ZRN-01';
+      }
+    }
+
     // Render dashboard con entregas del mes actual (calculadas desde PANEL_REPUESTOS)
     renderDashboard(pendientesRaw,ctx.entregasMesActual);
 
@@ -2808,6 +2826,21 @@ async function toggleEquipoDetail(codigo,cardEl){
         <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Último service</div>
         <div style="font-size:12px;color:var(--text2)">${serviceRow.mes}</div>
         ${serviceRow.serie?`<div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text3);margin-top:2px">${serviceRow.serie}</div>`:''}
+      </div>
+    </div>`;
+  } else if(comb?.ultimaHr!=null){
+    // Equipo sin planilla de service pero con lectura de horómetro/odómetro vía
+    // combustible. Cubre el caso espejo: la trituradora (sin horómetro propio)
+    // hereda la última lectura de la zaranda con la que comparte tren de chancado.
+    const _hu=_unidad==='km'?'km':'hr';
+    const _fc=comb.ultimaFecha?formatFechaCorta(comb.ultimaFecha):'';
+    const _src=comb.horasEspejoDe?`vía zaranda ${comb.horasEspejoDe}`:'vía combustible';
+    horHTML=`
+    <div style="display:flex;background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--blue);margin-bottom:12px;overflow:hidden">
+      <div style="flex:1;padding:10px 14px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Última lectura ${_hu}</div>
+        <div style="font-size:15px;color:var(--blue);font-family:'IBM Plex Mono',monospace;font-weight:500">${fmtInt(comb.ultimaHr)} ${_hu}</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text3);margin-top:2px">${_fc}${_fc?' ':''}<span style="color:var(--amber)">· ${_src}</span></div>
       </div>
     </div>`;
   }
