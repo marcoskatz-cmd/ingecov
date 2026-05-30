@@ -178,9 +178,46 @@ const SEPARAR_EQUIPOS = {
 ═══════════════════════════════════════════════════════ */
 // range opcional (ej: 'A11:H') fuerza a gviz a usar esa fila como headers.
 // Útil cuando la hoja tiene títulos/contadores antes de los headers reales.
-const gvizUrl=(id,sheet,range)=>{
-  const base=`https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheet)}`;
-  return range?`${base}&range=${encodeURIComponent(range)}`:base;
+// ── REDIRECCIÓN AL SNAPSHOT ──────────────────────────────────────────────
+// Todas las lecturas pasan por UN spreadsheet congelado que arma el builder
+// server-side (apps-scripts/snapshot-builder.gs) cada 30 min. Antes el browser
+// disparaba ~120 requests gviz por carga (17 primarios + 58 pestañas del HIST
+// + ~31 horómetros + indicadores); gviz hace rate limiting muy por debajo de
+// eso y cada fetch fallido (catch→[]) cambiaba los totales entre reloads. Con
+// el snapshot, cada reload lee exactamente las mismas filas → determinismo.
+const SNAPSHOT_ID='1E883xvPP_Oyt1mjQ2FjZLiY-Jmvyzgi0_UhEq2dFbGY';
+// (idFuente|pestaña) → pestaña del snapshot. El range se descarta al redirigir:
+// la pestaña del snapshot ya es el slice exacto (ej. PED_ENTR ya arranca en la
+// fila 11 que pedía el range 'A11:H').
+const SNAP_REDIRECT={
+  [`${SHEET_IDS.pedidos}|PENDIENTES`]:'PED_PEND',
+  [`${SHEET_IDS.pedidos}|ENTREGADOS`]:'PED_ENTR',
+  [`${SHEET_IDS.codigos}|VIALES, ASFALTO Y TRITURACIÓN`]:'COD_V',
+  [`${SHEET_IDS.codigos}|TRANSPORTE LIVIANO`]:'COD_L',
+  [`${SHEET_IDS.codigos}|TRANSPORTE PESADO`]:'COD_P',
+  [`${SHEET_IDS.codigos}|SOPORTE`]:'COD_S',
+  [`${SHEET_IDS.repuestos_hist}|PANEL_REPUESTOS`]:'REP_LIVE',
+  [`${SHEET_IDS.repuestos_hist_old}|PANEL_REPUESTOS`]:'REP_HIST',
+  [`${SHEET_IDS.trabajos_reg}|PANEL_TRABAJOS`]:'TRAB_LIVE',
+  [`${SHEET_IDS.trabajos_hist}|PANEL_TRABAJOS`]:'TRAB_HIST',
+  [`${SHEET_IDS.programaService}|${SERVICE_FREC_SHEET}`]:'SVC_FREC',
+  [`${SHEET_IDS.programaService}|1° TRIMESTRE`]:'SVC_TRIM1',
+  [`${SHEET_IDS.programaService}|2° TRIMESTRE`]:'SVC_TRIM2',
+  [`${SHEET_IDS.service}|PANEL_PROGRAMA`]:'SVC_PANELPROG',
+  [`${SHEET_IDS.combustible}|${COMBUSTIBLE_SHEET}`]:'COMBUSTIBLE',
+  [`${SHEET_IDS.combustibleLivianos}|${COMBUSTIBLE_LIVIANOS_SHEET}`]:'COMB_LIVIANOS',
+  [`${SHEET_IDS.indicadores}|INDICADORES OPERACIONALES`]:'INDICADORES',
+};
+// Devuelve el target redirigido al snapshot, o el original si no está mapeado.
+function _snapTarget(id,sheet){
+  const tab=SNAP_REDIRECT[`${id}|${sheet}`];
+  return tab?{id:SNAPSHOT_ID,sheet:tab,snap:true}:{id,sheet,snap:false};
+}
+const gvizUrl=(id,sheet,range,headers)=>{
+  let url=`https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheet)}`;
+  if(range)url+=`&range=${encodeURIComponent(range)}`;
+  if(headers!=null)url+=`&headers=${headers}`;
+  return url;
 };
 
 // Si la columna está tipada (e.g. como DATE) y la celda contiene texto que no parsea
@@ -192,8 +229,8 @@ const _cellStr=cell=>{
   return cell.f!=null?String(cell.f):String(cell.v);
 };
 
-async function _fetchGvizJson(id,sheet,range){
-  const r=await fetch(gvizUrl(id,sheet,range));
+async function _fetchGvizJson(id,sheet,range,headers){
+  const r=await fetch(gvizUrl(id,sheet,range,headers));
   if(!r.ok)throw new Error(`HTTP ${r.status} · ${sheet}`);
   const txt=await r.text();
   return JSON.parse(txt.substring(txt.indexOf('{'),txt.lastIndexOf('}')+1));
@@ -202,12 +239,18 @@ async function _fetchGvizJson(id,sheet,range){
 // Implementaciones originales — gviz directo. El shim de la API las llama
 // como fallback cuando USE_API está activo pero el (id,sheet) no está mapeado.
 async function _gvizRawImpl(id,sheet,range){
-  const json=await _fetchGvizJson(id,sheet,range);
+  const t=_snapTarget(id,sheet);
+  // RAW del snapshot → headers=0 fuerza a gviz a devolver la matriz COMPLETA
+  // (sin consumir la fila 1 como header); los parsers raw se ubican solos.
+  const json=await _fetchGvizJson(t.id,t.sheet,t.snap?null:range,t.snap?0:null);
   return(json.table.rows||[]).map(row=>(row.c||[]).map(_cellStr));
 }
 
 async function _gvizObjImpl(id,sheet,range){
-  const json=await _fetchGvizJson(id,sheet,range);
+  const t=_snapTarget(id,sheet);
+  // OBJ del snapshot → headers=1 fuerza la fila 1 como header (keys estables,
+  // sin la heurística de tipos de gviz que a veces no detectaba el header).
+  const json=await _fetchGvizJson(t.id,t.sheet,t.snap?null:range,t.snap?1:null);
   const cols=json.table.cols.map(c=>(c.label||c.id||'').trim());
   return(json.table.rows||[]).map(row=>Object.fromEntries(
     cols.map((col,i)=>[col,_cellStr(row.c?row.c[i]:null)])
@@ -844,101 +887,29 @@ const TRABAJOS_HIST_PESTANAS_EQUIPOS=[
   'Topadora CAT D6E','Trituradora Metso HP300','Zaranda ASTEC GT145S',
 ];
 
-// Lee las pestañas por equipo del HIST de trabajos. Filtra por año.
-//
-// Caso especial: las celdas de FECHA TRABAJO que contienen un RANGO
-// ("21/3/2025 - 26/3/2025") están en columnas con formato Date, y gviz
-// devuelve null para celdas con texto en columnas Date. Como CORS bloquea
-// el export XLSX desde el browser, no podemos leerlas directo. Aplicamos
-// heurística: para filas con código + tiempo pero sin fecha visible,
-// usamos la fecha de la próxima fila visible (o la anterior si no hay
-// próxima). Las filas sin código y sin tiempo son continuaciones de
-// descripción y se ignoran.
-//
-// Concurrencia limitada + retry con backoff: gviz hace rate limiting cuando
-// le tiramos 58 requests paralelos, devolviendo errores intermitentes en
-// algunas pestañas. Antes el catch silencioso devolvía [] perdiendo todo el
-// contenido de la pestaña fallida — los totales variaban 2.000+ hr entre
-// reloads. Ahora procesamos en lotes de 6 con retry hasta 3 veces con
-// backoff exponencial. Si una pestaña sigue fallando, queda registrada en
-// window._fetchTrabajosHistErrores para diagnóstico.
-async function _fetchGvizRawConRetry(id,sheet,maxRetries=3){
-  let ultimaErr;
-  for(let i=0;i<maxRetries;i++){
-    try{ return await fetchGvizRaw(id,sheet); }
-    catch(e){
-      ultimaErr=e;
-      // Backoff exponencial: 400ms, 800ms, 1600ms
-      await new Promise(r=>setTimeout(r,400*Math.pow(2,i)));
-    }
-  }
-  throw ultimaErr;
-}
-async function _procesarPestanaHistTrabajos(pest,predicateAnio){
-  const rows=await _fetchGvizRawConRetry(SHEET_IDS.trabajos_hist,pest);
-  // Pasada 1: filtrar a filas tipo "trabajo" (con código + tiempo > 0).
-  const trabajos=[];
-  for(const r of (rows||[])){
-    if(!r)continue;
-    const cod=String(r[2]||'').trim();
-    const tiempoStr=String(r[4]||'').trim();
-    const tNum=parseFloat(tiempoStr.replace(',','.'));
-    if(!cod||!isFinite(tNum)||tNum<=0)continue;
-    trabajos.push({
-      fechaStr: String(r[0]||'').trim(),
-      lugar: String(r[1]||'').trim(),
-      cod, desc: String(r[3]||'').trim(), tiempoStr
-    });
-  }
-  // Pasada 2: completar fechas faltantes con la próxima visible (o anterior).
-  let ultimaConFecha='';
-  for(let i=0;i<trabajos.length;i++){
-    if(trabajos[i].fechaStr){ultimaConFecha=trabajos[i].fechaStr;continue;}
-    let proxima='';
-    for(let j=i+1;j<trabajos.length;j++){
-      if(trabajos[j].fechaStr){proxima=trabajos[j].fechaStr;break;}
-    }
-    trabajos[i].fechaStr=proxima||ultimaConFecha;
-  }
-  // Pasada 3: filtrar por año y armar output
+// HIST de trabajos por equipo: el aplanado de las 58 pestañas (con la
+// heurística de fechas-rango que gviz devolvía null) ahora lo hace el builder
+// server-side y queda en la pestaña TRAB_HIST58 del snapshot. El browser solo
+// la lee y filtra por año (ver fetchTrabajosHistPorEquipo más abajo). La lógica
+// de las 3 pasadas vive en _construirHist58_ de apps-scripts/snapshot-builder.gs.
+async function fetchTrabajosHistPorEquipo(predicateAnio){
+  // El builder ya aplanó las 58 pestañas por equipo en la pestaña TRAB_HIST58
+  // del snapshot, con la heurística de fechas-rango aplicada server-side (que
+  // además recupera fechas que gviz devolvía null en columnas Date). Acá solo
+  // leemos esa pestaña y filtramos por año: 1 request en vez de 58.
+  let rows=[];
+  try{ rows=await fetchGvizObj(SNAPSHOT_ID,'TRAB_HIST58'); }
+  catch(e){ window._fetchTrabajosHistErrores=[{pest:'TRAB_HIST58',error:e.message}]; return []; }
+  window._fetchTrabajosHistErrores=[];
   const out=[];
-  for(const t of trabajos){
-    if(!t.fechaStr)continue;
-    const d=_parseDate(t.fechaStr);
+  for(const r of rows){
+    const fechaStr=String(r['FECHA TRABAJO']||'').trim();
+    if(!fechaStr)continue;
+    const d=_parseDate(fechaStr);
     if(!d||!predicateAnio(d.getFullYear()))continue;
-    out.push({
-      'FECHA TRABAJO':t.fechaStr,
-      'LUGAR TRABAJO':t.lugar,
-      'CÓDIGO':t.cod,
-      'DESCRIPCIÓN TRABAJOS':t.desc,
-      'TIEMPO TRABAJO':t.tiempoStr,
-      'EQUIPO':pest,
-    });
+    out.push(r);
   }
   return out;
-}
-async function fetchTrabajosHistPorEquipo(predicateAnio){
-  const CONCURRENCY=6;
-  const todos=[];
-  const errores=[];
-  // Procesamos en lotes de CONCURRENCY pestañas. Esperamos cada lote completo
-  // antes del próximo, así nunca tenemos más de CONCURRENCY requests en vuelo.
-  for(let i=0;i<TRABAJOS_HIST_PESTANAS_EQUIPOS.length;i+=CONCURRENCY){
-    const lote=TRABAJOS_HIST_PESTANAS_EQUIPOS.slice(i,i+CONCURRENCY);
-    const resultados=await Promise.all(lote.map(async pest=>{
-      try{ return{pest,rows:await _procesarPestanaHistTrabajos(pest,predicateAnio),ok:true}; }
-      catch(e){ return{pest,rows:[],ok:false,error:e.message}; }
-    }));
-    for(const r of resultados){
-      if(r.ok)todos.push(...r.rows);
-      else errores.push({pest:r.pest,error:r.error});
-    }
-  }
-  window._fetchTrabajosHistErrores=errores;
-  if(errores.length){
-    console.warn(`[INGECO] ${errores.length}/${TRABAJOS_HIST_PESTANAS_EQUIPOS.length} pestañas del HIST fallaron después de 3 retries:`,errores.map(e=>e.pest).join(', '));
-  }
-  return todos;
 }
 
 const SERVICE_VENTANA_DIAS=7;
@@ -1481,23 +1452,25 @@ async function loadTrabajosRegistro(codigo){
 }
 
 async function precargarHorometros(){
-  const nk=k=>String(k||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase();
+  // El builder aplano los horometros de todas las pestanas de service por mes
+  // en SERVICE_EQ (una fila por equipo-mes, en orden Abril->Enero = first-wins,
+  // igual que el SERVICE_MESES viejo). Lo cacheamos para que el modal de equipo
+  // no tenga que re-leer.
   window._horometros={};
-  const eqMes={};
-  for(const mes of SERVICE_MESES)for(const cod of mes.equipos)if(!eqMes[normCod(cod)])eqMes[normCod(cod)]={id:mes.id,mes:mes.mes,rawCod:cod};
-  await Promise.allSettled(Object.entries(eqMes).map(async([codN,{id,mes,rawCod}])=>{const cod=rawCod||codN;
-    try{
-      const rows=await fetchGvizRaw(id,cod);if(!rows.length)return;
-      const kv={};rows.forEach(r=>{const k=nk(r[0]);if(k)kv[k]=String(r[1]||'').trim();});
-      if(normCod(kv['CODIGO']||'')!==codN)return;
-      window._horometros[codN]={
-        actual:kv['HOROMETRO/ODOMETRO TRABAJO ACTUAL']||null,
-        proximo:kv['HOROMETRO/ODOMETRO PROXIMO TRABAJO']||null,
-        patente:kv['N° SERIE/N° PATENTE']||kv['N SERIE/N PATENTE']||null,
-        mes,rawCod:cod,
-      };
-    }catch(_){}
-  }));
+  let rows=[];
+  try{ rows=await fetchGvizObj(SNAPSHOT_ID,'SERVICE_EQ'); }catch(_){ rows=[]; }
+  window._serviceEqRows=rows;
+  for(const r of rows){
+    const codN=String(r['CODN']||'').trim();
+    if(!codN||window._horometros[codN])continue;   // first-wins por orden de filas
+    if(normCod(r['KVCOD']||'')!==codN)continue;      // misma validacion que el fetch viejo
+    window._horometros[codN]={
+      actual:r['ACTUAL']||null,
+      proximo:r['PROXIMO']||null,
+      patente:r['SERIE']||null,
+      mes:r['MES']||'',rawCod:r['RAWCOD']||codN,
+    };
+  }
   renderEquipoIndex();
 }
 
@@ -2675,23 +2648,26 @@ async function toggleEquipoDetail(codigo,cardEl){
 
   const[serviceRows,trabajosRows]=await Promise.all([
     (async()=>{
-      const mesesS=SERVICE_MESES.filter(m=>[...m.equipos].some(c=>normCod(c)===normCod(codigo)));
-      if(!mesesS.length)return [];
-      const nk=k=>String(k||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase();
-      const results=await Promise.all(mesesS.map(async(mesS)=>{
-        try{
-          const rows=await fetchGvizRaw(mesS.id,codigo);const kv={};
-          rows.forEach(r=>{const k=nk(r[0]);if(k)kv[k]=String(r[1]||'').trim();});
-          if((kv['CODIGO']||'').toUpperCase().replace(/\s+/g,'')!==codigo.toUpperCase().replace(/\s+/g,''))return null;
-          return{planilla:kv['N° PLANILLA']||kv['N PLANILLA']||'—',fecha:kv['FECHA']||'—',
-            personal:kv['PERSONAL DE TRABAJO']||'—',
-            horActual:kv['HOROMETRO/ODOMETRO TRABAJO ACTUAL']||null,
-            horProximo:kv['HOROMETRO/ODOMETRO PROXIMO TRABAJO']||null,
-            serie:kv['N° SERIE/N° PATENTE']||kv['N SERIE/N PATENTE']||null,
-            mes:mesS.mes,sheetId:mesS.id};
-        }catch(_){return null;}
-      }));
-      return results.filter(Boolean).sort((a,b)=>toSortDate(b.fecha)-toSortDate(a.fecha));
+      // Service por equipo: leido del snapshot (SERVICE_EQ, una fila por planilla-equipo-mes).
+      // Cacheado por precargarHorometros() en window._serviceEqRows; fallback al snapshot directo.
+      let rows=window._serviceEqRows;
+      if(!rows){ try{ rows=await fetchGvizObj(SNAPSHOT_ID,'SERVICE_EQ'); window._serviceEqRows=rows; }catch(_){ rows=[]; } }
+      const _sp=s=>String(s||'').toUpperCase().replace(/\s+/g,'');
+      const out=[];
+      for(const r of rows){
+        if(String(r['CODN']||'').trim()!==normCod(codigo))continue;
+        if(_sp(r['KVCOD'])!==_sp(codigo))continue;
+        out.push({
+          planilla:String(r['PLANILLA']||'').trim()||'\u2014',
+          fecha:String(r['FECHA']||'').trim()||'\u2014',
+          personal:String(r['PERSONAL']||'').trim()||'\u2014',
+          horActual:r['ACTUAL']||null,
+          horProximo:r['PROXIMO']||null,
+          serie:r['SERIE']||null,
+          mes:r['MES']||'',sheetId:r['SHEET_ID']||'',
+        });
+      }
+      return out.sort((a,b)=>toSortDate(b.fecha)-toSortDate(a.fecha));
     })(),
     loadTrabajosRegistro(codigo),
   ]);
