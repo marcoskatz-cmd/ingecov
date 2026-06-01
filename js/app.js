@@ -209,9 +209,18 @@ const SNAP_REDIRECT={
   [`${SHEET_IDS.indicadores}|INDICADORES OPERACIONALES`]:'INDICADORES',
 };
 // Devuelve el target redirigido al snapshot, o el original si no está mapeado.
+// Una lectura directa de una pestaña del snapshot (TRAB_HIST58, SERVICE_EQ — que
+// no pasan por SNAP_REDIRECT) también es "snap": el builder deja TODAS las celdas
+// como texto (setNumberFormat('@')), así que gviz NO logra autodetectar la fila de
+// encabezado y devuelve columnas 'A','B',… con el header colado como primera fila
+// de datos → r['FECHA TRABAJO'] queda undefined y se pierde TODO el histórico en
+// silencio. Marcándolo snap forzamos headers=1 (obj) / headers=0 (raw) y el header
+// vuelve a leerse bien. Robusto y coherente con el diseño verbatim del snapshot.
 function _snapTarget(id,sheet){
   const tab=SNAP_REDIRECT[`${id}|${sheet}`];
-  return tab?{id:SNAPSHOT_ID,sheet:tab,snap:true}:{id,sheet,snap:false};
+  if(tab)return{id:SNAPSHOT_ID,sheet:tab,snap:true};
+  if(id===SNAPSHOT_ID)return{id:SNAPSHOT_ID,sheet,snap:true};
+  return{id,sheet,snap:false};
 }
 const gvizUrl=(id,sheet,range,headers)=>{
   let url=`https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheet)}`;
@@ -901,13 +910,28 @@ async function fetchTrabajosHistPorEquipo(predicateAnio){
   try{ rows=await fetchGvizObj(SNAPSHOT_ID,'TRAB_HIST58'); }
   catch(e){ window._fetchTrabajosHistErrores=[{pest:'TRAB_HIST58',error:e.message}]; return []; }
   window._fetchTrabajosHistErrores=[];
+  // Lookup de FECHA tolerante al nombre exacto de columna (defensa en profundidad):
+  // si el builder renombra el header o gviz no lo detecta, igual encontramos la fecha.
+  const _SIN_FECHA=['FECHA TRABAJO','FECHA DE TRABAJO','FECHA'];
   const out=[];
+  let conFecha=0;
   for(const r of rows){
-    const fechaStr=String(r['FECHA TRABAJO']||'').trim();
+    const idx={};
+    for(const k of Object.keys(r))idx[normHead(k)]=r[k];
+    let fechaStr='';
+    for(const k of _SIN_FECHA){const v=idx[k];if(v!=null&&String(v).trim()!==''){fechaStr=String(v).trim();break;}}
     if(!fechaStr)continue;
+    conFecha++;
     const d=_parseDate(fechaStr);
     if(!d||!predicateAnio(d.getFullYear()))continue;
     out.push(r);
+  }
+  // Guard de regresión: si llegaron filas pero NINGUNA tenía columna de fecha
+  // reconocible, es el síntoma del header no detectado → lo dejamos visible en
+  // lugar de perder el histórico en silencio (como pasó con el bug del format '@').
+  if(rows.length && conFecha===0){
+    window._fetchTrabajosHistErrores=[{pest:'TRAB_HIST58',error:`header no detectado: ${rows.length} filas sin columna FECHA reconocible (cols: ${Object.keys(rows[0]||{}).join(',')})`}];
+    console.warn('[TRAB_HIST58]',window._fetchTrabajosHistErrores[0].error);
   }
   return out;
 }
@@ -2308,7 +2332,19 @@ function _ymsEnRango(key){
   ])].sort();
   const now=new Date();
   const fmtYm=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-  if(key==='mesActual')return [fmtYm(now)];
+  if(key==='mesActual'){
+    // "mes" = mes actual SI ya tiene datos; si no (típico a principio de mes, o
+    // meses todavía sin carga), caemos al mes MÁS RECIENTE con datos. Antes
+    // devolvíamos el mes actual a secas → al arrancar junio los 3 KPIs sensibles
+    // a tiempo quedaban en "—" (junio sin datos aún) y el panel parecía roto. El
+    // label se deriva del ym devuelto, así que el subtítulo refleja el mes real.
+    const cur=fmtYm(now);
+    const validos=todos.filter(ym=>/^\d{4}-\d{2}$/.test(ym)&&+ym.slice(0,4)>=2020&&+ym.slice(0,4)<=now.getFullYear()+1);
+    if(validos.includes(cur))return [cur];
+    const previos=validos.filter(ym=>ym<=cur);
+    if(previos.length)return [previos[previos.length-1]];
+    return [validos.length?validos[validos.length-1]:cur];
+  }
   if(key==='ult3'){
     const out=[];
     for(let i=0;i<3;i++)out.push(fmtYm(new Date(now.getFullYear(),now.getMonth()-i,1)));
@@ -3238,8 +3274,12 @@ function renderTelemetriaFlota(){
   const totHp=dataHorasPrev.reduce((s,v)=>s+v,0);
   const totalsEl=document.getElementById('comboTotals');
   if(totalsEl){
+    // El resumen suma TODOS los meses graficados (no solo 2026), así que el label
+    // refleja el período real mostrado en vez de un "2026" fijo que mentía cuando
+    // el chart incluye histórico 2025.
+    const periodo=ymsAll.length?(labels[0]===labels[labels.length-1]?labels[0]:`${labels[0]}–${labels[labels.length-1]}`):'';
     setHTML(totalsEl, ymsAll.length
-      ?html`acumulado 2026 · <span class="v-costo">${formatMoney(totC)}</span> en repuestos<span class="sep">·</span><span class="v-corr">${totHc.toFixed(0)} hr</span> correctivo<span class="sep">·</span><span class="v-prev">${totHp.toFixed(0)} hr</span> preventivo`
+      ?html`acumulado ${periodo} · <span class="v-costo">${formatMoney(totC)}</span> en repuestos<span class="sep">·</span><span class="v-corr">${totHc.toFixed(0)} hr</span> correctivo<span class="sep">·</span><span class="v-prev">${totHp.toFixed(0)} hr</span> preventivo`
       :'sin datos para graficar');
   }
 
