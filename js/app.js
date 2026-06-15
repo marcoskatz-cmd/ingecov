@@ -731,18 +731,6 @@ function procesarPanelRepuestos(panelObj){
   return ctx;
 }
 
-function parseIndicadores(rows){
-  if(!rows.length)return null;
-  const cFeb=4,cMar=5,cAbr=6;
-  const num=(row,col)=>{const v=row[col];if(v===undefined||v===''||v==='-')return null;return parseFloat(String(v).replace(/\./g,'').replace(',','.').replace(/[^0-9.]/g,''))||null;};
-  const res={disp:null};
-  for(const r of rows){
-    const d=String(r[1]||r[0]||'').toLowerCase().trim();
-    if(d.includes('disponibilidad global')&&!res.disp)res.disp=[num(r,cFeb),num(r,cMar),num(r,cAbr)];
-  }
-  return res;
-}
-
 /* ═══════════════════════════════════════════════════════
    CARGA LAZY
 ═══════════════════════════════════════════════════════ */
@@ -1133,6 +1121,8 @@ function procesarPanelPrograma(rawRows){
     rangoHolgada:  ['RANGO HOLGADA','HOLGADA','RANGO VERDE'],
     rangoIntermedia:['RANGO INTERMEDIA','INTERMEDIA','RANGO AMARILLO'],
     rangoCritica:  ['RANGO CRITICA','CRITICA','CRÍTICA','RANGO ROJO'],
+    estado:        ['ESTADO'],                              // label pre-calculado (VENCIDO/CRÍTICO/…)
+    hrActual:      ['HRKM ACTUAL','HR/KM ACTUAL','ACTUAL'],  // hr/km actual del equipo
   };
   for(const r of rawRows){
     const idx={};
@@ -1157,6 +1147,8 @@ function procesarPanelPrograma(rawRows){
       rangoHolgada:get(SIN.rangoHolgada),
       rangoIntermedia:get(SIN.rangoIntermedia),
       rangoCritica:get(SIN.rangoCritica),
+      estado:get(SIN.estado),
+      hrActual:get(SIN.hrActual),
     };
   }
   return out;
@@ -1215,30 +1207,26 @@ function operatividadEquipo(codN){
             restantes:null,hrActual:null,hrProximo:null,fuente:'',frecuencia:''};
   const sp=(window._servicePanel||{})[codN];
   if(!sp)return SD;
-  // Lectura de hr/km: descarta vacíos, "-", "S/H" y fechas (los equipos sin horómetro
-  // tienen la fecha del próximo service en esa columna — no es un número de hr/km).
+  // El nivel sale del ESTADO ya calculado en la hoja OPERATIVIDAD (vía SVC_PANELPROG).
+  const est=String(sp.estado||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase();
+  let nivel,color,label;
+  if(/VENCIDO|CRITICO/.test(est)){ nivel='critico'; color='var(--red)'; label='Crítico'; }
+  else if(/INTERMEDIO/.test(est)){ nivel='intermedio'; color='var(--amber)'; label='Intermedio'; }
+  else if(/HOLGADO/.test(est)){ nivel='holgado'; color='var(--blue)'; label='Holgado'; }
+  else return SD;
+  // Números para el detalle/modal (descarta vacíos, "-", "S/H" y fechas).
   const numHr=v=>{
     const s=String(v||'').trim();
     if(!s||s==='-'||/\//.test(s)||/s\/?h/i.test(s))return null;
-    const n=parseFloat(s.replace(/[^\d.,-]/g,'').replace(',','.'));
+    const n=parseFloat(s.replace(/\./g,'').replace(',','.').replace(/[^\d.-]/g,''));
     return isFinite(n)?n:null;
   };
-  // Umbral inferior de cada rango: "250-400" → 250 ; "6000-10000" → 6000
-  const minRango=s=>{const m=String(s||'').match(/-?\d[\d.]*/);return m?parseFloat(m[0].replace(/\./g,'')):null;};
-  const holgadaMin=minRango(sp.rangoHolgada);
-  const intermediaMin=minRango(sp.rangoIntermedia);
   const hrProximo=numHr(sp.estHrKm);
-  if(hrProximo==null||holgadaMin==null||intermediaMin==null)return SD;
+  const restantes=numHr(sp.operatividad);  // columna OPERATIVIDAD = hr/km restantes (ya calculado)
   const comb=(window._combustiblePorEquipo||{})[codN];
   let hrActual,fuente;
   if(comb&&comb.ultimaHr!=null){ hrActual=comb.ultimaHr; fuente='combustible'; }
-  else { hrActual=numHr(sp.ultHrKm); fuente='programa de service'; }
-  if(hrActual==null)return SD;
-  const restantes=hrProximo-hrActual;
-  let nivel,color,label;
-  if(restantes>=holgadaMin){ nivel='holgado'; color='var(--blue)'; label='Holgado'; }
-  else if(restantes>=intermediaMin){ nivel='intermedio'; color='var(--amber)'; label='Intermedio'; }
-  else { nivel='critico'; color='var(--red)'; label='Crítico'; }
+  else { hrActual=numHr(sp.hrActual); if(hrActual==null)hrActual=numHr(sp.ultHrKm); fuente='programa de service'; }
   return{nivel,color,label,restantes,hrActual,hrProximo,fuente,frecuencia:sp.frecuencia};
 }
 
@@ -1263,6 +1251,10 @@ function unidadDeEquipo(codigo){
 // "promedio" se calcula como totalLitros / (hr_max - hr_min) usando solo cargas con hr funcional.
 function procesarCombustible(rows){
   const porEquipo={};
+  // Litros por mes (alimenta el KPI de combustible pesados con selector de rango).
+  const _litrosPorMes={}, _cargasPorMes={};
+  window._litrosCombPesadosPorMes=_litrosPorMes;
+  window._cargasCombPesadosPorMes=_cargasPorMes;
   if(!rows||!rows.length)return porEquipo;
 
   // Lookup tolerante de columnas (estos headers vienen de un Form, no van a cambiar fácil,
@@ -1281,6 +1273,11 @@ function procesarCombustible(rows){
     const hrNum=parseFloat(String(hrRaw||'').replace(/[^\d.,-]/g,'').replace(',','.'));
     const litrosRaw=_pickCol(r,['CANTIDAD DE ENTREGA DE COMBUSTIBLE LITROS','CANTIDAD DE ENTREGA DE COMBUSTIBLE','LITROS','CANTIDAD']);
     const litros=parseFloat(String(litrosRaw||'').replace(/[^\d.,-]/g,'').replace(',','.'))||0;
+    if(fechaD){
+      const _ym=fechaD.getFullYear()+'-'+String(fechaD.getMonth()+1).padStart(2,'0');
+      _litrosPorMes[_ym]=(_litrosPorMes[_ym]||0)+litros;
+      _cargasPorMes[_ym]=(_cargasPorMes[_ym]||0)+1;
+    }
     const tipo=String(_pickCol(r,['TIPO DE COMBUSTIBLE ENTREGADO DIESEL 500 O DIESEL INFINIA','TIPO DE COMBUSTIBLE ENTREGADO','TIPO DE COMBUSTIBLE','TIPO'])||'').trim();
     const lugar=String(_pickCol(r,['LUGAR DE ENTREGA DE COMBUSTIBLE','LUGAR ENTREGA','LUGAR'])||'').trim();
     const operario=String(_pickCol(r,['OPERARIO DE EQUIPO NOMBRE Y APELLIDO','OPERARIO DE EQUIPO','OPERARIO'])||'').trim();
@@ -2181,8 +2178,10 @@ async function loadAll(){
       }
     }
 
-    // Procesar PANEL_PROGRAMA: estado de service por equipo (alimenta KPI y modal)
-    window._servicePanel = procesarProgramaService(serviceFrecRows,serviceTrimRows);
+    // Estado de service por equipo (alimenta KPI y modal). Fuente: hoja
+    // OPERATIVIDAD de SERVICES DE EQUIPOS (ya trae ESTADO pre-calculado:
+    // VENCIDO/CRÍTICO/INTERMEDIO/HOLGADO), volcada a SVC_PANELPROG por el builder.
+    window._servicePanel = procesarPanelPrograma(panelProgramaObj);
 
     // Procesar ENTREGA DE COMBUSTIBLE: por equipo, última hr/km + consumo promedio + historial.
     // No requiere Apps Script — la pestaña ya es plana (una fila = una carga).
@@ -2273,27 +2272,7 @@ async function loadAll(){
     document.getElementById('dashboard').style.display='block';
     setLoadProgress(80);
 
-    // Carga secundaria: solo indicadores (lo demás ya quedó listo arriba)
-    fetchGvizRaw(SHEET_IDS.indicadores,'INDICADORES OPERACIONALES').then(indicadoresRaw=>{
-      const ind=parseIndicadores(indicadoresRaw);
-      const card=document.getElementById('kpiDispCard');
-      if(ind?.disp?.[2]!=null){
-        const disp=ind.disp[2];
-        const el=document.getElementById('kpiDisp'),bar=document.getElementById('kpiDispBar');
-        if(el){el.textContent=disp.toFixed(1)+'%';el.style.color=disp>=88?'var(--green)':'var(--amber)';el.closest('.kpi').querySelector('.kpi-sub').textContent='último período con datos';}
-        if(bar)bar.className='kpi-accent-bar '+(disp>=88?'green':'amber');
-        if(card)card.classList.remove('kpi-empty');
-      }else if(card){
-        // No hay dato disponible: mantener atenuado y aclarar el sub.
-        card.querySelector('.kpi-sub').textContent='sin datos en INDICADORES';
-      }
-      setLoadProgress(100);
-    }).catch(e=>{
-      console.warn('Indicadores:',e);
-      const card=document.getElementById('kpiDispCard');
-      if(card)card.querySelector('.kpi-sub').textContent='error al cargar';
-      setLoadProgress(100);
-    });
+    setLoadProgress(100);
 
     precargarHorometros();
   }catch(e){
@@ -2451,6 +2430,15 @@ function _actualizarKpisDeRango(){
   if(valG)valG.textContent=gastoComb>0?formatMoney(gastoComb):'—';
   if(subG)subG.textContent=gastoComb>0?`${fmtInt(cargasComb)} cargas · ${labelRango}`:'sin cargas en el rango';
   if(cardG){cardG.classList.toggle('kpi-empty',!(gastoComb>0));cardG.classList.toggle('kpi-clickable',gastoComb>0);}
+  // --- Combustible pesados (litros; la fuente Casares no trae costo) ---
+  const litrosPes=_sumarPorMes(window._litrosCombPesadosPorMes||{},yms);
+  const cargasPes=_sumarPorMes(window._cargasCombPesadosPorMes||{},yms);
+  const cardP=document.getElementById('kpiCombPesCard');
+  const valP=document.getElementById('kpiCombPesVal');
+  const subP=document.getElementById('kpiCombPesSub');
+  if(valP)valP.textContent=litrosPes>0?fmtInt(Math.round(litrosPes))+' L':'—';
+  if(subP)subP.textContent=litrosPes>0?`${fmtInt(cargasPes)} cargas · ${labelRango}`:'sin cargas en el rango';
+  if(cardP)cardP.classList.toggle('kpi-empty',!(litrosPes>0));
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -2557,7 +2545,7 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
     : (Object.keys(sp).length>0 ? 'falta cargar rangos/frecuencia' : 'sin datos en PROGRAMA DE SERVICE');
 
   // KPIs (8: operativos, pedidos activos, reparación, service crítico, costo mes,
-  // horas taller, combustible livianos, disponibilidad)
+  // horas taller, combustible livianos, combustible pesados)
   // Cualquier KPI cuyo valor numérico real sea 0 o no haya dato se renderiza con clase
   // .kpi-empty para atenuar visualmente; los KPIs con valor compiten por la atención.
   const _kpiCostoEmpty = !(totalCostoMes>0);
@@ -2585,7 +2573,7 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
     <div class="kpi${_kpiCostoEmpty?' kpi-empty':' kpi-clickable'}" id="kpiCostoCard" data-action="abrirDetalleKpi" data-arg="costo" title="Ver desglose por equipo"><div class="kpi-label">costo en repuestos</div><div class="kpi-val amber" id="kpiCostoVal">${totalCostoMes>0?formatMoney(totalCostoMes):'—'}</div><div class="kpi-sub" id="kpiCostoSub">${MES_ACTUAL.label} · ${fmtInt(entConCosto)} entregas con costo</div><div class="kpi-accent-bar amber"></div></div>
     <div class="kpi${_kpiHorasEmpty?' kpi-empty':' kpi-clickable'}" id="kpiHorasCard" data-action="abrirDetalleKpi" data-arg="horas" title="Ver desglose por equipo"><div class="kpi-label">horas en taller</div><div class="kpi-val" id="kpiHorasVal">${horasTotalFlota>0?fmtInt(Math.round(horasTotalFlota))+' hr':'—'}</div><div class="kpi-sub${horasTotalFlota>0?' hr-split':''}" id="kpiHorasSub">${horasTotalFlota>0?new RawHTML(`<div class="hr-split-bar"><span class="corr" style="width:${_corrPct}%"></span><span class="prev" style="width:${_prevPct}%"></span></div><span class="hr-split-leg"><i class="corr"></i>${fmtInt(Math.round(_horasCorr))} hr correctivo · ${_corrPct}%</span><span class="hr-split-leg"><i class="prev"></i>${fmtInt(Math.round(_horasPrev))} hr preventivo · ${_prevPct}%</span>`):'acumuladas · flota'}</div><div class="kpi-accent-bar blue"></div></div>
     <div class="kpi${_gcEmpty?' kpi-empty':' kpi-clickable'}" id="kpiCombCard" data-action="abrirDetalleKpi" data-arg="combustible" title="Ver desglose por equipo"><div class="kpi-label">combustible livianos</div><div class="kpi-val amber" id="kpiCombVal">${_gcVal>0?formatMoney(_gcVal):'—'}</div><div class="kpi-sub" id="kpiCombSub">${_gcSub}</div><div class="kpi-accent-bar amber"></div></div>
-    <div class="kpi kpi-empty" id="kpiDispCard"><div class="kpi-label">disponibilidad global</div><div class="kpi-val" id="kpiDisp">—</div><div class="kpi-sub">cargando…</div><div class="kpi-accent-bar" id="kpiDispBar"></div></div>
+    <div class="kpi kpi-empty" id="kpiCombPesCard"><div class="kpi-label">combustible pesados</div><div class="kpi-val" id="kpiCombPesVal">—</div><div class="kpi-sub" id="kpiCombPesSub">litros · equipos pesados</div><div class="kpi-accent-bar blue"></div></div>
   `);
 
   // Cablear status bar superior — telemetría en vivo del estado de la flota

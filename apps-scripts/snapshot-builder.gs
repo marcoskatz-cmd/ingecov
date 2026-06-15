@@ -1,164 +1,121 @@
 /**
- * INGECO Panel — CONSTRUCTOR DE SNAPSHOT
+ * INGECO Panel — CONSTRUCTOR DE SNAPSHOT (fuente: carpeta "INGECO")
  * ──────────────────────────────────────────────────────────────────────────
  * Va en el proyecto Apps Script STANDALONE "INGECO Panel API"
  * (cuenta marcoskatz@grupoingeco.com.ar). NO va en ningún Sheet.
  *
- * PROBLEMA QUE RESUELVE
- *   El panel (browser) hacía ~120+ requests gviz por carga: 17 primarios +
- *   58 pestañas del HIST de trabajos + ~31 horómetros + indicadores. gviz
- *   hace rate limiting muy por debajo de eso, y cada fetch tenía catch→[]
- *   (fail-open). Resultado: cada reload fallaba un subconjunto distinto de
- *   requests → los totales (hr, costos, entregas) cambiaban entre reloads.
- *   Los parches previos (_withRetry, batching) bajaban la probabilidad de
- *   falla pero no la eliminaban.
+ * MIGRACIÓN 2026-06: las fuentes de datos pasaron a la carpeta Drive privada
+ * "INGECO" (dueño: Nicolás Dall'Agata, compartida a marcoskatz como editor),
+ * con TABLAS PLANAS (una por concepto) en vez del modelo viejo (archivos
+ * mensuales + una pestaña por equipo). Este builder lee esas tablas privadas
+ * con la cuenta de Marcos (que tiene acceso) y las vuelca, RESHAPEADAS al
+ * esquema que ya espera el browser, en el snapshot PÚBLICO. Así:
+ *   · las fuentes nuevas quedan PRIVADAS (solo el snapshot es público, igual
+ *     que antes; el panel tiene PIN en la UI),
+ *   · el frontend (js/app.js) casi no se toca: lee las MISMAS pestañas del
+ *     snapshot con los MISMOS nombres y esquemas.
  *
- * QUÉ HACE ESTE SCRIPT
- *   Corre server-side cada 30 min (trigger). Lee TODO con SpreadsheetApp
- *   (sin CORS, sin rate-limit por cliente, acceso nativo) y lo vuelca en UN
- *   solo spreadsheet "INGECO Panel Snapshot". El browser pasa a leer SOLO
- *   ese snapshot (~20 pestañas de un spreadsheet) en vez de ~120 requests.
- *   El snapshot queda CONGELADO entre builds → cada reload lee exactamente
- *   las mismas filas → la variación desaparece.
- *
- * FILOSOFÍA (importante para no romper la fidelidad de los números)
- *   El builder NO recalcula KPIs. Hace:
- *     · copia VERBATIM de 17 pestañas fuente (getDisplayValues → strings
- *       idénticos a lo que devolvía gviz vía _cellStr/cell.f).
- *     · aplana SOLO las 2 fuentes fan-out (58 pestañas → TRAB_HIST58,
- *       ~31 horómetros → SERVICE_EQ) replicando EXACTAMENTE la lógica de
- *       _procesarPestanaHistTrabajos y precargarHorometros del browser.
- *   Toda la matemática de KPIs sigue en js/app.js (procesarPanelRepuestos,
- *   procesarPanelTrabajos, los merges LIVE+HIST por año, rangos). Así los
- *   números quedan idénticos a los "buenos" de hoy, con cero divergencia
- *   aritmética, y los merges se siguen editando en JS (rápido), no en GAS.
- *
- * ÚNICO CAMBIO ESPERADO EN LOS NÚMEROS (una sola vez, hacia un valor estable)
- *   Las 58 pestañas del HIST tienen celdas FECHA con rango ("21/3/2025 -
- *   26/3/2025") en columnas formato Date. gviz devolvía null para esas celdas
- *   (bug conocido) y el browser las "adivinaba" con heurística de vecinos.
- *   Server-side getDisplayValues SÍ lee el texto real del rango → se recuperan
- *   trabajos 2025 que el bug descartaba. ⇒ el total de hr 2025 puede SUBIR una
- *   vez y después queda FIJO. Es más correcto y estable. (Decisión: recuperar
- *   el dato real, no esconder el bug de lectura.)
+ * QUÉ NO TRAE (hasta que Marcos cargue el histórico viejo en las tablas nuevas)
+ *   2025 no existe en ninguna fuente. Las pestañas HIST (REP_HIST, TRAB_HIST,
+ *   TRAB_HIST58) quedan VACÍAS → el panel muestra solo 2026. Cuando se backfillee
+ *   el histórico en los archivos nuevos, aparece solo (sin tocar este builder).
  *
  * USO
- *   1) Pegar este archivo en el editor de Apps Script de "INGECO Panel API".
- *   2) Ejecutar construirSnapshot() una vez (autoriza permisos).
- *   3) Ejecutar verSnapshotId() → copiar el ID del log (lo necesita app.js).
- *   4) Verificar que el spreadsheet quedó compartido "cualquiera con el link
- *      puede ver" (el script lo intenta solo; si falló, hacerlo a mano).
- *   5) Ejecutar instalarTriggerSnapshot() → corre cada 30 min solo.
+ *   1) Pegar este archivo en el editor de Apps Script de "INGECO Panel API"
+ *      (reemplaza el builder viejo). El ID del snapshot se conserva en las
+ *      Script Properties, así que app.js NO cambia su SNAPSHOT_ID.
+ *   2) Ejecutar construirSnapshot() una vez (autoriza acceso a la carpeta INGECO).
+ *   3) Revisar el log / pestaña META: cada pestaña con su row count y status.
+ *   4) El trigger de 30 min ya existente sigue llamando a construirSnapshot().
+ *      Si no estaba, correr instalarTriggerSnapshot().
  *
- * El snapshot NO reemplaza a los consolidadores existentes
- * (actualizarPanelTrabajos / actualizarPanelRepuestos): los lee. Depende de
- * que esos hayan corrido (igual que el browser hoy).
+ * DESACOPLE DE LO VIEJO: este builder NO lee ninguna de las fuentes viejas.
+ * Los consolidadores viejos (actualizarPanelTrabajos/Repuestos) y sus triggers
+ * pueden apagarse — ya no alimentan el panel.
  */
 
 /* ═══════════════════════════════════════════════════════════════════════
-   CONFIG — IDs de las fuentes (hardcodeados, espejo de SHEET_IDS en app.js)
+   CONFIG — IDs de las tablas planas dentro de la carpeta "INGECO"
 ═══════════════════════════════════════════════════════════════════════ */
 const SNAP_SRC = {
-  pedidos:            '1VFJwFLLEaOE9tTuwah7QkaDTrYkeYtOH8brUgSyHeFY',
-  indicadores:        '1GpP2ejMVXncr2OLmKK_IP-zqr5AARi1Q3YdQIPlsUUE',
-  codigos:            '1Z8kg4aC6KUNeWyxpPiD3xKntRYB4oghxsbnxqWQdVio', // INGECO Panel Mirror
-  repuestos_live:     '1TUEoOul4SI5O323LcMq2VkaxdcTMfTmZce7NToGESfc', // LIVE PANEL_REPUESTOS
-  repuestos_hist:     '1WCtB-8C1VP4-axoQ_ugk_ersCfPJFjMC1fEDXRHOKFE', // HIST pre-2026
-  trabajos_live:      '1ItkY8miYOwQEsbbjZlNslb86f7HY3TEzywpQx6pD5tU', // LIVE PANEL_TRABAJOS
-  trabajos_hist:      '1cNWQ44UEDiotHyB65BfTMcFuOCfQXYQoSNNAdAKTsy8', // HIST: PANEL + 58 pestañas
-  service:            '1zB9q0e9kxRKe52-I0u5Dqg7PUSE_nlxi3IYn7pxF0Iw',
-  combustible:        '19dqJ-tcdmXiOns99mJgMMmZNDT3kKS7EQXwHd7VDILc',
-  programaService:    '1y6pqbXscej3139lkImWJsJHeJvFa0B5sneICEyyNPmI',
-  combustibleLivianos:'1bZkxrdVEcN4v5Aztf4RBxncJKWE20Jti8wjNdCmAl-E',
+  trabajos:     '1muXaJvsdAH0q3bXZj3yiDanxT3aCfUL5EhY_ORgvx7o', // TRABAJOS REALIZADOS EN EQUIPOS
+  repuestos:    '1JpXjGTJwlvMuEI-rFTd4KeKvzd708-yuSLAhIRuCFC0', // PEDIDOS Y ENTREGAS DE REPUESTOS (hojas PEDIDOS + ENTREGAS)
+  services:     '14XiIAnYeobj5_3JQlR-ejH6HzCqGJ6QFuGmmwauaRJc', // SERVICES DE EQUIPOS (hojas REGISTROS + OPERATIVIDAD)
+  combLivianos: '1DD8BVoF6jX-CcakbbVO6fNJKYF82qBIK1YwyVLQcDJ8', // ENTREGAS DE COMBUSTIBLE - TIBURCIO SANZ (livianos, con costo)
+  combPesados:  '19eyY8MImPM_-Gyzj8QcqA_yR5KDrkuu-1faJUU48N1A', // ENTREGAS DE COMBUSTIBLE - LEANDRO CASARES (pesados, horómetro)
+  equipos:      '1EwbNlmBMx3OIviplvHSJM3N4CZ3vVXgVxH208VugG3M', // LISTA DE EQUIPOS (maestro de códigos)
 };
 
 const SNAP_NAME     = 'INGECO Panel Snapshot';
 const SNAP_PROP_KEY = 'INGECO_SNAPSHOT_ID';
 
-/* Las 17 pestañas que se copian VERBATIM.
-   mode 'obj'  → el browser la lee con headers=1 (keys = fila 1). frozen 1.
-   mode 'raw'  → el browser la lee con headers=0 (matriz completa). frozen 0.
-   fromRow     → primera fila a copiar (PED_ENTR arranca en la 11: el sheet
-                 tiene título+contadores arriba; la 11 es el header real).
-   maxCols     → recorta columnas (PED_ENTR replica el range 'A11:H' = 8 cols). */
-const SNAP_VERBATIM = [
-  { tab:'PED_PEND',      src:'pedidos',            sheet:'PENDIENTES',                    mode:'raw' },
-  { tab:'PED_ENTR',      src:'pedidos',            sheet:'ENTREGADOS',                    mode:'obj', fromRow:11, maxCols:8 },
-  { tab:'COD_V',         src:'codigos',            sheet:'VIALES, ASFALTO Y TRITURACIÓN', mode:'raw' },
-  { tab:'COD_L',         src:'codigos',            sheet:'TRANSPORTE LIVIANO',            mode:'raw' },
-  { tab:'COD_P',         src:'codigos',            sheet:'TRANSPORTE PESADO',             mode:'raw' },
-  { tab:'COD_S',         src:'codigos',            sheet:'SOPORTE',                       mode:'raw' },
-  { tab:'REP_LIVE',      src:'repuestos_live',     sheet:'PANEL_REPUESTOS',               mode:'obj' },
-  { tab:'REP_HIST',      src:'repuestos_hist',     sheet:'PANEL_REPUESTOS',               mode:'obj' },
-  { tab:'TRAB_LIVE',     src:'trabajos_live',      sheet:'PANEL_TRABAJOS',                mode:'obj' },
-  { tab:'TRAB_HIST',     src:'trabajos_hist',      sheet:'PANEL_TRABAJOS',                mode:'obj' },
-  { tab:'SVC_FREC',      src:'programaService',    sheet:'FRECUENCIA - OPERATIVIDAD',     mode:'raw' },
-  { tab:'SVC_TRIM1',     src:'programaService',    sheet:'1° TRIMESTRE',                  mode:'raw' },
-  { tab:'SVC_TRIM2',     src:'programaService',    sheet:'2° TRIMESTRE',                  mode:'raw' },
-  { tab:'SVC_PANELPROG', src:'service',            sheet:'PANEL_PROGRAMA',                mode:'obj' },
-  { tab:'COMBUSTIBLE',   src:'combustible',        sheet:'ENTREGA DE COMBUSTIBLE',        mode:'obj' },
-  { tab:'COMB_LIVIANOS', src:'combustibleLivianos',sheet:'Hoja 1',                        mode:'raw' },
-  { tab:'INDICADORES',   src:'indicadores',        sheet:'INDICADORES OPERACIONALES',     mode:'raw' },
-];
-
-/* Las 58 pestañas POR EQUIPO del HIST de trabajos (1cNWQ). Se aplanan en
-   TRAB_HIST58. Si se agrega un equipo nuevo al sheet, sumarlo acá. */
-const SNAP_TRAB58 = [
-  'Automóvil Chevrolet Prisma','Barredora Guillermo Fracchia','Batea Patronelli',
-  'Camión Ford Cargo 1831','Camión Ford Cargo 1832E','Camión Mercedes Benz 1720',
-  'Camión Mercedes Benz 1725','Camión Mercedes Benz L1114','Camión Mercedes Benz L1514',
-  'Camión Mercedes Benz L1620','Camión Scania LT111','Camión Volvo FM380',
-  'Camioneta Chevrolet S10','Camioneta Fiat Fiorino','Camioneta Fiat Strada',
-  'Camioneta Fiat Toro','Camioneta Ford Ranger','Camioneta Nissan Frontier',
-  'Camioneta Renault Kangoo','Camioneta Toyota Hilux','Camioneta Volkswagen Amarok',
-  'Cargador John Deere 544K','Cargador John Deere 624K','Cargador Volvo L110F',
-  'Cargador Volvo L90F','Carretón Marcelini SRC12NA','Carretón LEO-COR Agro 21',
-  'Compresor Atlas Copco','Compresor Ingersoll Rand','Compresor Schulz',
-  'Generador CETEC CD-530','Generador CRAM','Generador MWM MS3.9A',
-  'Motoniveladora CAT 140K','Motoniveladora CAT 140M','Motoniveladora CAT 14G',
-  'Planta Ammann Prime 140','Retroexcavadora John Deere 210G',
-  'Retroexcavadora Komatsu PC200','Retroexcavadora Komatsu PC210',
-  'Retropala CAT 416E','Retropala Hidromek 102B','Retropala John Deere 310J',
-  'Retropala John Deere 310K','Retropala John Deere 310L','Rodillo Bomag BW24RH',
-  'Rodillo CAT CB534D','Rodillo CAT CS-533C','Rodillo CAT CS-533E',
-  'Rodillo Dynapac CC424HF','Rodillo Dynapac CP221','Rodillo Dynapac CP224',
-  'Rodillo Volvo SD105','Terminadora Dynapac F121C','Terminadora Dynapac F2500C',
-  'Topadora CAT D6E','Trituradora Metso HP300','Zaranda ASTEC GT145S',
-];
-
-/* Sheets de SERVICE por mes (espejo de SERVICE_MESES en app.js). Cada equipo
-   tiene una pestaña con su nombre = código. Se aplanan en SERVICE_EQ.
-   Orden = prioridad first-wins para el horómetro (Abril gana sobre Marzo, etc.). */
-const SNAP_SERVICE_MESES = [
-  { id:'1AK902grpUm6l0VflNsJy0Y7_4X770SL0tMfO7aBLNiw', mes:'Abril 2026',
-    equipos:['CMT-01','CMT-03','CMT-21','CMT-22','CMT-23','CMT-25','MNV-02','MNV-03','RTP-05','RTP-07','RTP-08','RTP-09','EXC-01'] },
-  { id:'1mzt3Fhvwr8J4Mhrz-uIfX4OPBG5-zqweQ7pn0B_s-Vc', mes:'Marzo 2026',
-    equipos:['CF-03','CF-04','CMT-03','EXC-01','RDL-02','RN-02','RTP-05','RTP-09'] },
-  { id:'1N062h_xp9TOWsuZuIX_QNMvXRfB2Tpyf7EwtBmqGImw', mes:'Febrero 2026',
-    equipos:['CF-05','CMT-21','EXC-07','TPD-01'] },
-  { id:'1chZDHgtkjb-Jcs18lgoHrH-KOInzbVgLu5Ew6ThdcE4', mes:'Enero 2026',
-    equipos:['CF-02','CMN-03','CMN-22','CMT-20','MNV-02','RTP-08'] },
-];
-
-/* Headers de las pestañas construidas. Deben coincidir EXACTO con las keys
-   que esperan _filtrarAnio / procesarPanelTrabajos (TRAB_HIST58) y el código
-   de horómetros/modal (SERVICE_EQ) del browser. */
+// Headers de las pestañas aplanadas que el browser lee con keys fijas.
 const SNAP_HIST58_HEADER = ['FECHA TRABAJO','LUGAR TRABAJO','CÓDIGO','DESCRIPCIÓN TRABAJOS','TIEMPO TRABAJO','EQUIPO'];
 const SNAP_SVCEQ_HEADER  = ['CODN','RAWCOD','KVCOD','MES','SHEET_ID','PLANILLA','FECHA','PERSONAL','ACTUAL','PROXIMO','SERIE'];
 
 /* ═══════════════════════════════════════════════════════════════════════
-   HELPERS (réplicas EXACTAS de los del browser, para fidelidad)
+   HELPERS
 ═══════════════════════════════════════════════════════════════════════ */
 // normCod: quita tildes, espacios, guiones, cualquier no alfanumérico, mayúsculas.
 function _snapNormCod(s){
   return String(s == null ? '' : s)
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .normalize('NFD').replace(/[̀-ͯ]/g,'')
     .replace(/[^A-Za-z0-9]/g,'').toUpperCase();
 }
-// nk: normaliza key de kv (NFD sin combinantes, trim, upper). Conserva ° y /.
+// nk: normaliza encabezado (NFD sin combinantes, trim, upper). Conserva ° y /.
 function _snapNk(s){
   return String(s == null ? '' : s)
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase();
+    .normalize('NFD').replace(/[̀-ͯ]/g,'').trim().toUpperCase();
+}
+
+// Busca, dentro de un spreadsheet, la primera pestaña cuyo header contiene una
+// columna que matchea alguno de los sinónimos. Robusto a nombres de pestaña
+// desconocidos (la 2ª hoja de SERVICES, etc.). Devuelve {header,rows,name} o null.
+function _readTabByHeader_(srcId, sinonimos){
+  const ss = SpreadsheetApp.openById(srcId);
+  for(const sh of ss.getSheets()){
+    const lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
+    if(lastRow < 1 || lastCol < 1) continue;
+    const data = sh.getRange(1, 1, lastRow, lastCol).getDisplayValues();
+    if(_idx_(data[0], sinonimos) >= 0) return { header:data[0], rows:data.slice(1), name:sh.getName() };
+  }
+  return null;
+}
+
+// Lee una pestaña como matriz de strings (getDisplayValues). Devuelve
+// { header:[...], rows:[[...]] } o null si no existe / está vacía.
+function _readTab_(srcId, tabName){
+  const ss = SpreadsheetApp.openById(srcId);
+  const sh = ss.getSheetByName(tabName);
+  if(!sh) return null;
+  const lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
+  if(lastRow < 1 || lastCol < 1) return null;
+  const data = sh.getRange(1, 1, lastRow, lastCol).getDisplayValues();
+  return { header: data[0], rows: data.slice(1) };
+}
+
+// Resuelve el índice de columna cuyo header normalizado (igual que normCod del
+// browser) coincide EXACTO con alguno de los sinónimos. -1 si no está.
+function _idx_(header, sinonimos){
+  const cand = sinonimos.map(_snapNormCod);
+  for(let i = 0; i < header.length; i++){
+    if(cand.indexOf(_snapNormCod(header[i])) >= 0) return i;
+  }
+  return -1;
+}
+function _at_(row, i){ return i >= 0 ? String(row[i] == null ? '' : row[i]).trim() : ''; }
+
+// Escribe una pestaña del snapshot con formato texto plano (evita el re-tipado
+// de fechas que rompía gviz; ver builder viejo). obj=true → frozen 1.
+function _write_(snap, tab, matrix, obj){
+  const dst = _resetTab_(snap, tab);
+  if(!matrix.length) matrix = [['']];
+  const nCols = matrix.reduce((m,r)=>Math.max(m, r.length), 1);
+  const norm = matrix.map(r => { const c = r.slice(); while(c.length < nCols) c.push(''); return c; });
+  const rng = dst.getRange(1, 1, norm.length, nCols);
+  rng.setNumberFormat('@');
+  rng.setValues(norm);
+  dst.setFrozenRows(obj ? 1 : 0);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -171,21 +128,16 @@ function construirSnapshot(){
   const errores = [];
   const rec = r => { meta.push(r); if(r.status !== 'OK') errores.push(r); };
 
-  // 1) 17 copias verbatim. Cada una aislada: si una fuente falla, las demás
-  //    siguen y la pestaña conserva su último contenido bueno.
-  for(const v of SNAP_VERBATIM){
-    rec(_copiarVerbatim_(snap, v));
-  }
+  rec(_buildCodigos_(snap));        // COD_V / COD_L / COD_P / COD_S
+  rec(_buildTrabajos_(snap));       // TRAB_LIVE
+  rec(_buildRepuestos_(snap));      // REP_LIVE
+  rec(_buildPedidos_(snap));        // PED_PEND (+ PED_ENTR vacío)
+  rec(_buildCombustible_(snap));    // COMBUSTIBLE (pesados / Casares)
+  rec(_buildCombLivianos_(snap));   // COMB_LIVIANOS (Sanz)
+  rec(_buildService_(snap));        // SVC_PANELPROG + SERVICE_EQ (+ SVC_FREC/TRIM vacíos)
+  _buildHistVacios_(snap, rec);     // REP_HIST / TRAB_HIST / TRAB_HIST58 (header solo)
 
-  // 2) Aplanados (fan-out → 1 pestaña c/u).
-  rec(_construirHist58_(snap));
-  rec(_construirServiceEq_(snap));
-
-  // 3) META (row counts + timestamp para el sello "datos al HH:MM" y para el
-  //    chequeo fail-CLOSED del browser).
   _escribirMeta_(snap, meta, errores);
-
-  // 4) Limpieza: borrar pestañas sobrantes (ej. la "Hoja 1" por defecto).
   _limpiarTabsSobrantes_(snap);
 
   const dt = ((Date.now() - t0) / 1000).toFixed(1);
@@ -198,188 +150,308 @@ function construirSnapshot(){
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   COPIA VERBATIM
+   COD_V/L/P/S ← LISTA DE EQUIPOS
+   parseCodigos (browser) busca la fila header por una celda == 'CODIGO' y
+   mapea por nombre: EQUIPO/NOMBRE/DESCRIPCION, ESTADO, LUGAR, OPERARIO, FECHA,
+   PATENTE/DOMINIO, MARCA, MODELO, CLASIF/TIPO/CATEGORIA, OBSERV/TENENCIA.
+   La LISTA nueva no tiene "EQUIPO" (lo sintetizamos) ni "OBSERVACION" de
+   tenencia (sale de TIPO EQUIPO: Propio/Alquilado). UBICACIÓN → LUGAR.
+   Header de salida = nombres que parseCodigos resuelve sin tocar el browser.
 ═══════════════════════════════════════════════════════════════════════ */
-function _copiarVerbatim_(snap, v){
-  try{
-    const srcId = SNAP_SRC[v.src];
-    const ss = SpreadsheetApp.openById(srcId);
-    const sh = ss.getSheetByName(v.sheet);
-    if(!sh) return { tab:v.tab, rows:0, status:'ERROR', detalle:'no existe pestaña "' + v.sheet + '"' };
+const COD_OUT_HEADER = ['CODIGO','EQUIPO','ESTADO','LUGAR','OPERARIO','FECHA','PATENTE','MARCA','MODELO','CLASIFICACION','OBSERVACION'];
 
-    const lastRow = sh.getLastRow();
-    const lastCol = sh.getLastColumn();
-    if(lastRow < 1 || lastCol < 1) return { tab:v.tab, rows:0, status:'ERROR', detalle:'pestaña vacía' };
-
-    const fromRow = v.fromRow || 1;
-    if(fromRow > lastRow) return { tab:v.tab, rows:0, status:'ERROR', detalle:'fromRow > lastRow' };
-
-    const nRows = lastRow - fromRow + 1;
-    const nCols = v.maxCols ? Math.min(v.maxCols, lastCol) : lastCol;
-    // getDisplayValues = strings ya formateados, idénticos a lo que gviz
-    // devolvía vía cell.f (_cellStr). Recupera además el texto real de celdas
-    // que gviz dejaba en null (rangos en columnas Date, errores de fórmula).
-    const data = sh.getRange(fromRow, 1, nRows, nCols).getDisplayValues();
-
-    // Recién acá tocamos el snapshot (lectura OK ⇒ no dejamos la pestaña a medias).
-    const dst = _resetTab_(snap, v.tab);
-    const rng = dst.getRange(1, 1, data.length, data[0].length);
-    // FORMATO TEXTO ('@') ANTES de setValues. CRÍTICO: el snapshot lo creó
-    // SpreadsheetApp.create() con locale por defecto (US, m/d/yyyy). Sin esto,
-    // setValues("13/1/2026") re-parsea la columna como fecha y gviz al RE-LEER
-    // la re-tipa como 'date' interpretando m/d/yyyy → día>12 (13/1, 25/3...) =
-    // mes inválido → gviz devuelve null → el browser descarta la fila. Eso
-    // tiraba ~520 de 840 filas de COMB_LIVIANOS (28M en vez de 76M). Con texto
-    // plano gviz devuelve la cadena verbatim y _parseDate/parseMoney del browser
-    // la parsean en formato argentino. Es además la fidelidad que el builder
-    // buscaba: getDisplayValues = strings idénticos a cell.f, sin re-formateo.
-    rng.setNumberFormat('@');
-    rng.setValues(data);
-    dst.setFrozenRows(v.mode === 'obj' ? 1 : 0);
-
-    return { tab:v.tab, rows:data.length, status:'OK', detalle:'' };
-  }catch(e){
-    // No tocamos la pestaña destino → conserva el último build bueno.
-    return { tab:v.tab, rows:0, status:'ERROR', detalle:String(e && e.message || e) };
-  }
+function _catEquipo_(clasif, cod){
+  const c = _snapNormCod(clasif);
+  if(/(COMPRESOR|GENERADOR|SOLDAD|GRUPOELECTRO)/.test(c)) return 'S'; // SOPORTE
+  const pref = String(cod || '').toUpperCase().split('-')[0].replace(/[^A-Z]/g,'');
+  if(pref === 'CMT') return 'L'; // camionetas → TRANSPORTE LIVIANO
+  if(pref === 'CMN') return 'P'; // camiones   → TRANSPORTE PESADO
+  return 'V';                    // maquinaria vial / asfalto / trituración
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   APLANADO 1 — TRAB_HIST58 (réplica de _procesarPestanaHistTrabajos, sin el
-   filtro por año: el browser filtra ===2025 con _filtrarAnio).
-═══════════════════════════════════════════════════════════════════════ */
-function _construirHist58_(snap){
+function _buildCodigos_(snap){
   try{
-    const ss = SpreadsheetApp.openById(SNAP_SRC.trabajos_hist);
-    const out = [SNAP_HIST58_HEADER.slice()];
-    let pestOk = 0;
-    const faltantes = [];
+    const t = _readTab_(SNAP_SRC.equipos, 'EQUIPOS') || _readTab_(SNAP_SRC.equipos, 'LISTA DE EQUIPOS');
+    if(!t) return { tab:'COD_*', rows:0, status:'ERROR', detalle:'no pude leer LISTA DE EQUIPOS (pestaña EQUIPOS)' };
+    const h = t.header;
+    const iCod = _idx_(h, ['CÓDIGO','CODIGO']);
+    const iCla = _idx_(h, ['CLASIFICACIÓN','CLASIFICACION','TIPO']);
+    const iMar = _idx_(h, ['MARCA']);
+    const iMod = _idx_(h, ['MODELO']);
+    const iPat = _idx_(h, ['PATENTE/SERIE','PATENTE','N° SERIE/PATENTE','SERIE','DOMINIO']);
+    const iEst = _idx_(h, ['ESTADO']);
+    const iOpe = _idx_(h, ['OPERARIO','RESPONSABLE']);
+    const iUbi = _idx_(h, ['UBICACIÓN','UBICACION','LUGAR']);
+    const iFec = _idx_(h, ['FECHA']);
+    const iTen = _idx_(h, ['TIPO EQUIPO','TENENCIA','PROPIEDAD']);
 
-    for(const pest of SNAP_TRAB58){
-      const sh = ss.getSheetByName(pest);
-      if(!sh){ faltantes.push(pest); continue; }
-      const lastRow = sh.getLastRow();
-      const lastCol = sh.getLastColumn();
-      if(lastRow < 1 || lastCol < 1) continue;
-      const data = sh.getRange(1, 1, lastRow, Math.max(lastCol, 5)).getDisplayValues();
-
-      // Pasada 1: quedarnos con filas "trabajo" (código + tiempo > 0).
-      // Layout de estas pestañas: [0]=FECHA [1]=LUGAR [2]=CÓDIGO [3]=DESC [4]=TIEMPO
-      const trabajos = [];
-      for(const r of data){
-        const cod = String(r[2] == null ? '' : r[2]).trim();
-        const tiempoStr = String(r[4] == null ? '' : r[4]).trim();
-        const tNum = parseFloat(tiempoStr.replace(',', '.'));
-        if(!cod || !isFinite(tNum) || tNum <= 0) continue;
-        trabajos.push({
-          fechaStr: String(r[0] == null ? '' : r[0]).trim(),
-          lugar:    String(r[1] == null ? '' : r[1]).trim(),
-          cod:      cod,
-          desc:     String(r[3] == null ? '' : r[3]).trim(),
-          tiempoStr: tiempoStr,
-        });
-      }
-      // Pasada 2: completar fechas vacías con la próxima visible (o la anterior).
-      let ultima = '';
-      for(let i = 0; i < trabajos.length; i++){
-        if(trabajos[i].fechaStr){ ultima = trabajos[i].fechaStr; continue; }
-        let prox = '';
-        for(let j = i + 1; j < trabajos.length; j++){
-          if(trabajos[j].fechaStr){ prox = trabajos[j].fechaStr; break; }
-        }
-        trabajos[i].fechaStr = prox || ultima;
-      }
-      // Pasada 3: emitir filas con fecha (el browser filtra por año).
-      for(const t of trabajos){
-        if(!t.fechaStr) continue;
-        out.push([t.fechaStr, t.lugar, t.cod, t.desc, t.tiempoStr, pest]);
-      }
-      pestOk++;
+    const buckets = { V:[COD_OUT_HEADER.slice()], L:[COD_OUT_HEADER.slice()], P:[COD_OUT_HEADER.slice()], S:[COD_OUT_HEADER.slice()] };
+    let n = 0;
+    for(const r of t.rows){
+      const cod = _at_(r, iCod);
+      if(!_snapNormCod(cod)) continue;
+      const clasif = _at_(r, iCla), marca = _at_(r, iMar), modelo = _at_(r, iMod);
+      const nombre = [clasif, marca, modelo].filter(x => x && x !== '-').join(' ');
+      const out = [
+        cod, nombre, _at_(r, iEst), _at_(r, iUbi), _at_(r, iOpe),
+        _at_(r, iFec), _at_(r, iPat), marca, modelo, clasif, _at_(r, iTen),
+      ];
+      buckets[_catEquipo_(clasif, cod)].push(out);
+      n++;
     }
-
-    const dst = _resetTab_(snap, 'TRAB_HIST58');
-    const rng = dst.getRange(1, 1, out.length, SNAP_HIST58_HEADER.length);
-    rng.setNumberFormat('@');  // texto plano: ver nota en _copiarVerbatim_ (anti re-tipado de fechas)
-    rng.setValues(out);
-    dst.setFrozenRows(1);
-
-    const det = pestOk + '/' + SNAP_TRAB58.length + ' pestañas'
-              + (faltantes.length ? ' · faltan: ' + faltantes.join(', ') : '');
-    return { tab:'TRAB_HIST58', rows:out.length, status: faltantes.length ? 'WARN' : 'OK', detalle:det };
-  }catch(e){
-    return { tab:'TRAB_HIST58', rows:0, status:'ERROR', detalle:String(e && e.message || e) };
-  }
+    _write_(snap, 'COD_V', buckets.V, false);
+    _write_(snap, 'COD_L', buckets.L, false);
+    _write_(snap, 'COD_P', buckets.P, false);
+    _write_(snap, 'COD_S', buckets.S, false);
+    const det = `V:${buckets.V.length-1} L:${buckets.L.length-1} P:${buckets.P.length-1} S:${buckets.S.length-1}`;
+    return { tab:'COD_*', rows:n, status:'OK', detalle:det };
+  }catch(e){ return { tab:'COD_*', rows:0, status:'ERROR', detalle:String(e && e.message || e) }; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   APLANADO 2 — SERVICE_EQ (réplica de precargarHorometros + del fetch de
-   service del modal de equipo). Una fila por (mes, equipo) con tab existente.
-   Orden = SNAP_SERVICE_MESES (Abril primero) ⇒ first-wins para el horómetro.
+   TRAB_LIVE ← TRABAJOS REALIZADOS EN EQUIPOS
+   procesarPanelTrabajos usa sinónimos: CODIGO, EQUIPO, FECHA TRABAJO,
+   TIEMPO TRABAJO, RAZON TRABAJO, DESCRIPCION TRABAJOS. Renombramos a esos.
 ═══════════════════════════════════════════════════════════════════════ */
-function _construirServiceEq_(snap){
+function _buildTrabajos_(snap){
   try{
-    const out = [SNAP_SVCEQ_HEADER.slice()];
-    const ssCache = {};
-    let filas = 0;
+    const t = _readTab_(SNAP_SRC.trabajos, 'TRABAJOS') || _readTab_(SNAP_SRC.trabajos, 'TRABAJOS REALIZADOS EN EQUIPOS') || _readTab_(SNAP_SRC.trabajos, 'Hoja 1');
+    if(!t) return { tab:'TRAB_LIVE', rows:0, status:'ERROR', detalle:'no pude leer TRABAJOS' };
+    const h = t.header;
+    const iCod = _idx_(h, ['CÓDIGO','CODIGO']);
+    const iEqu = _idx_(h, ['EQUIPO']);
+    const iFec = _idx_(h, ['FECHA','FECHA TRABAJO']);
+    const iLug = _idx_(h, ['LUGAR/OBRA','LUGAR','OBRA','LUGAR TRABAJO']);
+    const iPer = _idx_(h, ['PERSONAL']);
+    const iDes = _idx_(h, ['DESCRIPCIÓN','DESCRIPCION','DESCRIPCIÓN TRABAJOS']);
+    const iTie = _idx_(h, ['T. TRABAJO (H)','T. TRABAJO','TIEMPO TRABAJO','TIEMPO']);
+    const iPar = _idx_(h, ['T. PARADA (H)','T. PARADA','TIEMPO PARADA']);
+    const iRaz = _idx_(h, ['RAZÓN','RAZON','RAZÓN TRABAJO']);
 
-    for(const m of SNAP_SERVICE_MESES){
-      let ss;
-      try{ ss = ssCache[m.id] || (ssCache[m.id] = SpreadsheetApp.openById(m.id)); }
-      catch(e){ continue; } // sheet del mes inaccesible → saltar el mes entero
-      for(const rawCod of m.equipos){
-        try{
-          const sh = ss.getSheetByName(rawCod);
-          if(!sh) continue;
-          const lastRow = sh.getLastRow();
-          if(lastRow < 1) continue;
-          const lastCol = Math.max(sh.getLastColumn(), 2);
-          const data = sh.getRange(1, 1, lastRow, lastCol).getDisplayValues();
-
-          // kv: col0 = clave (normalizada nk), col1 = valor.
-          const kv = {};
-          for(const r of data){
-            const k = _snapNk(r[0]);
-            if(k) kv[k] = String(r[1] == null ? '' : r[1]).trim();
-          }
-          // Sólo emitimos si la pestaña tiene un CODIGO cargado (las vacías se ignoran).
-          const kvCod = kv['CODIGO'] || '';
-          if(!kvCod) continue;
-
-          out.push([
-            _snapNormCod(rawCod),
-            rawCod,
-            kvCod,
-            m.mes,
-            m.id,
-            kv['N° PLANILLA'] || kv['N PLANILLA'] || '',
-            kv['FECHA'] || '',
-            kv['PERSONAL DE TRABAJO'] || '',
-            kv['HOROMETRO/ODOMETRO TRABAJO ACTUAL'] || '',
-            kv['HOROMETRO/ODOMETRO PROXIMO TRABAJO'] || '',
-            kv['N° SERIE/N° PATENTE'] || kv['N SERIE/N PATENTE'] || '',
-          ]);
-          filas++;
-        }catch(e){ /* equipo puntual falla → seguir con el resto */ }
-      }
+    const out = [['CÓDIGO','EQUIPO','FECHA TRABAJO','LUGAR TRABAJO','PERSONAL TRABAJO','DESCRIPCIÓN TRABAJOS','TIEMPO PARADA','TIEMPO TRABAJO','RAZÓN TRABAJO']];
+    let n = 0;
+    for(const r of t.rows){
+      const cod = _at_(r, iCod), fecha = _at_(r, iFec), tie = _at_(r, iTie);
+      if(!_snapNormCod(cod) && !fecha && !tie) continue;
+      out.push([cod, _at_(r, iEqu), fecha, _at_(r, iLug), _at_(r, iPer), _at_(r, iDes), _at_(r, iPar), tie, _at_(r, iRaz)]);
+      n++;
     }
-
-    const dst = _resetTab_(snap, 'SERVICE_EQ');
-    const rng = dst.getRange(1, 1, out.length, SNAP_SVCEQ_HEADER.length);
-    rng.setNumberFormat('@');  // texto plano: ver nota en _copiarVerbatim_ (anti re-tipado de fechas)
-    rng.setValues(out);
-    dst.setFrozenRows(1);
-
-    return { tab:'SERVICE_EQ', rows:out.length, status:'OK', detalle: filas + ' equipos-mes' };
-  }catch(e){
-    return { tab:'SERVICE_EQ', rows:0, status:'ERROR', detalle:String(e && e.message || e) };
-  }
+    _write_(snap, 'TRAB_LIVE', out, true);
+    return { tab:'TRAB_LIVE', rows:n, status:'OK', detalle:'' };
+  }catch(e){ return { tab:'TRAB_LIVE', rows:0, status:'ERROR', detalle:String(e && e.message || e) }; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   META — una fila por pestaña (TAB, ROWS, STATUS, DETALLE) + build stamp.
-   El browser la usa para: (a) sello "datos al HH:MM"; (b) chequeo fail-CLOSED
-   (si una pestaña crítica quedó en 0/ERROR, mostrar "datos incompletos,
-   reintentando" en vez de un total equivocado).
+   REP_LIVE ← hoja ENTREGAS de PEDIDOS Y ENTREGAS DE REPUESTOS
+   procesarPanelRepuestos deriva el ym de FECHA si no hay MES/AÑO, y busca el
+   costo como 'COSTO ENTREGA'/'COSTO'. Renombramos el precio a COSTO ENTREGA.
+═══════════════════════════════════════════════════════════════════════ */
+function _buildRepuestos_(snap){
+  try{
+    const t = _readTab_(SNAP_SRC.repuestos, 'ENTREGAS');
+    if(!t) return { tab:'REP_LIVE', rows:0, status:'ERROR', detalle:'no pude leer hoja ENTREGAS' };
+    const h = t.header;
+    const iNro = _idx_(h, ['N° ENTREGA','N ENTREGA','NRO ENTREGA','ENTREGA','N° DE ENTREGA']);
+    const iFec = _idx_(h, ['FECHA','FECHA ENTREGA']);
+    const iEqu = _idx_(h, ['EQUIPO','EQUIPO/SECTOR']);
+    const iCod = _idx_(h, ['CÓDIGO','CODIGO']);
+    const iCos = _idx_(h, ['COSTO','PRECIO','TOTAL','IMPORTE','COSTO ENTREGA','PRECIO TOTAL','MONTO','COSTO TOTAL']);
+    const iRaz = _idx_(h, ['DESTINO/RAZÓN','RAZÓN','RAZON','MOTIVO','DESTINO']);
+    const iRes = _idx_(h, ['RESPONSABLE','RESPONSABLE ENTREGA']);
+    const iIte = _idx_(h, ['DESCRIPCIÓN DE REPUESTOS','DESCRIPCION DE REPUESTOS','REPUESTOS','ITEMS DETALLE','DESCRIPCIÓN','DESCRIPCION']);
+
+    const out = [['N° ENTREGA','FECHA','EQUIPO','CÓDIGO','COSTO ENTREGA','RAZÓN ENTREGA','RESPONSABLE ENTREGA','ITEMS DETALLE']];
+    let n = 0;
+    for(const r of t.rows){
+      const nro = _at_(r, iNro), fecha = _at_(r, iFec);
+      if(!nro && !fecha) continue;
+      out.push([nro, fecha, _at_(r, iEqu), _at_(r, iCod), _at_(r, iCos), _at_(r, iRaz), _at_(r, iRes), _at_(r, iIte)]);
+      n++;
+    }
+    _write_(snap, 'REP_LIVE', out, true);
+    const det = iCos < 0 ? 'OJO: no encontré columna de costo en ENTREGAS' : '';
+    return { tab:'REP_LIVE', rows:n, status: iCos < 0 ? 'WARN' : 'OK', detalle:det };
+  }catch(e){ return { tab:'REP_LIVE', rows:0, status:'ERROR', detalle:String(e && e.message || e) }; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   PED_PEND ← hoja PEDIDOS de PEDIDOS Y ENTREGAS DE REPUESTOS
+   renderDashboard lee PED_PEND como matriz POSICIONAL:
+     [0]=nro(num) [1]=fecha [2]=equipo [3]=codigo [4]=desc [5]=estado
+   "pedidos activos" = estado contiene pendiente/parcial/comprado.
+   PED_ENTR queda vacío (las entregas del panel salen de REP_LIVE).
+═══════════════════════════════════════════════════════════════════════ */
+function _buildPedidos_(snap){
+  try{
+    const t = _readTab_(SNAP_SRC.repuestos, 'PEDIDOS');
+    if(!t){ _write_(snap, 'PED_PEND', [['N°','FECHA','EQUIPO','CÓDIGO','DESCRIPCIÓN','ESTADO']], false); _write_(snap, 'PED_ENTR', [['','','','','','','','']], true);
+            return { tab:'PED_PEND', rows:0, status:'ERROR', detalle:'no pude leer hoja PEDIDOS' }; }
+    const h = t.header;
+    const iNro = _idx_(h, ['N°','NRO','N° PEDIDO','NUMERO','ID','L1122']);
+    const iFec = _idx_(h, ['FECHA']);
+    const iEqu = _idx_(h, ['EQUIPO/SECTOR','EQUIPO']);
+    const iCod = _idx_(h, ['CÓDIGO','CODIGO']);
+    const iDes = _idx_(h, ['DESCRIPCIÓN DE REPUESTOS','DESCRIPCION DE REPUESTOS','DESCRIPCIÓN','DESCRIPCION','REPUESTOS']);
+    const iEst = _idx_(h, ['ESTADO']);
+    // Si el N° no está como header reconocible, usar la primera columna (la "L1122"
+    // del archivo tiene los números de pedido como valores).
+    const cNro = iNro >= 0 ? iNro : 0;
+
+    const out = [['N°','FECHA','EQUIPO','CÓDIGO','DESCRIPCIÓN','ESTADO']];
+    let n = 0;
+    for(const r of t.rows){
+      const nro = _at_(r, cNro), estado = _at_(r, iEst);
+      if(!nro && !estado) continue;
+      out.push([nro, _at_(r, iFec), _at_(r, iEqu), _at_(r, iCod), _at_(r, iDes), estado]);
+      n++;
+    }
+    _write_(snap, 'PED_PEND', out, false);
+    _write_(snap, 'PED_ENTR', [['','','','','','','','']], true); // sin uso (entregas → REP_LIVE)
+    return { tab:'PED_PEND', rows:n, status:'OK', detalle:'' };
+  }catch(e){ return { tab:'PED_PEND', rows:0, status:'ERROR', detalle:String(e && e.message || e) }; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   COMBUSTIBLE ← ENTREGAS DE COMBUSTIBLE - LEANDRO CASARES (pesados, horómetro)
+   procesarCombustible usa _pickCol con sinónimos cortos: CODIGO, FECHA,
+   ESTADO, HOROMETRO ACTUAL, CANTIDAD, TIPO, LUGAR, OPERARIO, OBSERVACIONES.
+═══════════════════════════════════════════════════════════════════════ */
+function _buildCombustible_(snap){
+  try{
+    const t = _readTab_(SNAP_SRC.combPesados, 'ENTREGAS') || _readTab_(SNAP_SRC.combPesados, 'Hoja 1');
+    if(!t) return { tab:'COMBUSTIBLE', rows:0, status:'ERROR', detalle:'no pude leer combustible pesados' };
+    const h = t.header;
+    const iCod = _idx_(h, ['CÓDIGO INTERNO','CODIGO INTERNO','CÓDIGO','CODIGO']);
+    const iFec = _idx_(h, ['FECHA']);
+    const iEst = _idx_(h, ['ESTADO HORÓMETRO','ESTADO HOROMETRO','ESTADO']);
+    const iHr  = _idx_(h, ['HORÓMETRO ACTUAL','HOROMETRO ACTUAL']);
+    const iLit = _idx_(h, ['CANTIDAD (L)','CANTIDAD','LITROS']);
+    const iTip = _idx_(h, ['TIPO COMBUSTIBLE','TIPO DE COMBUSTIBLE','TIPO']);
+    const iLug = _idx_(h, ['LUGAR ENTREGA','LUGAR']);
+    const iOpe = _idx_(h, ['OPERARIO']);
+
+    const out = [['CODIGO','FECHA','ESTADO','HOROMETRO ACTUAL','CANTIDAD','TIPO','LUGAR','OPERARIO','OBSERVACIONES']];
+    let n = 0;
+    for(const r of t.rows){
+      const cod = _at_(r, iCod);
+      if(!_snapNormCod(cod)) continue;
+      out.push([cod, _at_(r, iFec), _at_(r, iEst), _at_(r, iHr), _at_(r, iLit), _at_(r, iTip), _at_(r, iLug), _at_(r, iOpe), '']);
+      n++;
+    }
+    _write_(snap, 'COMBUSTIBLE', out, true);
+    return { tab:'COMBUSTIBLE', rows:n, status:'OK', detalle:'' };
+  }catch(e){ return { tab:'COMBUSTIBLE', rows:0, status:'ERROR', detalle:String(e && e.message || e) }; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   COMB_LIVIANOS ← ENTREGAS DE COMBUSTIBLE - TIBURCIO SANZ (livianos, con costo)
+   procesarCombustibleLivianos lee POSICIONAL:
+     0 fecha · 3 tipo · 4 litros · 5 patente · 6 odómetro · 7 obra · 8 chofer · 11 total$
+═══════════════════════════════════════════════════════════════════════ */
+function _buildCombLivianos_(snap){
+  try{
+    const t = _readTab_(SNAP_SRC.combLivianos, 'ENTREGAS') || _readTab_(SNAP_SRC.combLivianos, 'Hoja 1');
+    if(!t) return { tab:'COMB_LIVIANOS', rows:0, status:'ERROR', detalle:'no pude leer combustible livianos' };
+    const h = t.header;
+    const iFec = _idx_(h, ['FECHA ENTREGA','FECHA']);
+    const iTip = _idx_(h, ['TIPO COMBUSTIBLE','TIPO DE COMBUSTIBLE','TIPO']);
+    const iLit = _idx_(h, ['CANTIDAD (L)','CANTIDAD','LITROS']);
+    const iPat = _idx_(h, ['N° PATENTE','PATENTE','DOMINIO']);
+    const iOdo = _idx_(h, ['ODÓMETRO (KM)','ODOMETRO','KM']);
+    const iOpe = _idx_(h, ['OPERARIO','CHOFER']);
+    const iTot = _idx_(h, ['TOTAL','IMPORTE','COSTO']);
+
+    const out = [['FECHA','','','TIPO','LITROS','PATENTE','ODOMETRO','OBRA','CHOFER','','','TOTAL']];
+    let n = 0;
+    for(const r of t.rows){
+      const fecha = _at_(r, iFec), pat = _at_(r, iPat);
+      if(!fecha && !pat) continue;
+      const row = ['', '', '', '', '', '', '', '', '', '', '', ''];
+      row[0]  = fecha;
+      row[3]  = _at_(r, iTip);
+      row[4]  = _at_(r, iLit);
+      row[5]  = pat;
+      row[6]  = _at_(r, iOdo);
+      row[8]  = _at_(r, iOpe);
+      row[11] = _at_(r, iTot);
+      out.push(row);
+      n++;
+    }
+    _write_(snap, 'COMB_LIVIANOS', out, false);
+    const det = iTot < 0 ? 'OJO: no encontré columna TOTAL/precio' : '';
+    return { tab:'COMB_LIVIANOS', rows:n, status: iTot < 0 ? 'WARN' : 'OK', detalle:det };
+  }catch(e){ return { tab:'COMB_LIVIANOS', rows:0, status:'ERROR', detalle:String(e && e.message || e) }; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SERVICE — hoja OPERATIVIDAD de SERVICES DE EQUIPOS (ya pre-calculada con
+   FRECUENCIA, HR/KM ACTUAL, PRÓXIMO SERVICE, OPERATIVIDAD y ESTADO).
+   · SVC_PANELPROG: lo lee procesarPanelPrograma (sinónimos tolerantes).
+     Sumamos columna ESTADO (label crítico/vencido/…) para que el frontend
+     pueda usarla directo en el KPI de service crítico (paso 2).
+   · SERVICE_EQ: horómetro actual + próximo por equipo (fallback del modal).
+   · SVC_FREC / SVC_TRIM* quedan vacíos (reemplazados por OPERATIVIDAD).
+═══════════════════════════════════════════════════════════════════════ */
+function _buildService_(snap){
+  try{
+    // La 2ª hoja de SERVICES (operatividad pre-calculada). Si no se llama
+    // "OPERATIVIDAD", la ubicamos por tener una columna OPERATIVIDAD.
+    const t = _readTab_(SNAP_SRC.services, 'OPERATIVIDAD') || _readTabByHeader_(SNAP_SRC.services, ['OPERATIVIDAD']);
+    // SVC_FREC / TRIM vacíos (el browser tolera sin filas).
+    _write_(snap, 'SVC_FREC',  [['']], false);
+    _write_(snap, 'SVC_TRIM1', [['']], false);
+    _write_(snap, 'SVC_TRIM2', [['']], false);
+
+    if(!t){
+      _write_(snap, 'SVC_PANELPROG', [['CODIGO','DESCRIPCION','PATENTE','ULT FECHA','ULT HRKM','EST HRKM','OPERATIVIDAD','FRECUENCIA','ESTADO']], true);
+      _write_(snap, 'SERVICE_EQ', [SNAP_SVCEQ_HEADER.slice()], true);
+      return { tab:'SVC_PANELPROG', rows:0, status:'ERROR', detalle:'no pude leer hoja OPERATIVIDAD' };
+    }
+    const h = t.header;
+    const iCod = _idx_(h, ['CÓDIGO','CODIGO']);
+    const iDes = _idx_(h, ['DESCRIPCIÓN','DESCRIPCION','EQUIPO']);
+    const iPat = _idx_(h, ['N° SERIE/PATENTE','PATENTE','SERIE']);
+    const iFre = _idx_(h, ['FRECUENCIA']);
+    const iAct = _idx_(h, ['HR/KM/FECHA ACTUAL','HR/KM ACTUAL','HRKM ACTUAL','ACTUAL']);
+    const iUFe = _idx_(h, ['ÚLTIMO SERVICE FECHA','ULTIMO SERVICE FECHA','ULT FECHA']);
+    const iUHr = _idx_(h, ['ÚLTIMO SERVICE HR/KM/FECHA','ÚLTIMO SERVICE HR/KM','ULTIMO SERVICE HR/KM','ULT HRKM']);
+    const iPro = _idx_(h, ['PRÓXIMO SERVICE','PROXIMO SERVICE','PROX']);
+    const iOpv = _idx_(h, ['OPERATIVIDAD']);
+    const iEst = _idx_(h, ['ESTADO']);
+
+    const panel = [['CODIGO','DESCRIPCION','PATENTE','ULT FECHA','ULT HRKM','HRKM ACTUAL','EST HRKM','OPERATIVIDAD','FRECUENCIA','ESTADO']];
+    const eq = [SNAP_SVCEQ_HEADER.slice()];
+    let n = 0;
+    for(const r of t.rows){
+      const cod = _at_(r, iCod);
+      if(!_snapNormCod(cod)) continue;
+      const desc = _at_(r, iDes), pat = _at_(r, iPat);
+      const ultFecha = _at_(r, iUFe), ultHr = _at_(r, iUHr), actual = _at_(r, iAct), prox = _at_(r, iPro);
+      panel.push([cod, desc, pat, ultFecha, ultHr, actual, prox, _at_(r, iOpv), _at_(r, iFre), _at_(r, iEst)]);
+      // SERVICE_EQ: ACTUAL = hr/km actual del equipo, PROXIMO = próximo service.
+      eq.push([_snapNormCod(cod), cod, cod, '', '', '', ultFecha, '', actual, prox, pat]);
+      n++;
+    }
+    _write_(snap, 'SVC_PANELPROG', panel, true);
+    _write_(snap, 'SERVICE_EQ', eq, true);
+    return { tab:'SVC_PANELPROG', rows:n, status:'OK', detalle:n + ' equipos' };
+  }catch(e){ return { tab:'SVC_PANELPROG', rows:0, status:'ERROR', detalle:String(e && e.message || e) }; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   HIST vacíos — 2025 todavía no existe en las fuentes nuevas. Header solo.
+═══════════════════════════════════════════════════════════════════════ */
+function _buildHistVacios_(snap, rec){
+  _write_(snap, 'REP_HIST',  [['N° ENTREGA','FECHA','EQUIPO','CÓDIGO','COSTO ENTREGA','RAZÓN ENTREGA','RESPONSABLE ENTREGA','ITEMS DETALLE']], true);
+  _write_(snap, 'TRAB_HIST', [['CÓDIGO','EQUIPO','FECHA TRABAJO','LUGAR TRABAJO','PERSONAL TRABAJO','DESCRIPCIÓN TRABAJOS','TIEMPO PARADA','TIEMPO TRABAJO','RAZÓN TRABAJO']], true);
+  _write_(snap, 'TRAB_HIST58', [SNAP_HIST58_HEADER.slice()], true);
+  // INDICADORES dado de baja (sin fuente nueva); pestaña vacía para no romper lecturas.
+  _write_(snap, 'INDICADORES', [['']], false);
+  rec({ tab:'HIST(vacíos)', rows:0, status:'OK', detalle:'REP_HIST/TRAB_HIST/TRAB_HIST58/INDICADORES vacíos hasta backfill 2025' });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   META + INFRA (snapshot spreadsheet, pestañas, limpieza, triggers)
 ═══════════════════════════════════════════════════════════════════════ */
 function _escribirMeta_(snap, meta, errores){
   const tz = snap.getSpreadsheetTimeZone() || Session.getScriptTimeZone();
@@ -388,15 +460,11 @@ function _escribirMeta_(snap, meta, errores){
   for(const m of meta) rows.push([m.tab, m.rows, m.status, m.detalle || '']);
   rows.push(['__BUILD__', now.getTime(), Utilities.formatDate(now, tz, 'd/M/yyyy HH:mm'), 'snapshot generado']);
   rows.push(['__ERRORES__', errores.length, errores.length ? 'WARN' : 'OK', errores.map(e=>e.tab).join(', ')]);
-
   const dst = _resetTab_(snap, 'META');
   dst.getRange(1, 1, rows.length, 4).setValues(rows);
   dst.setFrozenRows(1);
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   INFRA — spreadsheet snapshot, pestañas, limpieza
-═══════════════════════════════════════════════════════════════════════ */
 function _getOrCreateSnapshotSS_(){
   const props = PropertiesService.getScriptProperties();
   let id = props.getProperty(SNAP_PROP_KEY);
@@ -412,7 +480,7 @@ function _getOrCreateSnapshotSS_(){
   }catch(e){
     Logger.log('OJO: no pude compartir auto. Compartir a mano "cualquiera con el link puede ver". ' + e.message);
   }
-  Logger.log('Snapshot CREADO. ID=' + id);
+  Logger.log('Snapshot CREADO. ID=' + id + ' — pegar en app.js SNAPSHOT_ID si es nuevo.');
   return ss;
 }
 
@@ -425,19 +493,16 @@ function _resetTab_(snap, name){
 
 function _limpiarTabsSobrantes_(snap){
   const validas = {};
-  SNAP_VERBATIM.forEach(v => validas[v.tab] = true);
-  ['TRAB_HIST58','SERVICE_EQ','META'].forEach(t => validas[t] = true);
-  const sheets = snap.getSheets();
-  for(const sh of sheets){
+  ['COD_V','COD_L','COD_P','COD_S','TRAB_LIVE','TRAB_HIST','TRAB_HIST58','REP_LIVE','REP_HIST',
+   'PED_PEND','PED_ENTR','COMBUSTIBLE','COMB_LIVIANOS','SVC_FREC','SVC_TRIM1','SVC_TRIM2',
+   'SVC_PANELPROG','SERVICE_EQ','INDICADORES','META'].forEach(t => validas[t] = true);
+  for(const sh of snap.getSheets()){
     if(!validas[sh.getName()]){
       try{ snap.deleteSheet(sh); }catch(e){ /* nunca borrar la última pestaña */ }
     }
   }
 }
 
-/* ═══════════════════════════════════════════════════════════════════════
-   UTILIDADES MANUALES (ejecutar desde el editor)
-═══════════════════════════════════════════════════════════════════════ */
 function instalarTriggerSnapshot(){
   ScriptApp.getProjectTriggers().forEach(t => {
     if(t.getHandlerFunction() === 'construirSnapshot') ScriptApp.deleteTrigger(t);
