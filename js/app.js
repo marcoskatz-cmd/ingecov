@@ -2258,7 +2258,7 @@ async function loadAll(){
     // Barra de selección de rango de meses para los KPIs sensibles a tiempo
     // (costo, horas, combustible). Default = mes actual. Si el usuario ya había
     // cambiado el rango antes (refresh manual), respetar la selección.
-    if(!window._kpiRangoKey)window._kpiRangoKey='mesActual';
+    if(!Array.isArray(window._kpiMesesSel))window._kpiMesesSel=_ymsEnRango('mesActual');
     renderKpiRangeBar();
     _actualizarKpisDeRango();
 
@@ -2338,14 +2338,36 @@ function _ymsEnRango(key){
   if(key==='todo')return todos;
   return [fmtYm(now)];
 }
-// Label legible del rango activo.
-function _labelRango(key){
-  if(key==='mesActual')return ymLabel(_ymsEnRango('mesActual')[0]||'');
-  if(key==='ult3')return 'últimos 3 meses';
-  if(key==='ult6')return 'últimos 6 meses';
-  if(/^\d{4}$/.test(key))return key;
-  if(key==='todo')return 'acumulado';
-  return ymLabel(_ymsEnRango('mesActual')[0]||'');
+// Meses (YYYY-MM) con datos en algún KPI sensible a tiempo, ordenados.
+function _mesesDisponibles(){
+  return [...new Set([
+    ...Object.keys(window._costosPorMes||{}),
+    ...Object.keys(window._horasPorMesFlota||{}),
+    ...Object.keys(window._gastoCombLivianosPorMes||{}),
+    ...Object.keys(window._litrosCombPesadosPorMes||{}),
+  ])].filter(ym=>/^\d{4}-\d{2}$/.test(ym)).sort();
+}
+// Meses seleccionados para los KPIs. Default = mes actual (o el más reciente con datos).
+function _kpiYms(){
+  const s=window._kpiMesesSel;
+  if(Array.isArray(s)&&s.length)return s;
+  return _ymsEnRango('mesActual');
+}
+// "2026-06" → "Jun'26"
+function _ymCorto(ym){
+  const M=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const p=String(ym||'').split('-');
+  if(p.length<2)return String(ym||'');
+  return (M[+p[1]-1]||'?')+"'"+p[0].slice(2);
+}
+// Label legible de la selección activa (1 mes, rango contiguo, o "N meses").
+function _kpiLabel(){
+  const yms=[..._kpiYms()].sort();
+  if(!yms.length)return 'sin meses';
+  if(yms.length===1)return ymLabel(yms[0]);
+  const idx=ym=>{const[a,m]=ym.split('-');return +a*12+(+m-1);};
+  const contiguo=yms.every((ym,i)=>i===0||idx(ym)-idx(yms[i-1])===1);
+  return contiguo?`${ymLabel(yms[0])} – ${ymLabel(yms[yms.length-1])}`:`${yms.length} meses`;
 }
 // Suma valores por YM (acepta map ym→número o ym→objeto).
 function _sumarPorMes(map,yms){
@@ -2361,23 +2383,34 @@ function _sumarPorMes(map,yms){
 function renderKpiRangeBar(){
   const bar=document.getElementById('kpiRangeBar');
   if(!bar)return;
-  const activo=window._kpiRangoKey||'mesActual';
-  const years=_yearsDisponibles();
-  const mkBtn=(key,label)=>html`<button class="kpi-range-btn${activo===key?' active':''}" data-action="setKpiRango" data-arg="${key}">${label}</button>`;
-  const btns=[mkBtn('mesActual','mes'),mkBtn('ult3','últ 3m'),mkBtn('ult6','últ 6m')];
-  for(const y of years)btns.push(mkBtn(y,y));
-  btns.push(mkBtn('todo','todo'));
-  setHTML(bar, html`<span class="lbl">rango ›</span>${btns}`);
+  const sel=new Set(_kpiYms());
+  const meses=_mesesDisponibles();
+  const now=new Date();
+  const fmtYm=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  const ult=n=>{const o=[];for(let i=0;i<n;i++)o.push(fmtYm(new Date(now.getFullYear(),now.getMonth()-i,1)));return o.filter(ym=>meses.includes(ym));};
+  // Atajos: fijan la selección. Chips: togglean un mes (multi-selección).
+  const fill=(label,yms)=>html`<button class="kpi-range-btn" data-action="setKpiMeses" data-arg="${yms.join(',')}">${label}</button>`;
+  const chip=ym=>html`<button class="kpi-range-btn kpi-mes-chip${sel.has(ym)?' active':''}" data-action="toggleKpiMes" data-arg="${ym}">${_ymCorto(ym)}</button>`;
+  const atajos=[fill('mes',_ymsEnRango('mesActual')),fill('últ 3m',ult(3)),fill('últ 6m',ult(6)),fill('todo',meses)];
+  setHTML(bar, html`<span class="lbl">meses ›</span>${atajos}<span class="kpi-range-sep"></span>${meses.map(chip)}`);
 }
-function setKpiRango(key){
-  window._kpiRangoKey=key;
+// Fija la selección de meses (reemplaza la actual). Acepta array o string "ym,ym".
+function setKpiMeses(yms){
+  const arr=Array.isArray(yms)?yms:String(yms||'').split(',');
+  window._kpiMesesSel=[...new Set(arr.filter(Boolean))].sort();
   renderKpiRangeBar();
   _actualizarKpisDeRango();
 }
+// Agrega/quita un mes de la selección.
+function toggleKpiMes(ym){
+  const sel=new Set(_kpiYms());
+  if(sel.has(ym))sel.delete(ym); else sel.add(ym);
+  setKpiMeses([...sel]);
+}
 // Recalcula y re-renderea los 3 KPIs sensibles a tiempo (costo, horas, combustible).
 function _actualizarKpisDeRango(){
-  const yms=_ymsEnRango(window._kpiRangoKey||'mesActual');
-  const labelRango=_labelRango(window._kpiRangoKey||'mesActual');
+  const yms=_kpiYms();
+  const labelRango=_kpiLabel();
   // --- Costo en repuestos ---
   const costo=_sumarPorMes(window._costosPorMes||{},yms);
   const entregaCostos=window._entregaCostos||{};
@@ -3736,8 +3769,8 @@ const _KPI_DETAIL_CFG={
 function abrirDetalleKpi(tipo){
   const cfg=_KPI_DETAIL_CFG[tipo];
   if(!cfg)return;
-  const yms=_ymsEnRango(window._kpiRangoKey||'mesActual');
-  const labelRango=_labelRango(window._kpiRangoKey||'mesActual');
+  const yms=_kpiYms();
+  const labelRango=_kpiLabel();
   const lista=cfg.getList(yms);
   const total=lista.reduce((s,x)=>s+x.valor,0);
   const overlay=document.getElementById('kpiDetailOverlay');
@@ -3868,7 +3901,8 @@ const ACTIONS = {
   renderPedidosPendientesGlobal: () => renderPedidosPendientesGlobal(),
   closeServiceCriticoModal:      () => closeServiceCriticoModal(),
   openServiceCriticoModal:       () => openServiceCriticoModal(),
-  setKpiRango:                   (key)   => setKpiRango(key),
+  setKpiMeses:                   (arg)   => setKpiMeses(arg),
+  toggleKpiMes:                  (arg)   => toggleKpiMes(arg),
   toggleEqSec:                   (uid) => toggleEqSec(uid),
   toggleEquipoDetail:            (codigo, t) => toggleEquipoDetail(codigo, t),
   scrollToEquipo:                (codigo) => scrollToEquipo(codigo),
