@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Traslados de Equipos — INGECO</title>
+<style>
+  :root{
+    --azul:#0b4f8a;
+    --azul-osc:#073761;
+    --verde:#1e8e3e;
+    --rojo:#c5221f;
+    --gris:#f2f4f7;
+    --txt:#1f2937;
+    --borde:#d0d7de;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    background:var(--gris);
+    color:var(--txt);
+    font-size:18px;
+    line-height:1.4;
+  }
+  header{
+    background:var(--azul);
+    color:#fff;
+    padding:18px 16px;
+    text-align:center;
+  }
+  header h1{margin:0;font-size:20px;font-weight:700;letter-spacing:.5px;}
+  header p{margin:4px 0 0;font-size:13px;opacity:.85;}
+  main{max-width:560px;margin:0 auto;padding:16px;}
+
+  /* PANTALLA INICIAL */
+  .home-btns{display:flex;flex-direction:column;gap:18px;margin-top:24px;}
+  .big-btn{
+    border:none;border-radius:16px;color:#fff;
+    padding:34px 18px;font-size:24px;font-weight:800;
+    cursor:pointer;display:flex;align-items:center;justify-content:center;
+    gap:14px;box-shadow:0 4px 14px rgba(0,0,0,.15);
+  }
+  .big-btn .ico{font-size:38px;line-height:1;}
+  .btn-retiro{background:var(--rojo);}
+  .btn-entrega{background:var(--verde);}
+  .big-btn:active{transform:translateY(2px);}
+
+  /* FORMULARIO */
+  .form-card{background:#fff;border-radius:16px;padding:18px 16px 8px;box-shadow:0 2px 10px rgba(0,0,0,.06);}
+  .form-title{font-size:20px;font-weight:800;margin:0 0 4px;display:flex;align-items:center;gap:10px;}
+  .badge{display:inline-block;color:#fff;border-radius:8px;padding:4px 10px;font-size:13px;font-weight:700;}
+  .badge.retiro{background:var(--rojo);}
+  .badge.entrega{background:var(--verde);}
+  label{display:block;font-weight:700;margin:16px 0 6px;font-size:15px;}
+  label .req{color:var(--rojo);}
+  input[type=text]{
+    width:100%;padding:14px;font-size:18px;border:2px solid var(--borde);
+    border-radius:12px;background:#fff;
+  }
+  input[type=text]:focus{outline:none;border-color:var(--azul);}
+
+  /* FIRMA */
+  .firma-wrap{position:relative;}
+  canvas{
+    width:100%;height:200px;border:2px dashed var(--borde);
+    border-radius:12px;background:#fff;touch-action:none;display:block;
+  }
+  .firma-hint{position:absolute;top:50%;left:0;right:0;text-align:center;
+    transform:translateY(-50%);color:#9aa4b2;pointer-events:none;font-size:15px;}
+  .firma-clear{margin-top:8px;background:none;border:none;color:var(--azul);
+    font-size:15px;font-weight:700;cursor:pointer;padding:6px 0;}
+
+  .actions{display:flex;gap:12px;margin-top:24px;}
+  .btn{flex:1;border:none;border-radius:12px;padding:18px;font-size:18px;font-weight:800;cursor:pointer;}
+  .btn-cancel{background:#e5e7eb;color:#374151;}
+  .btn-send{background:var(--azul);color:#fff;}
+  .btn-send:disabled{opacity:.5;}
+  .btn:active{transform:translateY(2px);}
+
+  .hidden{display:none;}
+
+  /* MENSAJES */
+  .toast{
+    position:fixed;left:50%;bottom:28px;transform:translateX(-50%);
+    background:#111827;color:#fff;padding:14px 22px;border-radius:30px;
+    font-size:16px;box-shadow:0 6px 20px rgba(0,0,0,.3);z-index:50;
+    max-width:90%;text-align:center;
+  }
+  .overlay{
+    position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:40;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .spinner{
+    width:48px;height:48px;border:5px solid #fff;border-top-color:transparent;
+    border-radius:50%;animation:spin .8s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .ok-screen{text-align:center;padding:40px 16px;}
+  .ok-screen .check{font-size:72px;color:var(--verde);}
+  .ok-screen h2{font-size:24px;margin:10px 0;}
+  .ok-screen p{color:#566;margin:0 0 24px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>TRASLADO DE EQUIPOS</h1>
+  <p>INGECO S.A. · Control entre obras</p>
+</header>
+
+<main>
+  <!-- PANTALLA INICIAL -->
+  <section id="home">
+    <div class="home-btns">
+      <button class="big-btn btn-retiro" onclick="abrir('retiro')">
+        <span class="ico">📤</span> RETIRO de equipo
+      </button>
+      <button class="big-btn btn-entrega" onclick="abrir('entrega')">
+        <span class="ico">📥</span> ENTREGA de equipo
+      </button>
+    </div>
+  </section>
+
+  <!-- FORMULARIO -->
+  <section id="form-screen" class="hidden">
+    <div class="form-card">
+      <h2 class="form-title">
+        <span id="badge" class="badge"></span>
+        <span id="form-heading"></span>
+      </h2>
+
+      <label>Lugar / Obra <span class="req">*</span></label>
+      <input type="text" id="lugar" placeholder="Ej: Obra Ruta 38 — Km 12" autocomplete="off">
+
+      <label id="lbl-resp">Responsable <span class="req">*</span></label>
+      <input type="text" id="responsable" placeholder="Nombre y apellido" autocomplete="off">
+
+      <label>Equipo <span class="req">*</span></label>
+      <input type="text" id="equipo" placeholder="Ej: Compactador, Retroexcavadora..." autocomplete="off">
+
+      <label>Código de equipo <span class="req">*</span></label>
+      <input type="text" id="codigo" placeholder="Ej: EQ-0457" autocomplete="off">
+
+      <label>Firma del responsable <span class="req">*</span></label>
+      <div class="firma-wrap">
+        <canvas id="firma"></canvas>
+        <div class="firma-hint" id="firma-hint">Firmá con el dedo aquí ✍️</div>
+      </div>
+      <button class="firma-clear" onclick="limpiarFirma()">Borrar firma</button>
+
+      <div class="actions">
+        <button class="btn btn-cancel" onclick="volver()">Cancelar</button>
+        <button class="btn btn-send" id="btn-send" onclick="enviar()">Registrar</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONFIRMACIÓN -->
+  <section id="ok-screen" class="hidden">
+    <div class="ok-screen">
+      <div class="check">✓</div>
+      <h2>¡Registrado!</h2>
+      <p id="ok-text"></p>
+      <button class="big-btn btn-retiro" style="background:var(--azul)" onclick="volver()">Volver al inicio</button>
+    </div>
+  </section>
+</main>
+
+<script>
+/* ========= CONFIGURACIÓN ========= */
+/* Pegá acá la URL del web app de Apps Script (termina en /exec) */
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwc7AhMheXpSxOlzEVkgOKizN8UZG6fqbHpqS-XbXESbdOZJ7FrdgK2JeMAmPw-iuOR/exec";
+/* ================================= */
+
+let tipoActual = null;
+let canvas, ctx, dibujando = false, hayFirma = false;
+
+window.addEventListener('load', initFirma);
+
+function abrir(tipo){
+  tipoActual = tipo;
+  document.getElementById('home').classList.add('hidden');
+  document.getElementById('form-screen').classList.remove('hidden');
+  document.getElementById('ok-screen').classList.add('hidden');
+
+  const badge = document.getElementById('badge');
+  const heading = document.getElementById('form-heading');
+  const lblResp = document.getElementById('lbl-resp');
+  if(tipo==='retiro'){
+    badge.textContent='RETIRO'; badge.className='badge retiro';
+    heading.textContent='Retiro de equipo';
+    lblResp.innerHTML='Responsable que ENTREGA el equipo <span class="req">*</span>';
+  }else{
+    badge.textContent='ENTREGA'; badge.className='badge entrega';
+    heading.textContent='Entrega de equipo';
+    lblResp.innerHTML='Responsable que RECIBE el equipo <span class="req">*</span>';
+  }
+  limpiarCampos();
+  setTimeout(ajustarCanvas, 50);
+}
+
+function volver(){
+  document.getElementById('home').classList.remove('hidden');
+  document.getElementById('form-screen').classList.add('hidden');
+  document.getElementById('ok-screen').classList.add('hidden');
+}
+
+function limpiarCampos(){
+  ['lugar','responsable','equipo','codigo'].forEach(id=>document.getElementById(id).value='');
+  limpiarFirma();
+}
+
+/* ---------- FIRMA ---------- */
+function initFirma(){
+  canvas = document.getElementById('firma');
+  ctx = canvas.getContext('2d');
+  const start = e=>{dibujando=true; ocultarHint(); dibujar(e); e.preventDefault();};
+  const move = e=>{if(dibujando){dibujar(e); e.preventDefault();}};
+  const end  = ()=>{dibujando=false; ctx.beginPath();};
+  canvas.addEventListener('pointerdown', start);
+  canvas.addEventListener('pointermove', move);
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointerleave', end);
+}
+
+function ajustarCanvas(){
+  const ratio = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * ratio;
+  canvas.height = rect.height * ratio;
+  ctx.scale(ratio, ratio);
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#111';
+}
+
+function dibujar(e){
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  ctx.lineTo(x,y);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x,y);
+  hayFirma = true;
+}
+
+function ocultarHint(){ document.getElementById('firma-hint').style.display='none'; }
+
+function limpiarFirma(){
+  if(ctx){ ctx.clearRect(0,0,canvas.width,canvas.height); }
+  hayFirma=false;
+  const h=document.getElementById('firma-hint');
+  if(h) h.style.display='block';
+}
+
+/* ---------- ENVÍO ---------- */
+function enviar(){
+  const lugar=val('lugar'), resp=val('responsable'), equipo=val('equipo'), codigo=val('codigo');
+  if(!lugar || !resp || !equipo || !codigo){ toast('Completá todos los campos.'); return; }
+  if(!hayFirma){ toast('Falta la firma del responsable.'); return; }
+
+  const datos = {
+    tipo: tipoActual,
+    lugar, responsable: resp, equipo, codigo,
+    firma: canvas.toDataURL('image/png')
+  };
+
+  loading(true);
+  document.getElementById('btn-send').disabled=true;
+
+  fetch(SCRIPT_URL, {
+    method:'POST',
+    headers:{'Content-Type':'text/plain;charset=utf-8'},
+    body: JSON.stringify(datos)
+  })
+  .then(r=>r.json())
+  .then(res=>{
+    loading(false);
+    document.getElementById('btn-send').disabled=false;
+    if(res && res.ok){
+      document.getElementById('ok-text').textContent =
+        (tipoActual==='retiro'?'Retiro':'Entrega')+' de "'+equipo+'" ('+codigo+') registrado correctamente.';
+      document.getElementById('form-screen').classList.add('hidden');
+      document.getElementById('ok-screen').classList.remove('hidden');
+    }else{
+      toast('Error al guardar: '+((res&&res.error)||'desconocido'));
+    }
+  })
+  .catch(err=>{
+    loading(false);
+    document.getElementById('btn-send').disabled=false;
+    toast('Sin conexión o URL inválida. Revisá internet.');
+  });
+}
+
+function val(id){ return document.getElementById(id).value.trim(); }
+
+/* ---------- UI helpers ---------- */
+let toastTimer;
+function toast(msg){
+  let t=document.querySelector('.toast');
+  if(t) t.remove();
+  t=document.createElement('div');
+  t.className='toast'; t.textContent=msg;
+  document.body.appendChild(t);
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.remove(),3500);
+}
+function loading(show){
+  let o=document.querySelector('.overlay');
+  if(show){
+    if(o) return;
+    o=document.createElement('div'); o.className='overlay';
+    o.innerHTML='<div class="spinner"></div>';
+    document.body.appendChild(o);
+  }else if(o){ o.remove(); }
+}
+</script>
+</body>
+</html>
