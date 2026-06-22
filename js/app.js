@@ -1492,6 +1492,12 @@ async function precargarHorometros(){
       mes:r['MES']||'',rawCod:r['RAWCOD']||codN,
     };
   }
+  // Espejo zaranda → trituradora en _horometros. La trituradora (TRT-01) no tiene
+  // horómetro propio: corre las mismas horas que la zaranda (ZRN-01).
+  if(window._horometros['ZRN01']&&!window._horometros['TRT01']){
+    const zrn=window._horometros['ZRN01'];
+    window._horometros['TRT01']={actual:zrn.actual,proximo:null,patente:null,mes:zrn.mes,rawCod:'TRT01'};
+  }
   renderEquipoIndex();
 }
 
