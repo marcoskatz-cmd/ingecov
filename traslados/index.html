@@ -101,6 +101,20 @@
   .ok-screen .check{font-size:72px;color:var(--verde);}
   .ok-screen h2{font-size:24px;margin:10px 0;}
   .ok-screen p{color:#566;margin:0 0 24px;}
+
+  /* MULTI-EQUIPO */
+  .equipo-sep{
+    text-align:center;color:#9aa4b2;font-size:13px;font-weight:700;
+    letter-spacing:.5px;margin:20px 0 0;padding-top:16px;
+    border-top:1px dashed var(--borde);
+  }
+  .btn-agregar{
+    display:block;width:100%;margin-top:18px;padding:14px;
+    background:none;border:2px dashed var(--azul);border-radius:12px;
+    color:var(--azul);font-size:16px;font-weight:700;cursor:pointer;
+  }
+  .btn-agregar:active{background:#e8f0fb;}
+  .btn-agregar.hidden{display:none;}
 </style>
 </head>
 <body>
@@ -136,11 +150,30 @@
       <label id="lbl-resp">Responsable <span class="req">*</span></label>
       <input type="text" id="responsable" placeholder="Nombre y apellido" autocomplete="off">
 
-      <label>Equipo <span class="req">*</span></label>
-      <input type="text" id="equipo" placeholder="Ej: Compactador, Retroexcavadora..." autocomplete="off">
-
-      <label>Código de equipo <span class="req">*</span></label>
-      <input type="text" id="codigo" placeholder="Ej: EQ-0457" autocomplete="off">
+      <!-- EQUIPOS (1 obligatorio, hasta 3) -->
+      <div id="equipos-wrap">
+        <div class="equipo-bloque" data-n="1">
+          <label>Equipo 1 <span class="req">*</span></label>
+          <input type="text" id="equipo1" placeholder="Ej: Compactador, Retroexcavadora..." autocomplete="off">
+          <label>Código equipo 1 <span class="req">*</span></label>
+          <input type="text" id="codigo1" placeholder="Ej: EQ-0457" autocomplete="off">
+        </div>
+        <div class="equipo-bloque hidden" data-n="2">
+          <div class="equipo-sep">— Equipo 2 —</div>
+          <label>Equipo 2</label>
+          <input type="text" id="equipo2" placeholder="Ej: Compactador, Retroexcavadora..." autocomplete="off">
+          <label>Código equipo 2</label>
+          <input type="text" id="codigo2" placeholder="Ej: EQ-0457" autocomplete="off">
+        </div>
+        <div class="equipo-bloque hidden" data-n="3">
+          <div class="equipo-sep">— Equipo 3 —</div>
+          <label>Equipo 3</label>
+          <input type="text" id="equipo3" placeholder="Ej: Compactador, Retroexcavadora..." autocomplete="off">
+          <label>Código equipo 3</label>
+          <input type="text" id="codigo3" placeholder="Ej: EQ-0457" autocomplete="off">
+        </div>
+      </div>
+      <button class="btn-agregar" id="btn-agregar" onclick="agregarEquipo()">＋ Agregar otro equipo</button>
 
       <label>Firma del responsable <span class="req">*</span></label>
       <div class="firma-wrap">
@@ -196,6 +229,7 @@ function abrir(tipo){
     heading.textContent='Entrega de equipo';
     lblResp.innerHTML='Responsable que RECIBE el equipo <span class="req">*</span>';
   }
+  equiposVisibles = 1;
   limpiarCampos();
   setTimeout(ajustarCanvas, 50);
 }
@@ -207,8 +241,21 @@ function volver(){
 }
 
 function limpiarCampos(){
-  ['lugar','responsable','equipo','codigo'].forEach(id=>document.getElementById(id).value='');
+  ['lugar','responsable','equipo1','codigo1','equipo2','codigo2','equipo3','codigo3']
+    .forEach(id=>document.getElementById(id).value='');
+  // Ocultar bloques 2 y 3, restablecer botón
+  [2,3].forEach(n=>{
+    document.querySelector('.equipo-bloque[data-n="'+n+'"]').classList.add('hidden');
+  });
+  document.getElementById('btn-agregar').classList.remove('hidden');
   limpiarFirma();
+}
+
+let equiposVisibles = 1;
+function agregarEquipo(){
+  equiposVisibles++;
+  document.querySelector('.equipo-bloque[data-n="'+equiposVisibles+'"]').classList.remove('hidden');
+  if(equiposVisibles >= 3) document.getElementById('btn-agregar').classList.add('hidden');
 }
 
 /* ---------- FIRMA ---------- */
@@ -257,13 +304,25 @@ function limpiarFirma(){
 
 /* ---------- ENVÍO ---------- */
 function enviar(){
-  const lugar=val('lugar'), resp=val('responsable'), equipo=val('equipo'), codigo=val('codigo');
-  if(!lugar || !resp || !equipo || !codigo){ toast('Completá todos los campos.'); return; }
+  const lugar=val('lugar'), resp=val('responsable');
+  const e1=val('equipo1'), c1=val('codigo1');
+  if(!lugar || !resp || !e1 || !c1){ toast('Completá lugar, responsable y al menos el Equipo 1.'); return; }
   if(!hayFirma){ toast('Falta la firma del responsable.'); return; }
+
+  // Recolectar equipos visibles (2 y 3 son opcionales)
+  const equipos = [{equipo:e1, codigo:c1}];
+  for(let n=2; n<=equiposVisibles; n++){
+    const eq=val('equipo'+n), cd=val('codigo'+n);
+    if(eq || cd){
+      if(!eq || !cd){ toast('Completá nombre y código del Equipo '+n+'.'); return; }
+      equipos.push({equipo:eq, codigo:cd});
+    }
+  }
 
   const datos = {
     tipo: tipoActual,
-    lugar, responsable: resp, equipo, codigo,
+    lugar, responsable: resp,
+    equipos,
     firma: canvas.toDataURL('image/png')
   };
 
@@ -280,15 +339,16 @@ function enviar(){
     loading(false);
     document.getElementById('btn-send').disabled=false;
     if(res && res.ok){
+      const lista = equipos.map(eq=>'"'+eq.equipo+'" ('+eq.codigo+')').join(', ');
       document.getElementById('ok-text').textContent =
-        (tipoActual==='retiro'?'Retiro':'Entrega')+' de "'+equipo+'" ('+codigo+') registrado correctamente.';
+        (tipoActual==='retiro'?'Retiro':'Entrega')+' de '+lista+' registrado correctamente.';
       document.getElementById('form-screen').classList.add('hidden');
       document.getElementById('ok-screen').classList.remove('hidden');
     }else{
       toast('Error al guardar: '+((res&&res.error)||'desconocido'));
     }
   })
-  .catch(err=>{
+  .catch(()=>{
     loading(false);
     document.getElementById('btn-send').disabled=false;
     toast('Sin conexión o URL inválida. Revisá internet.');
