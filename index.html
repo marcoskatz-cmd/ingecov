@@ -7,7 +7,8 @@
 <!--
   CSP estricta — deny-by-default.
   · script-src local + cdnjs (Chart.js con SRI).
-  · connect-src solo gviz (Google Sheets), todo intento de exfil a otro host muere.
+  · connect-src: gviz (Google Sheets, lectura) + script.google(usercontent).com
+    (Web App de refresh on-demand). Cualquier otro host para fetch muere.
   · require-trusted-types-for: innerHTML directo lanza TypeError; solo la policy
     nombrada 'ingecov-html' (definida en js/app.js) puede producir TrustedHTML.
   · style-src 'unsafe-inline' queda — el HTML tiene 161 atributos style="…"
@@ -15,7 +16,7 @@
   · frame-ancestors no se setea via meta; el script tiene un frame-buster que
     redirige top a la URL real si alguien intenta embedearnos en un iframe.
 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://docs.google.com; manifest-src 'self'; worker-src 'self'; base-uri 'self'; form-action 'none'; object-src 'none'; require-trusted-types-for 'script'; trusted-types ingecov-html;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://docs.google.com https://script.google.com https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'self'; form-action 'none'; object-src 'none'; require-trusted-types-for 'script'; trusted-types ingecov-html;">
 <title>Panel de Mantenimiento — INGECO</title>
 <!-- Fonts self-hosted (latin subset, variable woff2). Eliminado el third-party
      a fonts.googleapis.com/gstatic.com: CSP más simple + sin beacons a Google. -->
@@ -28,12 +29,12 @@
         referrerpolicy="no-referrer"></script>
 <!-- init.js: setea el tema en <html> ANTES del paint para evitar FOUC.
      Sin defer a propósito. -->
-<script src="./js/init.js?v=30"></script>
+<script src="./js/init.js?v=31"></script>
 <!-- app.js: toda la lógica de la app. Con defer corre tras parsear el DOM,
      equivalente a estar al final del <body>. Bump del query ?v= cuando se cambia
      app.js para forzar a clientes con HTTP cache a re-fetchear (el SW solo
      invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/app.js?v=30" defer></script>
+<script src="./js/app.js?v=31" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -1563,7 +1564,7 @@
         <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
       </button>
-      <button class="refresh-btn" id="refreshBtn" data-action="loadAll">sync</button>
+      <button class="refresh-btn" id="refreshBtn" data-action="syncNow">sync</button>
     </div>
   </div>
   <div class="status-bar">

@@ -186,6 +186,11 @@ const SEPARAR_EQUIPOS = {
 // eso y cada fetch fallido (catch→[]) cambiaba los totales entre reloads. Con
 // el snapshot, cada reload lee exactamente las mismas filas → determinismo.
 const SNAPSHOT_ID='1E883xvPP_Oyt1mjQ2FjZLiY-Jmvyzgi0_UhEq2dFbGY';
+// Web App de refresh on-demand (apps-scripts/refresh-webapp.gs). El boton "sync"
+// la llama para correr consolidadores + construirSnapshot server-side y recien
+// ahi releer el snapshot. El key es disuasor (como el PIN), no seguridad cripto.
+const REFRESH_URL='https://script.google.com/macros/s/AKfycbxoatRBgyPah9WFS4Iuw-oVpdKA_nbUvFAFyPXgMGTFQK9EDHgms5bD1ueztuy4X120Kw/exec';
+const REFRESH_KEY='alsdkjgn45lfsk93mkl';
 // (idFuente|pestaña) → pestaña del snapshot. El range se descarta al redirigir:
 // la pestaña del snapshot ya es el slice exacto (ej. PED_ENTR ya arranca en la
 // fila 11 que pedía el range 'A11:H').
@@ -288,7 +293,40 @@ const _withRetry = (fn, maxRetries=3) => async (...args) => {
 };
 const fetchGvizRaw = _withRetry(_gvizRawImpl);
 const fetchGvizObj = _withRetry(_gvizObjImpl);
-async function apiRefreshAll(){ /* no-op: ya no hay API privada */ }
+async function apiRefreshAll(){ /* no-op: el rebuild server lo dispara syncNow() solo en click manual, no en auto-refresh */ }
+
+// Refresh REAL on-demand: dispara la Web App (consolidadores + construirSnapshot
+// server-side) y, al terminar, recarga para leer el snapshot ya reconstruido.
+// Solo lo usa el boton "sync"; el auto-refresh sigue re-leyendo el snapshot sin
+// reconstruirlo (no tiene sentido gatillar un rebuild pesado cada N minutos).
+let _syncing=false;
+async function syncNow(){
+  if(_syncing)return;
+  if(!REFRESH_URL)return loadAll(); // sin endpoint configurado, comportamiento viejo
+  _syncing=true;
+  const btn=document.getElementById('refreshBtn');
+  let secs=0;
+  if(btn){btn.classList.add('loading');btn.textContent='↻ actualizando…';}
+  const tick=setInterval(()=>{secs++;if(btn)btn.textContent='↻ actualizando '+secs+'s…';},1000);
+  const ctrl=new AbortController();
+  const killer=setTimeout(()=>ctrl.abort(),360000); // tope 6 min = techo de Apps Script (run real ~3.5 min)
+  try{
+    const url=REFRESH_URL+'?ep=refresh&key='+encodeURIComponent(REFRESH_KEY);
+    const r=await fetch(url,{method:'GET',signal:ctrl.signal});
+    const j=await r.json().catch(()=>null);
+    if(!j||!j.ok){
+      showErrorToast('Refresh server: '+((j&&(j.message||j.error))||('HTTP '+r.status))+' — recargo de todos modos');
+    }else if(j.errors&&j.errors.length){
+      showErrorToast('Refresh parcial — fallaron: '+j.errors.map(x=>x.step).join(', '));
+    }
+  }catch(e){
+    showErrorToast('No se pudo actualizar en el server'+(e&&e.name==='AbortError'?' (timeout 6 min)':': '+((e&&e.message)||e))+' — recargo de todos modos');
+  }finally{
+    clearInterval(tick);clearTimeout(killer);
+    _syncing=false;
+    await loadAll(); // re-lee el snapshot fresco; loadAll restaura el texto del boton al final
+  }
+}
 
 /* ═══════════════════════════════════════════════════════
    HELPERS
@@ -3907,6 +3945,7 @@ const ACTIONS = {
   setAutoRefresh:                () => setAutoRefresh(),
   toggleTheme:                   () => toggleTheme(),
   loadAll:                       () => loadAll(),
+  syncNow:                       () => syncNow(),
   toggleSection:                 (id) => toggleSection(id),
   setTab:                        (id, t) => setTab(id, t),
   onSearch:                      (_, t) => onSearch(t.value),
