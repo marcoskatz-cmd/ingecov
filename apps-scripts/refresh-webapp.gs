@@ -8,11 +8,13 @@
  *
  * FLUJO al hacer GET ?ep=refresh&key=<token>:
  *   1. valida el token contra Script Property REFRESH_KEY (disuasor, no cripto)
- *   2. corre los consolidadores (Drive → paneles): trabajos, repuestos,
- *      combustible livianos, códigos de equipos
- *   3. corre construirSnapshot() (paneles → snapshot congelado) — SIEMPRE último,
- *      porque el snapshot tiene que copiar los paneles ya actualizados
- *   4. devuelve JSON { ok, ran:[...], errors:[...], at }
+ *   2. corre construirSnapshot() → congela las tablas planas vivas (SNAP_SRC) en
+ *      el snapshot que lee el panel. Es lo ÚNICO necesario (~1 min).
+ *   3. devuelve JSON { ok, ran:[...], errors:[...], full, at }
+ *
+ * ?full=1 → además corre los consolidadores (trabajos/repuestos/combustible/
+ * códigos) ANTES del snapshot. Quedan opt-in porque escriben paneles que el
+ * snapshot actual ya no lee; correrlos sumaba ~2-3 min sin cambiar el resultado.
  *
  * El navegador, al recibir ok:true, recarga (loadAll) y lee el snapshot fresco.
  *
@@ -63,20 +65,27 @@ function doGet(e) {
   var ran = [];
   var errors = [];
 
-  // 1) Consolidadores: Drive → paneles. Cada uno en su try para que un fallo
-  //    aislado no impida que corran los demás ni el snapshot.
-  _runStep('actualizarPanelTrabajos',    ran, errors);
-  _runStep('actualizarPanelRepuestos',   ran, errors);
-  _runStep('syncCombustibleLivianos',    ran, errors);
-  _runStep('syncCodigosEquipos',         ran, errors);
+  // ?full=1 → además corre los consolidadores (Drive → paneles viejos). Por
+  // defecto NO se corren: construirSnapshot lee las tablas planas vivas (SNAP_SRC:
+  // 1JpXjGTJ pedidos/entregas, 1muXaJ trabajos, etc.) DIRECTO, y esos
+  // consolidadores escriben en paneles (PANEL_TRABAJOS/PANEL_REPUESTOS/mirrors)
+  // que el snapshot actual ya no lee → eran ~2-3 min de peso muerto en el refresh.
+  var full = (params.full === '1' || params.full === 'true');
+  if (full) {
+    _runStep('actualizarPanelTrabajos',    ran, errors);
+    _runStep('actualizarPanelRepuestos',   ran, errors);
+    _runStep('syncCombustibleLivianos',    ran, errors);
+    _runStep('syncCodigosEquipos',         ran, errors);
+  }
 
-  // 2) Snapshot SIEMPRE al final: congela los paneles ya actualizados.
+  // Snapshot: congela las fuentes vivas. Es lo único que el panel realmente lee.
   _runStep('construirSnapshot',          ran, errors);
 
   return _refreshJson({
     ok: errors.length === 0,
     ran: ran,
     errors: errors,
+    full: full,
     at: new Date().toISOString(),
   });
 }
