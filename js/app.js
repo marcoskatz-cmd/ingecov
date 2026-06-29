@@ -1647,6 +1647,16 @@ function toggleSection(id){
   label.classList.toggle('collapsed',now);chev.textContent=now?'▸':'▾';
 }
 
+// Navegación por tabs (reemplaza los desplegables). Los KPIs quedan siempre fijos.
+function setTab(id,t){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.toggle('active',p.id===id));
+  document.querySelectorAll('#tabBar .tab-btn').forEach(b=>
+    b.classList.toggle('active', b===t || b.dataset.arg===id));
+  // Chart.js renderizado mientras el panel está oculto (display:none) colapsa a
+  // 0px; al mostrar telemetría hay que reajustarlo.
+  if(id==='tabTelemetria'&&_chartComboFlota){try{_chartComboFlota.resize();}catch(_){}}
+}
+
 function toggleEqSec(uid){
   const body=document.getElementById('eqsec_'+uid);const chev=document.getElementById('echev_'+uid);
   if(!body||!chev)return;const hidden=body.style.display==='none';
@@ -3476,6 +3486,7 @@ function renderTelemetriaFlota(){
 
 // Click en una fila del ranking → scroll al equipo y abrir su detalle
 function scrollToEquipo(codigo){
+  setTab('tabEquipos'); // los rankings viven en telemetría; la tarjeta está en el tab de equipos
   const id='eqcard_'+codigo.replace(/[^a-z0-9]/gi,'_');
   const el=document.getElementById(id);
   if(!el)return;
@@ -3812,6 +3823,7 @@ function cerrarDetalleKpi(){
 }
 function _irAEquipoDesdeKpiDetail(codigo){
   cerrarDetalleKpi();
+  setTab('tabEquipos');
   const id='eqcard_'+String(codigo).replace(/[^a-z0-9]/gi,'_');
   const open=()=>{
     const card=document.getElementById(id);
@@ -3862,6 +3874,7 @@ function closeServiceCriticoModal(){
 }
 function _irAEquipoDesdeKpi(codigo){
   closeServiceCriticoModal();
+  setTab('tabEquipos');
   const id='eqcard_'+String(codigo).replace(/[^a-z0-9]/gi,'_');
   const open=()=>{
     const card=document.getElementById(id);
@@ -3895,6 +3908,7 @@ const ACTIONS = {
   toggleTheme:                   () => toggleTheme(),
   loadAll:                       () => loadAll(),
   toggleSection:                 (id) => toggleSection(id),
+  setTab:                        (id, t) => setTab(id, t),
   onSearch:                      (_, t) => onSearch(t.value),
   clearSearch:                   () => clearSearch(),
   setViewMode:                   (mode) => setViewMode(mode),

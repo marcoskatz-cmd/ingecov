@@ -28,12 +28,12 @@
         referrerpolicy="no-referrer"></script>
 <!-- init.js: setea el tema en <html> ANTES del paint para evitar FOUC.
      Sin defer a propósito. -->
-<script src="./js/init.js?v=29"></script>
+<script src="./js/init.js?v=30"></script>
 <!-- app.js: toda la lógica de la app. Con defer corre tras parsear el DOM,
      equivalente a estar al final del <body>. Bump del query ?v= cuando se cambia
      app.js para forzar a clientes con HTTP cache a re-fetchear (el SW solo
      invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/app.js?v=29" defer></script>
+<script src="./js/app.js?v=30" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -467,6 +467,50 @@
     background:var(--bg3);border:1px solid var(--border);
     text-transform:none;
   }
+
+  /* Encabezado fijo de KPIs (no colapsa) */
+  .section-label.static{cursor:default;}
+  .section-label.static:hover{color:var(--text2);}
+
+  /* ═══════════════════════════════════════════════════════════════
+     TABS · navegación principal (reemplaza los desplegables)
+  ═══════════════════════════════════════════════════════════════ */
+  .tab-bar{
+    display:flex;
+    gap:2px;
+    margin-bottom:1.75rem;
+    border-bottom:1px solid var(--border);
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+  }
+  .tab-bar::-webkit-scrollbar{display:none;}
+  .tab-btn{
+    display:inline-flex;align-items:center;gap:10px;
+    flex-shrink:0;
+    background:transparent;border:none;
+    border-bottom:2px solid transparent;
+    margin-bottom:-1px;
+    padding:12px 18px;
+    cursor:pointer;user-select:none;
+    font-family:'IBM Plex Sans',sans-serif;
+    font-weight:600;font-size:11px;
+    letter-spacing:.18em;text-transform:uppercase;line-height:1;
+    color:var(--text3);white-space:nowrap;
+    transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+  }
+  .tab-btn:hover{color:var(--text);}
+  .tab-btn.active{color:var(--text);border-bottom-color:var(--accent);}
+  .tab-badge{
+    font-family:'JetBrains Mono',monospace;
+    font-size:10px;font-weight:600;color:var(--text3);
+    letter-spacing:.1em;padding:2px 8px;
+    background:var(--bg3);border:1px solid var(--border);text-transform:none;
+  }
+  .tab-btn.active .tab-badge{color:var(--text2);border-color:var(--accent);}
+  .tab-panel{display:none;}
+  .tab-panel.active{display:block;animation:tabIn .22s var(--ease);}
+  @keyframes tabIn{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
 
   /* ═══════════════════════════════════════════════════════════════
      KPIs · números heroicos display
@@ -1197,6 +1241,10 @@
     .section-badge{font-size:9.5px;padding:2px 7px;}
     .section-chevron{width:20px;height:20px;}
 
+    /* TABS */
+    .tab-btn{font-size:10px;padding:10px 13px;letter-spacing:.12em;gap:7px;}
+    .tab-badge{font-size:9px;padding:2px 6px;}
+
     /* KPI GRID */
     .kpi-grid{grid-template-columns:repeat(2,1fr);}
     .kpi{padding:12px 12px 11px;min-height:90px;}
@@ -1548,10 +1596,10 @@
   </div>
   <div id="dashboard" style="display:none">
 
-    <!-- KPIs -->
+    <!-- KPIs · siempre fijos -->
     <div class="section">
-      <div class="section-label" data-action="toggleSection" data-arg="secKpis">
-        <span class="section-chevron">▾</span>resumen operativo
+      <div class="section-label static">
+        resumen operativo
       </div>
       <div class="section-content" id="secKpis">
         <div class="kpi-range-bar" id="kpiRangeBar"></div>
@@ -1559,12 +1607,16 @@
       </div>
     </div>
 
+    <!-- Navegación por tabs -->
+    <div class="tab-bar" id="tabBar">
+      <button class="tab-btn active" data-action="setTab" data-arg="tabTelemetria">telemetría de flota<span class="tab-badge" id="telemetriaBadge">—</span></button>
+      <button class="tab-btn" data-action="setTab" data-arg="tabEquipos">equipos<span class="tab-badge" id="equipoCount">—</span></button>
+      <button class="tab-btn" data-action="setTab" data-arg="tabInactivos">equipos inactivos<span class="tab-badge" id="inactivosBadge">—</span></button>
+      <button class="tab-btn" data-action="setTab" data-arg="tabPedidos">pedidos pendientes<span class="tab-badge" id="pedidosPendBadge">—</span></button>
+    </div>
+
     <!-- Telemetría de flota (gráficos + rankings) -->
-    <div class="section">
-      <div class="section-label" data-action="toggleSection" data-arg="secTelemetria">
-        <span class="section-chevron">▾</span>telemetría de flota
-        <span class="section-badge" id="telemetriaBadge">—</span>
-      </div>
+    <div class="tab-panel active" id="tabTelemetria">
       <div class="section-content" id="secTelemetria">
         <div class="telemetria-card telemetria-combo">
           <div class="combo-header">
@@ -1592,11 +1644,7 @@
     </div>
 
     <!-- Índice de equipos -->
-    <div class="section">
-      <div class="section-label" data-action="toggleSection" data-arg="secEquipos">
-        <span class="section-chevron">▾</span>equipos
-        <span class="section-badge" id="equipoCount">—</span>
-      </div>
+    <div class="tab-panel" id="tabEquipos">
       <div class="section-content" id="secEquipos">
 
         <!-- Barra de controles -->
@@ -1658,11 +1706,7 @@
     </div>
 
     <!-- Equipos inactivos (en desuso / no operativos) -->
-    <div class="section">
-      <div class="section-label" data-action="toggleSection" data-arg="secInactivos">
-        <span class="section-chevron">▾</span>equipos inactivos
-        <span class="section-badge" id="inactivosBadge">—</span>
-      </div>
+    <div class="tab-panel" id="tabInactivos">
       <div class="section-content" id="secInactivos">
         <div class="filter-bar" id="filterBarInact">
           <button class="filter-btn active" data-action="setFiltroInactivo" data-arg="todos">Todos <span class="f-count" id="fcInactTodos">—</span></button>
@@ -1675,11 +1719,7 @@
     </div>
 
     <!-- Pedidos pendientes global -->
-    <div class="section">
-      <div class="section-label" data-action="toggleSection" data-arg="secPedidosPend">
-        <span class="section-chevron">▾</span>pedidos pendientes
-        <span class="section-badge" id="pedidosPendBadge">—</span>
-      </div>
+    <div class="tab-panel" id="tabPedidos">
       <div class="section-content" id="secPedidosPend">
         <div class="pend-controls">
           <select id="pendFiltroEq" data-action="renderPedidosPendientesGlobal" data-event="change">
