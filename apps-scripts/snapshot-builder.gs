@@ -248,8 +248,16 @@ function _buildTrabajos_(snap){
 ═══════════════════════════════════════════════════════════════════════ */
 function _buildRepuestos_(snap){
   try{
-    const t = _readTab_(SNAP_SRC.repuestos, 'ENTREGAS');
-    if(!t) return { tab:'REP_LIVE', rows:0, status:'ERROR', detalle:'no pude leer hoja ENTREGAS' };
+    // Mismo problema que pedidos: la pestaña de entregas del archivo volátil no
+    // siempre se llama "ENTREGAS". Fallback por header. OJO: NO matchear por
+    // 'N° ENTREGA' porque la hoja de PEDIDOS también tiene esa columna; uso
+    // PROVEEDOR/COSTO, que son exclusivas de la hoja de entregas.
+    const t = _readTab_(SNAP_SRC.repuestos, 'ENTREGAS') || _readTabByHeader_(SNAP_SRC.repuestos, ['PROVEEDOR','COSTO']);
+    if(!t){
+      let tabs='';
+      try{ tabs = SpreadsheetApp.openById(SNAP_SRC.repuestos).getSheets().map(s=>s.getName()).join(' | '); }catch(_){}
+      return { tab:'REP_LIVE', rows:0, status:'ERROR', detalle:'no encontré hoja de entregas (ni "ENTREGAS" ni una con PROVEEDOR/COSTO). Pestañas: '+tabs };
+    }
     const h = t.header;
     const iNro = _idx_(h, ['N° ENTREGA','N ENTREGA','NRO ENTREGA','ENTREGA','N° DE ENTREGA']);
     const iFec = _idx_(h, ['FECHA','FECHA ENTREGA']);
