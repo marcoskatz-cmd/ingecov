@@ -283,9 +283,17 @@ function _buildRepuestos_(snap){
 ═══════════════════════════════════════════════════════════════════════ */
 function _buildPedidos_(snap){
   try{
-    const t = _readTab_(SNAP_SRC.repuestos, 'PEDIDOS');
-    if(!t){ _write_(snap, 'PED_PEND', [['N°','FECHA','EQUIPO','CÓDIGO','DESCRIPCIÓN','ESTADO']], false); _write_(snap, 'PED_ENTR', [['','','','','','','','']], true);
-            return { tab:'PED_PEND', rows:0, status:'ERROR', detalle:'no pude leer hoja PEDIDOS' }; }
+    // La hoja de pedidos NO siempre se llama exactamente "PEDIDOS" (la primera
+    // pestaña del archivo fue renombrada y getSheetByName('PEDIDOS') daba null →
+    // PED_PEND quedaba vacío). Fallback robusto: ubicarla por la columna ESTADO,
+    // que es única de pedidos (la hoja ENTREGAS no la tiene). Mirrors el patrón
+    // de _buildService_.
+    const t = _readTab_(SNAP_SRC.repuestos, 'PEDIDOS') || _readTabByHeader_(SNAP_SRC.repuestos, ['ESTADO']);
+    if(!t){
+      let tabs='';
+      try{ tabs = SpreadsheetApp.openById(SNAP_SRC.repuestos).getSheets().map(s=>s.getName()).join(' | '); }catch(_){}
+      _write_(snap, 'PED_PEND', [['N°','FECHA','EQUIPO','CÓDIGO','DESCRIPCIÓN','ESTADO']], false); _write_(snap, 'PED_ENTR', [['','','','','','','','']], true);
+      return { tab:'PED_PEND', rows:0, status:'ERROR', detalle:'no encontré hoja de pedidos (ni "PEDIDOS" ni una con columna ESTADO). Pestañas: '+tabs }; }
     const h = t.header;
     const iNro = _idx_(h, ['N°','NRO','N° PEDIDO','NUMERO','ID','L1122']);
     const iFec = _idx_(h, ['FECHA']);
