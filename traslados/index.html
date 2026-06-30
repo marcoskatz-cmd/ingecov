@@ -102,6 +102,27 @@
   .ok-screen h2{font-size:24px;margin:10px 0;}
   .ok-screen p{color:#566;margin:0 0 24px;}
 
+  /* HISTORIAL */
+  .btn-historial{background:#374151;}
+  .hist-card{
+    background:#fff;border-radius:14px;padding:14px 16px;margin-bottom:12px;
+    box-shadow:0 2px 8px rgba(0,0,0,.07);
+  }
+  .hist-head{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+  .hist-fecha{font-size:13px;color:#6b7280;flex:1;}
+  .hist-equipos{font-size:15px;color:var(--txt);margin-bottom:6px;}
+  .hist-eq-item{margin-bottom:2px;}
+  .hist-eq-item strong{font-weight:700;}
+  .hist-meta{font-size:13px;color:#6b7280;}
+  .hist-meta span{display:inline-block;margin-right:10px;}
+  .hist-firma{
+    display:inline-block;margin-top:8px;font-size:13px;font-weight:700;
+    color:var(--azul);text-decoration:none;border:1.5px solid var(--azul);
+    border-radius:8px;padding:4px 10px;
+  }
+  .hist-empty{text-align:center;color:#9aa4b2;padding:40px 0;font-size:16px;}
+  .hist-loading{text-align:center;padding:40px 0;color:#6b7280;}
+
   /* MULTI-EQUIPO */
   .equipo-sep{
     text-align:center;color:#9aa4b2;font-size:13px;font-weight:700;
@@ -132,6 +153,9 @@
       </button>
       <button class="big-btn btn-entrega" onclick="abrir('entrega')">
         <span class="ico">📥</span> ENTREGA de equipo
+      </button>
+      <button class="big-btn btn-historial" onclick="abrirHistorial()">
+        <span class="ico">📋</span> Ver historial
       </button>
     </div>
   </section>
@@ -189,6 +213,15 @@
     </div>
   </section>
 
+  <!-- HISTORIAL -->
+  <section id="historial-screen" class="hidden">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+      <button class="btn btn-cancel" style="flex:0 0 auto;padding:12px 18px;font-size:15px;" onclick="volver()">← Volver</button>
+      <h2 style="margin:0;font-size:18px;font-weight:800;">Historial de traslados</h2>
+    </div>
+    <div id="historial-lista"></div>
+  </section>
+
   <!-- CONFIRMACIÓN -->
   <section id="ok-screen" class="hidden">
     <div class="ok-screen">
@@ -238,6 +271,40 @@ function volver(){
   document.getElementById('home').classList.remove('hidden');
   document.getElementById('form-screen').classList.add('hidden');
   document.getElementById('ok-screen').classList.add('hidden');
+  document.getElementById('historial-screen').classList.add('hidden');
+}
+
+function abrirHistorial(){
+  document.getElementById('home').classList.add('hidden');
+  document.getElementById('historial-screen').classList.remove('hidden');
+  const lista = document.getElementById('historial-lista');
+  lista.innerHTML = '<div class="hist-loading">Cargando...</div>';
+
+  fetch(SCRIPT_URL + '?action=historial')
+    .then(r => r.json())
+    .then(res => {
+      if(!res.ok){ lista.innerHTML='<div class="hist-empty">Error al cargar el historial.</div>'; return; }
+      if(!res.filas || !res.filas.length){ lista.innerHTML='<div class="hist-empty">No hay registros todavía.</div>'; return; }
+      lista.innerHTML = res.filas.map(f => {
+        const esBadgeRetiro = f.tipo === 'RETIRO';
+        const badge = '<span class="badge '+(esBadgeRetiro?'retiro':'entrega')+'">'+f.tipo+'</span>';
+        const equipos = [[f.equipo1,f.codigo1],[f.equipo2,f.codigo2],[f.equipo3,f.codigo3]]
+          .filter(e => e[0])
+          .map(e => '<div class="hist-eq-item"><strong>'+e[0]+'</strong> · '+e[1]+'</div>')
+          .join('');
+        const firma = f.firma ? '<a class="hist-firma" href="'+f.firma+'" target="_blank">Ver firma</a>' : '';
+        return '<div class="hist-card">'
+          + '<div class="hist-head">'+badge+'<span class="hist-fecha">'+f.fecha+'</span></div>'
+          + '<div class="hist-equipos">'+equipos+'</div>'
+          + '<div class="hist-meta">'
+          + '<span>📍 '+f.lugar+'</span>'
+          + '<span>👤 '+f.responsable+'</span>'
+          + '</div>'
+          + firma
+          + '</div>';
+      }).join('');
+    })
+    .catch(() => { lista.innerHTML='<div class="hist-empty">Sin conexión.</div>'; });
 }
 
 function limpiarCampos(){
