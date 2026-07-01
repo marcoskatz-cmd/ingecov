@@ -174,11 +174,14 @@ function _buildCodigos_(snap){
     const t = _readTab_(SNAP_SRC.equipos, 'EQUIPOS') || _readTab_(SNAP_SRC.equipos, 'LISTA DE EQUIPOS');
     if(!t) return { tab:'COD_*', rows:0, status:'ERROR', detalle:'no pude leer LISTA DE EQUIPOS (pestaña EQUIPOS)' };
     const h = t.header;
-    const iCod = _idx_(h, ['CÓDIGO','CODIGO']);
+    // La LISTA nueva titula la columna 'CÓDIO INTERNO' (con typo) y la patente
+    // 'N° SERIE - N° PATENTE'. _snapNormCod quita acentos/símbolos, así que
+    // alcanza con variantes ASCII sin tilde ('CODIO INTERNO'→'CODIOINTERNO').
+    const iCod = _idx_(h, ['CÓDIGO','CODIGO','CODIGO INTERNO','CODIO INTERNO']);
     const iCla = _idx_(h, ['CLASIFICACIÓN','CLASIFICACION','TIPO']);
     const iMar = _idx_(h, ['MARCA']);
     const iMod = _idx_(h, ['MODELO']);
-    const iPat = _idx_(h, ['PATENTE/SERIE','PATENTE','N° SERIE/PATENTE','SERIE','DOMINIO']);
+    const iPat = _idx_(h, ['PATENTE/SERIE','PATENTE','N° SERIE/PATENTE','N SERIE N PATENTE','SERIE','DOMINIO']);
     const iEst = _idx_(h, ['ESTADO']);
     const iOpe = _idx_(h, ['OPERARIO','RESPONSABLE']);
     const iUbi = _idx_(h, ['UBICACIÓN','UBICACION','LUGAR']);
