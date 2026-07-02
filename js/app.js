@@ -754,9 +754,9 @@ function procesarPanelRepuestos(panelObj){
       // 4) _repuestosHistorial[codN][ym]
       (ctx.repuestosHistorial[codN]=ctx.repuestosHistorial[codN]||{});
       ctx.repuestosHistorial[codN][ym]=(ctx.repuestosHistorial[codN][ym]||0)+costo;
-      // 4b) Solo correctivo — mismo clasificador que trabajos (RAZÓN manda,
-      // fallback por texto de items). Alimenta el tab de costos downtime.
-      if(clasificarTrabajo(razon,itemsStr)==='correctivo'){
+      // 4b) Solo correctivo SIN neumáticos (criterio del tab de costos:
+      // RAZÓN manda, fallback por texto de items). Alimenta costos downtime.
+      if(esCorrectivoCosto(razon,itemsStr)){
         (ctx.costosCorrPorMes[ym]=ctx.costosCorrPorMes[ym]||{});
         ctx.costosCorrPorMes[ym][codN]=(ctx.costosCorrPorMes[ym][codN]||0)+costo;
       }
@@ -807,6 +807,19 @@ function clasificarTrabajo(razon,descripcion){
     'cambio de filtros','filtro de aceite','engrase','lubricacion','lubricado'];
   for(const kw of KW_PREV)if(d.includes(kw))return'preventivo';
   return'correctivo';
+}
+
+// Criterio del TAB DE COSTOS (pedido de Marcos jul-2026): correctivo SIN
+// neumáticos. Las gomas infladan el costo de downtime (son consumo de desgaste
+// más que falla mecánica), así que se separan. OJO: clasificarTrabajo (KPI de
+// horas del panel) NO cambia — neumáticos siguen siendo correctivo ahí.
+function esCorrectivoCosto(razon,descripcion){
+  const norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  const r=norm(razon), d=norm(descripcion);
+  if(r.includes('neumatic'))return false;
+  // filas sin razón: si la descripción/items delatan gomería, también afuera
+  if(!r&&(d.includes('neumatic')||d.includes('cubierta')||d.includes('pinchad')))return false;
+  return clasificarTrabajo(razon,descripcion)==='correctivo';
 }
 
 // Toma las filas de PANEL_TRABAJOS (formato fetchGvizObj) y produce:
@@ -884,10 +897,10 @@ function procesarPanelTrabajos(rawRows){
       if(codN){
         out.horasPorMesYEquipo[ym]=out.horasPorMesYEquipo[ym]||{};
         out.horasPorMesYEquipo[ym][codN]=(out.horasPorMesYEquipo[ym][codN]||0)+tNum;
-        // Correctivos: horas del mecánico (mano de obra) + horas de PARADA del
-        // equipo (costo de oportunidad). "2 horas" / "0,5 horas" → parseFloat
-        // tras normalizar coma decimal; celdas no numéricas quedan en 0.
-        if(!esPrev){
+        // Correctivos SIN neumáticos (criterio del tab de costos): horas del
+        // mecánico (mano de obra) + horas de PARADA (costo de oportunidad).
+        // "2 horas" / "0,5 horas" → parseFloat tras normalizar coma decimal.
+        if(esCorrectivoCosto(get(SINONIMOS.razon),get(SINONIMOS.desc))){
           out.horasCorrPorMesYEquipo[ym]=out.horasCorrPorMesYEquipo[ym]||{};
           out.horasCorrPorMesYEquipo[ym][codN]=(out.horasCorrPorMesYEquipo[ym][codN]||0)+tNum;
           const pNum=parseFloat(String(get(SINONIMOS.parada)||'').replace(',','.'));
@@ -3727,7 +3740,7 @@ function renderCostosDowntime(){
       <b>Mano de obra:</b> ${cfg.moArsH.toLocaleString('es-AR')} ARS/h ·
       <b>Hs disp./mes:</b> ${String(cfg.horasMes)} ·
       <b>Alquileres cargados:</b> ${String(nAlq)} equipos<br>
-      <b>Criterio correctivo:</b> RAZÓN = Reparación/Neumáticos (mismo clasificador que el resto del panel).<br>
+      <b>Criterio correctivo:</b> RAZÓN = Reparación. Neumáticos EXCLUIDOS de este cálculo (en el KPI de horas del panel siguen contando como correctivo).<br>
       <b>Oportunidad:</b> hs de PARADA declaradas en planilla / ${String(cfg.horasMes)} hs × alquiler USD/mes. Las hs de parada suelen estar subregistradas → la oportunidad es un piso, no el costo real.${sinAlqTxt}<br><br>
       <a href="https://docs.google.com/spreadsheets/d/${SHEET_IDS.costos}/edit" target="_blank" rel="noopener noreferrer" style="color:var(--blue);text-decoration:none">Editar parámetros y alquileres ↗</a> ·
       <a style="color:var(--blue);cursor:pointer" data-action="cargarCostosDowntime">↻ releer sheet</a>`);
