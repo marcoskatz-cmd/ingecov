@@ -106,6 +106,11 @@ const SHEET_IDS = {
   // Combustible livianos: sheet operativo que se actualiza al día. Contiene
   // solo 2026 (no hay histórico pre-2026 disponible en este sheet).
   combustibleLivianos:'1bZkxrdVEcN4v5Aztf4RBxncJKWE20Jti8wjNdCmAl-E',
+  // COSTOS DOWNTIME: parámetros editables por Marcos (pestañas PARAMETROS y
+  // ALQUILERES). NO pasa por el snapshot a propósito: al editar un precio y
+  // recargar el panel, el cambio impacta al instante (sin esperar el rebuild
+  // de 30 min). Es un sheet chico (2 pestañas) → no aporta al rate limiting.
+  costos:         '1tV59d02aVjs5NRAzdorVzeW2JdPxeJIpFR2Bm10o_LM',
 };
 
 // Pestaña tabular plana (una fila = una carga). No requiere Apps Script consolidador.
@@ -694,6 +699,7 @@ function procesarPanelRepuestos(panelObj){
     entregaCostos:{},      // { nro: {costo, mes} }
     itemsPorEntrega:{},    // { nro: [items...] }
     costosPorMes:{},       // { ym: { codN: costo } }
+    costosCorrPorMes:{},   // { ym: { codN: costo } } — solo entregas correctivas (tab costos downtime)
     entregasPorEquipo:{},  // { codN: [{nro,fecha,items,costo}] }
     repuestosHistorial:{}, // { codN: { ym: costoTotal } }
     entregasMesActual:[],  // entregas del mes actual: {nro,fecha,equipo,codigo,costo,costoNum,razon,responsable,nroPedido,items}
@@ -748,6 +754,12 @@ function procesarPanelRepuestos(panelObj){
       // 4) _repuestosHistorial[codN][ym]
       (ctx.repuestosHistorial[codN]=ctx.repuestosHistorial[codN]||{});
       ctx.repuestosHistorial[codN][ym]=(ctx.repuestosHistorial[codN][ym]||0)+costo;
+      // 4b) Solo correctivo — mismo clasificador que trabajos (RAZÓN manda,
+      // fallback por texto de items). Alimenta el tab de costos downtime.
+      if(clasificarTrabajo(razon,itemsStr)==='correctivo'){
+        (ctx.costosCorrPorMes[ym]=ctx.costosCorrPorMes[ym]||{});
+        ctx.costosCorrPorMes[ym][codN]=(ctx.costosCorrPorMes[ym][codN]||0)+costo;
+      }
     }
     // 5) _entregasPorEquipo[codN]
     if(codN&&codN!=='-'){
@@ -811,6 +823,8 @@ function procesarPanelTrabajos(rawRows){
     horasPrevPorMes:{},horasCorrPorMes:{},
     horasPrevPorEquipo:{},horasCorrPorEquipo:{},
     horasPorMesYEquipo:{}, // {ym: {codN: horas}} — para listado de horas filtrado por rango
+    horasCorrPorMesYEquipo:{},  // {ym: {codN: hr trabajo correctivo}} — tab costos downtime (mano de obra)
+    paradaCorrPorMesYEquipo:{}, // {ym: {codN: hr PARADA en correctivos}} — tab costos downtime (costo de oportunidad)
   };
   if(!rawRows||!rawRows.length)return out;
   const SINONIMOS={
@@ -818,6 +832,7 @@ function procesarPanelTrabajos(rawRows){
     equipo:['EQUIPO','NOMBRE EQUIPO','DESCRIPCION EQUIPO'],
     fecha :['FECHA TRABAJO','FECHA DE TRABAJO','FECHA'],
     tiempo:['TIEMPO TRABAJO','TIEMPO (HR)','TIEMPO TRABAJO (HR)','TIEMPO TRABAJO HR','TIEMPO HR','TIEMPO','HORAS','HS'],
+    parada:['TIEMPO PARADA','TIEMPO DE PARADA','TIEMPO PARADA (HR)','TIEMPO PARADA HR'],
     razon :['RAZON TRABAJO','RAZON DE TRABAJO','RAZON','MOTIVO TRABAJO','MOTIVO'],
     desc  :['DESCRIPCION TRABAJOS','TRABAJOS REALIZADOS','TRABAJO REALIZADO','DESCRIPCION TRABAJO','DESCRIPCION'],
   };
@@ -869,6 +884,18 @@ function procesarPanelTrabajos(rawRows){
       if(codN){
         out.horasPorMesYEquipo[ym]=out.horasPorMesYEquipo[ym]||{};
         out.horasPorMesYEquipo[ym][codN]=(out.horasPorMesYEquipo[ym][codN]||0)+tNum;
+        // Correctivos: horas del mecánico (mano de obra) + horas de PARADA del
+        // equipo (costo de oportunidad). "2 horas" / "0,5 horas" → parseFloat
+        // tras normalizar coma decimal; celdas no numéricas quedan en 0.
+        if(!esPrev){
+          out.horasCorrPorMesYEquipo[ym]=out.horasCorrPorMesYEquipo[ym]||{};
+          out.horasCorrPorMesYEquipo[ym][codN]=(out.horasCorrPorMesYEquipo[ym][codN]||0)+tNum;
+          const pNum=parseFloat(String(get(SINONIMOS.parada)||'').replace(',','.'));
+          if(isFinite(pNum)&&pNum>0){
+            out.paradaCorrPorMesYEquipo[ym]=out.paradaCorrPorMesYEquipo[ym]||{};
+            out.paradaCorrPorMesYEquipo[ym][codN]=(out.paradaCorrPorMesYEquipo[ym][codN]||0)+pNum;
+          }
+        }
       }
     }
   }
@@ -1693,6 +1720,17 @@ function setTab(id,t){
   // Chart.js renderizado mientras el panel está oculto (display:none) colapsa a
   // 0px; al mostrar telemetría hay que reajustarlo.
   if(id==='tabTelemetria'&&_chartComboFlota){try{_chartComboFlota.resize();}catch(_){}}
+  if(id==='tabCostos'){
+    // El chart se crea en la carga inicial con el panel oculto → Chart.js lo
+    // deja en 0×0 y resize() no lo recupera. Al abrir el tab, si quedó
+    // colapsado, se recrea ya visible. setTimeout(0) y no rAF: rAF queda
+    // suspendido en pestañas en background y el fix nunca correría.
+    setTimeout(()=>{
+      const cv=document.getElementById('chartCostos');
+      if(cv&&cv.getBoundingClientRect().width===0&&window._costosCfg){renderCostosDowntime();return;}
+      if(_chartCostos){try{_chartCostos.resize();}catch(_){}}
+    },0);
+  }
 }
 
 function toggleEqSec(uid){
@@ -2188,6 +2226,7 @@ async function loadAll(){
     window._entregaCostos     = ctx.entregaCostos;
     window._itemsPorEntrega   = ctx.itemsPorEntrega;
     window._costosPorMes      = ctx.costosPorMes;
+    window._costosCorrPorMes  = ctx.costosCorrPorMes;
     window._repuestosHistorial= ctx.repuestosHistorial;
     window._entregasPorEquipo = ctx.entregasPorEquipo;
 
@@ -2204,6 +2243,8 @@ async function loadAll(){
     window._horasPrevPorEquipo = tctx.horasPrevPorEquipo;
     window._horasCorrPorEquipo = tctx.horasCorrPorEquipo;
     window._horasPorMesYEquipo = tctx.horasPorMesYEquipo;
+    window._horasCorrPorMesYEquipo  = tctx.horasCorrPorMesYEquipo;
+    window._paradaCorrPorMesYEquipo = tctx.paradaCorrPorMesYEquipo;
 
     // Procesar SERVICES PLANIFICADOS y cruzar con PANEL_TRABAJOS.
     // Suma al preventivo horas estimadas de los services que el planning dice
@@ -2327,6 +2368,11 @@ async function loadAll(){
     setLoadProgress(80);
 
     setLoadProgress(100);
+
+    // Tab costos downtime: lee el sheet COSTOS DOWNTIME (parámetros editables)
+    // y renderiza. Fuera del flujo principal a propósito — si el sheet no está
+    // accesible, el resto del panel no se entera.
+    cargarCostosDowntime();
 
     precargarHorometros();
   }catch(e){
@@ -3536,8 +3582,187 @@ function scrollToEquipo(codigo){
 }
 
 /* ═══════════════════════════════════════════════════════════════════
-   PEDIDOS PENDIENTES GLOBAL · tabla con filtros
+   COSTOS DOWNTIME · tab con costo mensual correctivo en USD
+   Tres componentes por mes y por equipo (solo trabajos/entregas CORRECTIVOS,
+   mismo clasificador que el resto del panel: Reparación + Neumáticos):
+     · repuestos:   COSTO ENTREGA (ARS) / tipo de cambio
+     · mano de obra: hr TIEMPO TRABAJO × tarifa MO (ARS/h) / tipo de cambio
+     · oportunidad: hr TIEMPO PARADA / hs disponibles mes × alquiler USD/mes
+   Parámetros y alquileres viven en el sheet COSTOS DOWNTIME (SHEET_IDS.costos),
+   editable por Marcos. Se lee DIRECTO por gviz (sin snapshot) para que un
+   cambio de precio impacte con solo recargar el panel.
 ═══════════════════════════════════════════════════════════════════ */
+let _chartCostos=null;
+
+async function cargarCostosDowntime(){
+  const cont=document.getElementById('costosParams');
+  try{
+    const[paramRows,alqRows]=await Promise.all([
+      fetchGvizObj(SHEET_IDS.costos,'PARAMETROS'),
+      fetchGvizObj(SHEET_IDS.costos,'ALQUILERES'),
+    ]);
+    // Defaults acordados jul-2026; el sheet los pisa si están cargados.
+    const cfg={tc:1400,moArsH:6800,horasMes:176,alq:{}};
+    for(const r of paramRows){
+      const k=String(_pickCol(r,['PARAMETRO','PARÁMETRO'])||'').toUpperCase();
+      const v=parseMoney(String(_pickCol(r,['VALOR'])||''));
+      if(!v)continue;
+      if(k.includes('CAMBIO'))cfg.tc=v;
+      else if(k.includes('TARIFA'))cfg.moArsH=v;
+      else if(k.includes('HORAS'))cfg.horasMes=v;
+    }
+    for(const r of alqRows){
+      const codN=normCod(String(_pickCol(r,['CODIGO','CÓDIGO'])||''));
+      const usd=parseMoney(String(_pickCol(r,['ALQUILER_USD_MES','ALQUILER USD MES','ALQUILER'])||''));
+      if(codN&&usd>0)cfg.alq[codN]=usd;
+    }
+    window._costosCfg=cfg;
+    renderCostosDowntime();
+  }catch(e){
+    console.warn('[INGECO] costos downtime:',e);
+    if(cont)setHTML(cont,html`<span style="color:var(--red)">No se pudo leer el sheet COSTOS DOWNTIME (${e.message||e}).</span><br>Verificá que esté compartido como «cualquiera con el enlace puede ver» y recargá con el botón de abajo.<br><br><button class="refresh-btn" data-action="cargarCostosDowntime">↻ reintentar</button>`);
+  }
+}
+
+const _fmtUSD=n=>'US$ '+Math.round(n).toLocaleString('es-AR');
+
+function renderCostosDowntime(){
+  if(typeof Chart==='undefined')return;
+  const cfg=window._costosCfg;
+  if(!cfg)return;
+  const AMBER=_cssVar('--amber','#ffa030');
+  const CORP =_cssVar('--corp','#5d80e8');
+  const RED  =_cssVar('--red','#e5484d');
+  const GRID =_cssVar('--chart-grid','#1a2030');
+  const TEXT2=_cssVar('--text2','#aab3c8');
+  const TOOLTIP_BG=_cssVar('--chart-tooltip-bg','#0d1019');
+  const TOOLTIP_FG=_cssVar('--chart-tooltip-fg','#f1f4fb');
+  const nomMes=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+  const repCorr=window._costosCorrPorMes||{};        // {ym:{codN: ARS}}
+  const hCorr  =window._horasCorrPorMesYEquipo||{};  // {ym:{codN: hr mecánico}}
+  const pCorr  =window._paradaCorrPorMesYEquipo||{}; // {ym:{codN: hr parada}}
+
+  const _anioAct=new Date().getFullYear();
+  const yms=[...new Set([...Object.keys(repCorr),...Object.keys(hCorr)])]
+    .filter(ym=>/^\d{4}-\d{2}$/.test(ym)&&+ym.slice(0,4)>=2020&&+ym.slice(0,4)<=_anioAct+1)
+    .sort();
+  const labels=yms.map(ym=>{const[y,mm]=ym.split('-');return`${nomMes[+mm-1]}'${y.slice(2)}`;});
+
+  // Series por mes (USD) + acumulado por equipo para el ranking
+  const serRep=[],serMo=[],serOp=[];
+  const porEquipo={};       // codN → {rep,mo,op,total}
+  const sinAlq=new Set();   // equipos con horas de parada pero sin alquiler cargado
+  const acc=(codN,campo,usd)=>{
+    porEquipo[codN]=porEquipo[codN]||{rep:0,mo:0,op:0,total:0};
+    porEquipo[codN][campo]+=usd;porEquipo[codN].total+=usd;
+  };
+  for(const ym of yms){
+    let rep=0,mo=0,op=0;
+    for(const[codN,ars]of Object.entries(repCorr[ym]||{})){const u=ars/cfg.tc;rep+=u;acc(codN,'rep',u);}
+    for(const[codN,hr]of Object.entries(hCorr[ym]||{})){const u=hr*cfg.moArsH/cfg.tc;mo+=u;acc(codN,'mo',u);}
+    for(const[codN,hr]of Object.entries(pCorr[ym]||{})){
+      const alq=cfg.alq[codN];
+      if(!alq){if(hr>0)sinAlq.add(codN);continue;}
+      const u=hr/cfg.horasMes*alq;op+=u;acc(codN,'op',u);
+    }
+    serRep.push(Math.round(rep));serMo.push(Math.round(mo));serOp.push(Math.round(op));
+  }
+  const totRep=serRep.reduce((s,v)=>s+v,0);
+  const totMo =serMo.reduce((s,v)=>s+v,0);
+  const totOp =serOp.reduce((s,v)=>s+v,0);
+  const totAll=totRep+totMo+totOp;
+  const nMeses=yms.length||1;
+
+  // Resumen arriba del chart + badge del tab
+  const totalsEl=document.getElementById('costosTotals');
+  if(totalsEl){
+    const periodo=yms.length?(labels[0]===labels[labels.length-1]?labels[0]:`${labels[0]}–${labels[labels.length-1]}`):'';
+    setHTML(totalsEl,yms.length
+      ?html`promedio mensual <span class="v-costo">${_fmtUSD(totAll/nMeses)}</span><span class="sep">·</span>acumulado ${periodo} <span class="v-costo">${_fmtUSD(totAll)}</span><span class="sep">·</span>repuestos ${Math.round(totRep/totAll*100)||0}% · MO ${Math.round(totMo/totAll*100)||0}% · oportunidad ${Math.round(totOp/totAll*100)||0}%`
+      :'sin datos correctivos para graficar');
+  }
+  const badge=document.getElementById('costosBadge');
+  if(badge)badge.textContent=yms.length?_fmtUSD(totAll/nMeses)+'/mes':'—';
+
+  // Chart: barras apiladas (repuestos + MO + oportunidad) por mes
+  if(_chartCostos){_chartCostos.destroy();_chartCostos=null;}
+  const el=document.getElementById('chartCostos');
+  if(el&&yms.length){
+    const mkDs=(label,data,color)=>({type:'bar',label,data,backgroundColor:color+'cc',borderColor:color,borderWidth:1,maxBarThickness:48,stack:'usd'});
+    _chartCostos=new Chart(el.getContext('2d'),{
+      type:'bar',
+      data:{labels,datasets:[
+        mkDs('Repuestos',serRep,AMBER),
+        mkDs('Mano de obra',serMo,CORP),
+        mkDs('Oportunidad',serOp,RED),
+      ]},
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        interaction:{mode:'index',intersect:false},
+        plugins:{
+          legend:{display:false},
+          tooltip:{
+            backgroundColor:TOOLTIP_BG,titleColor:TOOLTIP_FG,bodyColor:TOOLTIP_FG,
+            padding:12,borderColor:GRID,borderWidth:1,
+            titleFont:{family:'JetBrains Mono',size:11,weight:'600'},
+            bodyFont:{family:'Inter',size:12},bodySpacing:6,
+            callbacks:{
+              label:c=>`  ${c.dataset.label}: ${_fmtUSD(c.raw)}`,
+              footer:items=>'Total: '+_fmtUSD(items.reduce((s,i)=>s+i.raw,0)),
+            }
+          }
+        },
+        scales:{
+          x:{stacked:true,ticks:{color:TEXT2,font:{size:11,family:'JetBrains Mono',weight:'500'}},grid:{display:false},border:{color:GRID}},
+          y:{stacked:true,beginAtZero:true,
+            title:{display:true,text:'USD',color:TEXT2,font:{size:10,family:'JetBrains Mono',weight:'600'},padding:{bottom:8}},
+            ticks:{color:TEXT2,font:{size:10,family:'JetBrains Mono'},callback:v=>v>=1e3?'$'+(v/1e3).toFixed(0)+'K':'$'+v},
+            grid:{color:GRID,drawTicks:false},border:{display:false}},
+        }
+      }
+    });
+  }
+
+  // Ranking top 10 por costo mensual promedio
+  const _eqByCodN=codN=>(window._equiposOrdenados||[]).find(e=>normCod(e.codigo)===codN);
+  const top=Object.entries(porEquipo)
+    .filter(([,v])=>v.total>0)
+    .sort((a,b)=>b[1].total-a[1].total)
+    .slice(0,10);
+  const maxTot=top[0]?.[1].total||1;
+  const rankEl=document.getElementById('rankDowntime');
+  if(rankEl)setHTML(rankEl,top.length
+    ?new RawHTML(top.map(([codN,v],i)=>{
+      const eq=_eqByCodN(codN);const codDisplay=eq?eq.codigo:codN;
+      return html`<div class="rank-row" data-action="scrollToEquipo" data-arg="${codDisplay}" title="Ver detalle · rep ${_fmtUSD(v.rep/nMeses)} + MO ${_fmtUSD(v.mo/nMeses)} + op ${_fmtUSD(v.op/nMeses)}">
+        <span class="rank-pos${i<3?' top':''}">${String(i+1).padStart(2,'0')}</span>
+        <span class="rank-cod">${codDisplay}</span>
+        <div class="rank-bar-wrap"><div class="rank-bar-fill" style="width:${Math.round(v.total/maxTot*100)}%;background:${RED};box-shadow:0 0 8px ${RED}80"></div></div>
+        <span class="rank-val">${_fmtUSD(v.total/nMeses)}/mes</span>
+      </div>`.value;
+    }).join(''))
+    :'Sin datos correctivos.');
+
+  // Card de parámetros: valores vigentes + advertencias + link para editar
+  const paramsEl=document.getElementById('costosParams');
+  if(paramsEl){
+    const nAlq=Object.keys(cfg.alq).length;
+    const sinAlqArr=[...sinAlq].sort();
+    const sinAlqTxt=sinAlqArr.length
+      ?html`<br><span style="color:var(--amber)">⚠ ${String(sinAlqArr.length)} equipos con horas de parada pero SIN alquiler cargado (oportunidad no computada): ${sinAlqArr.slice(0,12).map(c=>{const eq=_eqByCodN(c);return eq?eq.codigo:c;}).join(', ')}${sinAlqArr.length>12?'…':''}. Cargalos en la pestaña ALQUILERES.</span>`
+      :new RawHTML('');
+    setHTML(paramsEl,html`
+      <b>Tipo de cambio:</b> ${cfg.tc.toLocaleString('es-AR')} ARS/USD ·
+      <b>Mano de obra:</b> ${cfg.moArsH.toLocaleString('es-AR')} ARS/h ·
+      <b>Hs disp./mes:</b> ${String(cfg.horasMes)} ·
+      <b>Alquileres cargados:</b> ${String(nAlq)} equipos<br>
+      <b>Criterio correctivo:</b> RAZÓN = Reparación/Neumáticos (mismo clasificador que el resto del panel).<br>
+      <b>Oportunidad:</b> hs de PARADA declaradas en planilla / ${String(cfg.horasMes)} hs × alquiler USD/mes. Las hs de parada suelen estar subregistradas → la oportunidad es un piso, no el costo real.${sinAlqTxt}<br><br>
+      <a href="https://docs.google.com/spreadsheets/d/${SHEET_IDS.costos}/edit" target="_blank" rel="noopener noreferrer" style="color:var(--blue);text-decoration:none">Editar parámetros y alquileres ↗</a> ·
+      <a style="color:var(--blue);cursor:pointer" data-action="cargarCostosDowntime">↻ releer sheet</a>`);
+  }
+}
 function renderPedidosPendientesGlobal(){
   const todos=window._pedidosAll||[];
   const activos=todos.filter(p=>{const l=(p.estado||'').toLowerCase();
@@ -3965,6 +4190,7 @@ const ACTIONS = {
   toggleEqSec:                   (uid) => toggleEqSec(uid),
   toggleEquipoDetail:            (codigo, t) => toggleEquipoDetail(codigo, t),
   scrollToEquipo:                (codigo) => scrollToEquipo(codigo),
+  cargarCostosDowntime:          () => cargarCostosDowntime(),
   _irAEquipoDesdeKpi:            (codigo) => _irAEquipoDesdeKpi(codigo),
   closeServiceCriticoModalIfBg:  (_, t, e) => { if (e.target === t) closeServiceCriticoModal(); },
   abrirDetalleKpi:               (tipo) => abrirDetalleKpi(tipo),
