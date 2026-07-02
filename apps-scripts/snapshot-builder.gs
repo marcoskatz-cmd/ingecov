@@ -375,7 +375,10 @@ function _buildCombLivianos_(snap){
     const iFec = _idx_(h, ['FECHA ENTREGA','FECHA']);
     const iTip = _idx_(h, ['TIPO COMBUSTIBLE','TIPO DE COMBUSTIBLE','TIPO']);
     const iLit = _idx_(h, ['CANTIDAD (L)','CANTIDAD','LITROS']);
-    const iPat = _idx_(h, ['N° PATENTE','PATENTE','DOMINIO']);
+    // La fuente ahora titula la patente 'N° SERIE - N° PATENTE' (→ NSERIENPATENTE).
+    // Sin este sinónimo iPat quedaba -1 → patente vacía → el ranking por equipo del
+    // KPI no matcheaba nada (el total sí, porque suma sin mirar patente).
+    const iPat = _idx_(h, ['N SERIE N PATENTE','N° PATENTE','PATENTE','DOMINIO']);
     const iOdo = _idx_(h, ['ODÓMETRO (KM)','ODOMETRO','KM']);
     const iOpe = _idx_(h, ['OPERARIO','CHOFER']);
     const iTot = _idx_(h, ['TOTAL','IMPORTE','COSTO']);
