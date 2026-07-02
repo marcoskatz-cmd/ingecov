@@ -836,8 +836,7 @@ function procesarPanelTrabajos(rawRows){
     horasPrevPorMes:{},horasCorrPorMes:{},
     horasPrevPorEquipo:{},horasCorrPorEquipo:{},
     horasPorMesYEquipo:{}, // {ym: {codN: horas}} — para listado de horas filtrado por rango
-    horasCorrPorMesYEquipo:{},  // {ym: {codN: hr trabajo correctivo}} — tab costos downtime (mano de obra)
-    paradaCorrPorMesYEquipo:{}, // {ym: {codN: hr PARADA en correctivos}} — tab costos downtime (costo de oportunidad)
+    horasCorrPorMesYEquipo:{},  // {ym: {codN: hr correctivas}} — tab costos downtime (MO + oportunidad)
   };
   if(!rawRows||!rawRows.length)return out;
   const SINONIMOS={
@@ -845,7 +844,6 @@ function procesarPanelTrabajos(rawRows){
     equipo:['EQUIPO','NOMBRE EQUIPO','DESCRIPCION EQUIPO'],
     fecha :['FECHA TRABAJO','FECHA DE TRABAJO','FECHA'],
     tiempo:['TIEMPO TRABAJO','TIEMPO (HR)','TIEMPO TRABAJO (HR)','TIEMPO TRABAJO HR','TIEMPO HR','TIEMPO','HORAS','HS'],
-    parada:['TIEMPO PARADA','TIEMPO DE PARADA','TIEMPO PARADA (HR)','TIEMPO PARADA HR'],
     razon :['RAZON TRABAJO','RAZON DE TRABAJO','RAZON','MOTIVO TRABAJO','MOTIVO'],
     desc  :['DESCRIPCION TRABAJOS','TRABAJOS REALIZADOS','TRABAJO REALIZADO','DESCRIPCION TRABAJO','DESCRIPCION'],
   };
@@ -897,17 +895,13 @@ function procesarPanelTrabajos(rawRows){
       if(codN){
         out.horasPorMesYEquipo[ym]=out.horasPorMesYEquipo[ym]||{};
         out.horasPorMesYEquipo[ym][codN]=(out.horasPorMesYEquipo[ym][codN]||0)+tNum;
-        // Correctivos SIN neumáticos (criterio del tab de costos): horas del
-        // mecánico (mano de obra) + horas de PARADA (costo de oportunidad).
-        // "2 horas" / "0,5 horas" → parseFloat tras normalizar coma decimal.
+        // Correctivos SIN neumáticos (criterio del tab de costos): las horas
+        // de mantenimiento correctivo (TIEMPO TRABAJO) alimentan MO y también
+        // el costo de oportunidad. TIEMPO PARADA se descartó: el taller lo
+        // carga en 0 en casi todos los registros 2026 (definición jul-2026).
         if(esCorrectivoCosto(get(SINONIMOS.razon),get(SINONIMOS.desc))){
           out.horasCorrPorMesYEquipo[ym]=out.horasCorrPorMesYEquipo[ym]||{};
           out.horasCorrPorMesYEquipo[ym][codN]=(out.horasCorrPorMesYEquipo[ym][codN]||0)+tNum;
-          const pNum=parseFloat(String(get(SINONIMOS.parada)||'').replace(',','.'));
-          if(isFinite(pNum)&&pNum>0){
-            out.paradaCorrPorMesYEquipo[ym]=out.paradaCorrPorMesYEquipo[ym]||{};
-            out.paradaCorrPorMesYEquipo[ym][codN]=(out.paradaCorrPorMesYEquipo[ym][codN]||0)+pNum;
-          }
         }
       }
     }
@@ -2246,7 +2240,6 @@ async function loadAll(){
     window._horasCorrPorEquipo = tctx.horasCorrPorEquipo;
     window._horasPorMesYEquipo = tctx.horasPorMesYEquipo;
     window._horasCorrPorMesYEquipo  = tctx.horasCorrPorMesYEquipo;
-    window._paradaCorrPorMesYEquipo = tctx.paradaCorrPorMesYEquipo;
 
     // Procesar SERVICES PLANIFICADOS y cruzar con PANEL_TRABAJOS.
     // Suma al preventivo horas estimadas de los services que el planning dice
@@ -3634,8 +3627,10 @@ function renderCostosDowntime(){
   const nomMes=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
   const repCorr=window._costosCorrPorMes||{};        // {ym:{codN: ARS}}
-  const hCorr  =window._horasCorrPorMesYEquipo||{};  // {ym:{codN: hr mecánico}}
-  const pCorr  =window._paradaCorrPorMesYEquipo||{}; // {ym:{codN: hr parada}}
+  // Horas de mantenimiento correctivo (TIEMPO TRABAJO): alimentan MO y también
+  // el costo de oportunidad. Definición de Marcos (jul-2026) — TIEMPO PARADA
+  // se descartó porque el taller lo carga en 0 en casi todos los registros.
+  const hCorr  =window._horasCorrPorMesYEquipo||{};  // {ym:{codN: hr correctivas}}
 
   const _anioAct=new Date().getFullYear();
   const yms=[...new Set([...Object.keys(repCorr),...Object.keys(hCorr)])]
@@ -3656,11 +3651,12 @@ function renderCostosDowntime(){
   for(const ym of yms){
     let rep=0,mo=0,op=0;
     for(const[codN,ars]of Object.entries(repCorr[ym]||{})){rep+=ars;acc(codN,'rep',ars);}
-    for(const[codN,hr]of Object.entries(hCorr[ym]||{})){const u=hr*cfg.moArsH;mo+=u;acc(codN,'mo',u);}
-    for(const[codN,hr]of Object.entries(pCorr[ym]||{})){
+    for(const[codN,hr]of Object.entries(hCorr[ym]||{})){
+      const u=hr*cfg.moArsH;mo+=u;acc(codN,'mo',u);
+      // Oportunidad con las MISMAS horas correctivas: hs / hs-mes × alquiler × TC
       const alq=cfg.alq[codN];
       if(!alq){if(hr>0)sinAlq.add(codN);continue;}
-      const u=hr/cfg.horasMes*alq*cfg.tc;op+=u;acc(codN,'op',u);
+      const o=hr/cfg.horasMes*alq*cfg.tc;op+=o;acc(codN,'op',o);
     }
     serRep.push(Math.round(rep));serMo.push(Math.round(mo));serOp.push(Math.round(op));
   }
@@ -3737,7 +3733,7 @@ function renderCostosDowntime(){
     const nAlq=Object.keys(cfg.alq).length;
     const sinAlqArr=[...sinAlq].sort();
     const sinAlqTxt=sinAlqArr.length
-      ?html`<br><span style="color:var(--amber)">⚠ ${String(sinAlqArr.length)} equipos con horas de parada pero SIN alquiler cargado (oportunidad no computada): ${sinAlqArr.slice(0,12).map(c=>{const eq=_eqByCodN(c);return eq?eq.codigo:c;}).join(', ')}${sinAlqArr.length>12?'…':''}. Cargalos en la pestaña ALQUILERES.</span>`
+      ?html`<br><span style="color:var(--amber)">⚠ ${String(sinAlqArr.length)} equipos con horas correctivas pero SIN alquiler cargado (oportunidad no computada): ${sinAlqArr.slice(0,12).map(c=>{const eq=_eqByCodN(c);return eq?eq.codigo:c;}).join(', ')}${sinAlqArr.length>12?'…':''}. Cargalos en la pestaña ALQUILERES.</span>`
       :new RawHTML('');
     setHTML(paramsEl,html`
       <b>Tipo de cambio:</b> ${cfg.tc.toLocaleString('es-AR')} ARS/USD ·
@@ -3746,7 +3742,7 @@ function renderCostosDowntime(){
       <b>Alquileres cargados:</b> ${String(nAlq)} equipos<br>
       <b>Criterio correctivo:</b> RAZÓN = Reparación. Neumáticos EXCLUIDOS de este cálculo (en el KPI de horas del panel siguen contando como correctivo).<br>
       <b>Moneda:</b> todos los montos en ARS. Repuestos y mano de obra son ARS nativos; el tipo de cambio se usa solo para pasar el alquiler (USD/mes del sheet) a ARS en el costo de oportunidad.<br>
-      <b>Oportunidad:</b> hs de PARADA declaradas en planilla / ${String(cfg.horasMes)} hs × alquiler mensual × TC. Las hs de parada suelen estar subregistradas → la oportunidad es un piso, no el costo real.${sinAlqTxt}<br><br>
+      <b>Oportunidad:</b> hs de mantenimiento correctivo (las mismas de MO) / ${String(cfg.horasMes)} hs × alquiler mensual × TC. No incluye esperas de repuestos ni traslados → es un piso, no el tiempo total fuera de servicio.${sinAlqTxt}<br><br>
       <a href="https://docs.google.com/spreadsheets/d/${SHEET_IDS.costos}/edit" target="_blank" rel="noopener noreferrer" style="color:var(--blue);text-decoration:none">Editar parámetros y alquileres ↗</a> ·
       <a style="color:var(--blue);cursor:pointer" data-action="cargarCostosDowntime">↻ releer sheet</a>`);
   }
@@ -3780,15 +3776,15 @@ function toggleCostoEquipo(codN){
   const yms=window._costosYms||[];
   if(!filaEq||!cfg||!yms.length)return;
 
-  // Series mensuales del equipo (USD) desde los mapas correctivos globales
+  // Series mensuales del equipo desde los mapas correctivos globales.
+  // ARS: repuestos y MO nativos; oportunidad usa las MISMAS horas correctivas
+  // que la MO y convierte el alquiler USD→ARS con el TC.
   const repCorr=window._costosCorrPorMes||{};
   const hCorr=window._horasCorrPorMesYEquipo||{};
-  const pCorr=window._paradaCorrPorMesYEquipo||{};
   const alq=cfg.alq[codN];
-  // Series en ARS: repuestos y MO nativos; oportunidad convierte alquiler USD→ARS
   const dRep=yms.map(ym=>Math.round((repCorr[ym]||{})[codN]||0));
   const dMo =yms.map(ym=>Math.round(((hCorr[ym]||{})[codN]||0)*cfg.moArsH));
-  const dOp =yms.map(ym=>alq?Math.round(((pCorr[ym]||{})[codN]||0)/cfg.horasMes*alq*cfg.tc):0);
+  const dOp =yms.map(ym=>alq?Math.round(((hCorr[ym]||{})[codN]||0)/cfg.horasMes*alq*cfg.tc):0);
 
   // Fila nueva debajo de la del equipo, con canvas creado por DOM API (CSP-safe)
   const tr=document.createElement('tr');
