@@ -3665,12 +3665,17 @@ function renderCostosDowntime(){
   if(badge)badge.textContent=yms.length?_fmtUSD(totAll/nMeses)+'/mes':'—';
 
   // Tabla: costo mensual operativo por equipo, ordenada de mayor a menor.
-  // (El chart mensual de flota se sacó a pedido de Marcos — jul-2026; si se
-  // vuelve a necesitar, el cálculo por mes sigue disponible en serRep/serMo/serOp.)
+  // Click en una fila → despliega debajo el gráfico mes a mes de ese equipo.
+  // (El chart mensual de flota se sacó a pedido de Marcos — jul-2026; las
+  // series serRep/serMo/serOp siguen calculadas por si se reincorpora.)
   const _eqByCodN=codN=>(window._equiposOrdenados||[]).find(e=>normCod(e.codigo)===codN);
   const filas=Object.entries(porEquipo)
     .filter(([,v])=>v.total>0)
     .sort((a,b)=>b[1].total-a[1].total);
+  // Contexto para el gráfico desplegable (toggleCostoEquipo)
+  window._costosYms=yms;
+  window._costosYmLabels=labels;
+  _cerrarCostoChart(); // si la tabla se re-renderiza, el chart abierto muere con ella
   const tablaEl=document.getElementById('costosTablaWrap');
   if(tablaEl){
     if(!filas.length){
@@ -3684,9 +3689,9 @@ function renderCostosDowntime(){
         const opCell=conAlq
           ?html`<td style="text-align:right">${_fmtUSD(v.op/nMeses)}</td>`
           :html`<td style="text-align:right;color:var(--text3)" title="Sin alquiler cargado en el sheet — costo de oportunidad no computable">N/A</td>`;
-        return html`<tr data-action="scrollToEquipo" data-arg="${codDisplay}" style="cursor:pointer" title="Ver detalle del equipo">
+        return html`<tr id="costoRow_${codN}" data-action="toggleCostoEquipo" data-arg="${codN}" style="cursor:pointer" title="Ver gasto mensual del equipo">
           <td style="color:var(--text3)">${String(i+1).padStart(2,'0')}</td>
-          <td class="mono" style="white-space:nowrap"><b>${codDisplay}</b></td>
+          <td class="mono" style="white-space:nowrap"><b>${codDisplay}</b> <span class="eq-chev" id="costoChev_${codN}">▸</span></td>
           <td>${nombre}</td>
           <td style="text-align:right">${_fmtUSD(v.rep/nMeses)}</td>
           <td style="text-align:right">${_fmtUSD(v.mo/nMeses)}</td>
@@ -3728,6 +3733,100 @@ function renderCostosDowntime(){
       <a style="color:var(--blue);cursor:pointer" data-action="cargarCostosDowntime">↻ releer sheet</a>`);
   }
 }
+
+/* ── Gráfico desplegable: gasto mensual de UN equipo ──────────────────
+   Click en una fila de la tabla → se inserta una fila debajo con un chart
+   de barras apiladas (repuestos + MO + oportunidad, USD) mes a mes.
+   Un solo chart abierto a la vez. Segundo click en la misma fila: colapsa. */
+let _costoChartEq=null;   // instancia Chart abierta
+let _costoChartCod=null;  // codN de la fila expandida
+
+function _cerrarCostoChart(){
+  if(_costoChartEq){try{_costoChartEq.destroy();}catch(_){}_costoChartEq=null;}
+  const row=document.getElementById('costoChartRow');
+  if(row)row.remove();
+  if(_costoChartCod){
+    const chev=document.getElementById('costoChev_'+_costoChartCod);
+    if(chev)chev.textContent='▸';
+  }
+  _costoChartCod=null;
+}
+
+function toggleCostoEquipo(codN){
+  if(typeof Chart==='undefined')return;
+  const mismo=(_costoChartCod===codN);
+  _cerrarCostoChart();
+  if(mismo)return; // era un colapso
+  const filaEq=document.getElementById('costoRow_'+codN);
+  const cfg=window._costosCfg;
+  const yms=window._costosYms||[];
+  if(!filaEq||!cfg||!yms.length)return;
+
+  // Series mensuales del equipo (USD) desde los mapas correctivos globales
+  const repCorr=window._costosCorrPorMes||{};
+  const hCorr=window._horasCorrPorMesYEquipo||{};
+  const pCorr=window._paradaCorrPorMesYEquipo||{};
+  const alq=cfg.alq[codN];
+  const dRep=yms.map(ym=>Math.round(((repCorr[ym]||{})[codN]||0)/cfg.tc));
+  const dMo =yms.map(ym=>Math.round(((hCorr[ym]||{})[codN]||0)*cfg.moArsH/cfg.tc));
+  const dOp =yms.map(ym=>alq?Math.round(((pCorr[ym]||{})[codN]||0)/cfg.horasMes*alq):0);
+
+  // Fila nueva debajo de la del equipo, con canvas creado por DOM API (CSP-safe)
+  const tr=document.createElement('tr');
+  tr.id='costoChartRow';
+  const td=document.createElement('td');
+  td.colSpan=filaEq.children.length;
+  td.style.cssText='padding:14px 12px;background:var(--bg2)';
+  const wrap=document.createElement('div');
+  wrap.style.cssText='position:relative;height:240px';
+  const canvas=document.createElement('canvas');
+  wrap.appendChild(canvas);td.appendChild(wrap);tr.appendChild(td);
+  filaEq.after(tr);
+  const chev=document.getElementById('costoChev_'+codN);
+  if(chev)chev.textContent='▾';
+  _costoChartCod=codN;
+
+  const AMBER=_cssVar('--amber','#ffa030');
+  const CORP =_cssVar('--corp','#5d80e8');
+  const RED  =_cssVar('--red','#e5484d');
+  const GRID =_cssVar('--chart-grid','#1a2030');
+  const TEXT2=_cssVar('--text2','#aab3c8');
+  const TOOLTIP_BG=_cssVar('--chart-tooltip-bg','#0d1019');
+  const TOOLTIP_FG=_cssVar('--chart-tooltip-fg','#f1f4fb');
+  const mkDs=(label,data,color)=>({type:'bar',label,data,backgroundColor:color+'cc',borderColor:color,borderWidth:1,maxBarThickness:44,stack:'usd'});
+  _costoChartEq=new Chart(canvas.getContext('2d'),{
+    type:'bar',
+    data:{labels:window._costosYmLabels||yms,datasets:[
+      mkDs('Repuestos',dRep,AMBER),
+      mkDs('Mano de obra',dMo,CORP),
+      mkDs('Oportunidad',dOp,RED),
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{display:true,position:'top',labels:{color:TEXT2,font:{size:10,family:'JetBrains Mono'},boxWidth:10}},
+        tooltip:{
+          backgroundColor:TOOLTIP_BG,titleColor:TOOLTIP_FG,bodyColor:TOOLTIP_FG,
+          padding:12,borderColor:GRID,borderWidth:1,
+          titleFont:{family:'JetBrains Mono',size:11,weight:'600'},
+          bodyFont:{family:'Inter',size:12},bodySpacing:6,
+          callbacks:{
+            label:c=>`  ${c.dataset.label}: ${_fmtUSD(c.raw)}`,
+            footer:items=>'Total: '+_fmtUSD(items.reduce((s,i)=>s+i.raw,0)),
+          }
+        }
+      },
+      scales:{
+        x:{stacked:true,ticks:{color:TEXT2,font:{size:11,family:'JetBrains Mono',weight:'500'}},grid:{display:false},border:{color:GRID}},
+        y:{stacked:true,beginAtZero:true,
+          ticks:{color:TEXT2,font:{size:10,family:'JetBrains Mono'},callback:v=>v>=1e3?'$'+(v/1e3).toFixed(1)+'K':'$'+v},
+          grid:{color:GRID,drawTicks:false},border:{display:false}},
+      }
+    }
+  });
+}
+
 function renderPedidosPendientesGlobal(){
   const todos=window._pedidosAll||[];
   const activos=todos.filter(p=>{const l=(p.estado||'').toLowerCase();
@@ -4156,6 +4255,7 @@ const ACTIONS = {
   toggleEquipoDetail:            (codigo, t) => toggleEquipoDetail(codigo, t),
   scrollToEquipo:                (codigo) => scrollToEquipo(codigo),
   cargarCostosDowntime:          () => cargarCostosDowntime(),
+  toggleCostoEquipo:             (codN) => toggleCostoEquipo(codN),
   _irAEquipoDesdeKpi:            (codigo) => _irAEquipoDesdeKpi(codigo),
   closeServiceCriticoModalIfBg:  (_, t, e) => { if (e.target === t) closeServiceCriticoModal(); },
   abrirDetalleKpi:               (tipo) => abrirDetalleKpi(tipo),
