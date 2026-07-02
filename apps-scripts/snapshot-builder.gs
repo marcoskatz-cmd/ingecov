@@ -255,7 +255,10 @@ function _buildRepuestos_(snap){
     // siempre se llama "ENTREGAS". Fallback por header. OJO: NO matchear por
     // 'N° ENTREGA' porque la hoja de PEDIDOS también tiene esa columna; uso
     // PROVEEDOR/COSTO, que son exclusivas de la hoja de entregas.
-    const t = _readTab_(SNAP_SRC.repuestos, 'ENTREGAS') || _readTabByHeader_(SNAP_SRC.repuestos, ['PROVEEDOR','COSTO']);
+    // jul-2026: el archivo se reestructuró; la hoja pasó a llamarse 'REGISTRO
+    // ENTREGAS' y EQUIPO/SECTOR, CÓDIGO, RAZÓN y RESPONSABLE llevan sufijo ' 1'
+    // (slots 1..4 por entrega, a la fecha solo se usa el 1).
+    const t = _readTab_(SNAP_SRC.repuestos, 'ENTREGAS') || _readTab_(SNAP_SRC.repuestos, 'REGISTRO ENTREGAS') || _readTabByHeader_(SNAP_SRC.repuestos, ['PROVEEDOR','COSTO']);
     if(!t){
       let tabs='';
       try{ tabs = SpreadsheetApp.openById(SNAP_SRC.repuestos).getSheets().map(s=>s.getName()).join(' | '); }catch(_){}
@@ -264,11 +267,11 @@ function _buildRepuestos_(snap){
     const h = t.header;
     const iNro = _idx_(h, ['N° ENTREGA','N ENTREGA','NRO ENTREGA','ENTREGA','N° DE ENTREGA']);
     const iFec = _idx_(h, ['FECHA','FECHA ENTREGA']);
-    const iEqu = _idx_(h, ['EQUIPO','EQUIPO/SECTOR']);
-    const iCod = _idx_(h, ['CÓDIGO','CODIGO']);
+    const iEqu = _idx_(h, ['EQUIPO','EQUIPO/SECTOR','EQUIPO/SECTOR 1']);
+    const iCod = _idx_(h, ['CÓDIGO','CODIGO','CÓDIGO 1']);
     const iCos = _idx_(h, ['COSTO','PRECIO','TOTAL','IMPORTE','COSTO ENTREGA','PRECIO TOTAL','MONTO','COSTO TOTAL']);
-    const iRaz = _idx_(h, ['DESTINO/RAZÓN','RAZÓN','RAZON','MOTIVO','DESTINO']);
-    const iRes = _idx_(h, ['RESPONSABLE','RESPONSABLE ENTREGA']);
+    const iRaz = _idx_(h, ['DESTINO/RAZÓN','RAZÓN','RAZON','MOTIVO','DESTINO','RAZÓN 1']);
+    const iRes = _idx_(h, ['RESPONSABLE','RESPONSABLE ENTREGA','RESPONSABLE 1']);
     const iIte = _idx_(h, ['DESCRIPCIÓN DE REPUESTOS','DESCRIPCION DE REPUESTOS','REPUESTOS','ITEMS DETALLE','DESCRIPCIÓN','DESCRIPCION']);
 
     const out = [['N° ENTREGA','FECHA','EQUIPO','CÓDIGO','COSTO ENTREGA','RAZÓN ENTREGA','RESPONSABLE ENTREGA','ITEMS DETALLE']];
@@ -299,7 +302,10 @@ function _buildPedidos_(snap){
     // PED_PEND quedaba vacío). Fallback robusto: ubicarla por la columna ESTADO,
     // que es única de pedidos (la hoja ENTREGAS no la tiene). Mirrors el patrón
     // de _buildService_.
-    const t = _readTab_(SNAP_SRC.repuestos, 'PEDIDOS') || _readTabByHeader_(SNAP_SRC.repuestos, ['ESTADO']);
+    // jul-2026: el archivo se reestructuró; la hoja pasó a llamarse 'REGISTRO
+    // PEDIDOS' y las columnas EQUIPO/SECTOR y CÓDIGO llevan sufijo ' 1' (hay
+    // slots 1..4 por pedido, pero a la fecha solo se usa el 1).
+    const t = _readTab_(SNAP_SRC.repuestos, 'PEDIDOS') || _readTab_(SNAP_SRC.repuestos, 'REGISTRO PEDIDOS') || _readTabByHeader_(SNAP_SRC.repuestos, ['ESTADO']);
     if(!t){
       let tabs='';
       try{ tabs = SpreadsheetApp.openById(SNAP_SRC.repuestos).getSheets().map(s=>s.getName()).join(' | '); }catch(_){}
@@ -308,8 +314,8 @@ function _buildPedidos_(snap){
     const h = t.header;
     const iNro = _idx_(h, ['N°','NRO','N° PEDIDO','NUMERO','ID','L1122']);
     const iFec = _idx_(h, ['FECHA']);
-    const iEqu = _idx_(h, ['EQUIPO/SECTOR','EQUIPO']);
-    const iCod = _idx_(h, ['CÓDIGO','CODIGO']);
+    const iEqu = _idx_(h, ['EQUIPO/SECTOR','EQUIPO','EQUIPO/SECTOR 1']);
+    const iCod = _idx_(h, ['CÓDIGO','CODIGO','CÓDIGO 1']);
     const iDes = _idx_(h, ['DESCRIPCIÓN DE REPUESTOS','DESCRIPCION DE REPUESTOS','DESCRIPCIÓN','DESCRIPCION','REPUESTOS']);
     const iEst = _idx_(h, ['ESTADO']);
     // Si el N° no está como header reconocible, usar la primera columna (la "L1122"

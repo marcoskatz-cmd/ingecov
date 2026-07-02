@@ -142,6 +142,8 @@ trusted-types ingecov-html;
 
 5. **Dedup textual entre LIVE y HIST de trabajos** NO funciona (descripciones difieren entre fuentes, fechas divergen por heurística). Filtro simple por año.
 
+6. **Reestructura del archivo de pedidos/entregas (jul-2026)**: `1JpXjGTJ...` renombró sus pestañas a `REGISTRO PEDIDOS` / `REGISTRO ENTREGAS` (además hay `PEDIDOS PENDIENTES`, `PEDIDOS ENTREGADOS`, formularios) y pasó a slots multi-equipo: `EQUIPO/SECTOR 1..4`, `CÓDIGO 1..4`, `PATENTE 1..4`, `RAZÓN 1/2`, `RESPONSABLE 1/2`. `_idx_` es match exacto → EQUIPO/CÓDIGO/RAZÓN/RESPONSABLE salían vacíos en PED_PEND/REP_LIVE (el builder reportaba OK porque las filas sí copiaban) → `renderDashboard` filtra por `r[2]` no vacío → KPIs de pedidos en 0 y costos sin cruce por código. Fix: sinónimos `EQUIPO/SECTOR 1`, `CÓDIGO 1`, `RAZÓN 1`, `RESPONSABLE 1` + nombres de pestaña explícitos en `_buildPedidos_`/`_buildRepuestos_`. A la fecha los slots 2..4 están siempre vacíos (0 filas); si empiezan a usarse, el builder solo toma el slot 1 — habría que expandir filas.
+
 ## Apps Script standalone "INGECO Panel API"
 
 En `marcoskatz@grupoingeco.com.ar`. Triggers cada 30 min:
