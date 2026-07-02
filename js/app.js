@@ -1720,17 +1720,6 @@ function setTab(id,t){
   // Chart.js renderizado mientras el panel está oculto (display:none) colapsa a
   // 0px; al mostrar telemetría hay que reajustarlo.
   if(id==='tabTelemetria'&&_chartComboFlota){try{_chartComboFlota.resize();}catch(_){}}
-  if(id==='tabCostos'){
-    // El chart se crea en la carga inicial con el panel oculto → Chart.js lo
-    // deja en 0×0 y resize() no lo recupera. Al abrir el tab, si quedó
-    // colapsado, se recrea ya visible. setTimeout(0) y no rAF: rAF queda
-    // suspendido en pestañas en background y el fix nunca correría.
-    setTimeout(()=>{
-      const cv=document.getElementById('chartCostos');
-      if(cv&&cv.getBoundingClientRect().width===0&&window._costosCfg){renderCostosDowntime();return;}
-      if(_chartCostos){try{_chartCostos.resize();}catch(_){}}
-    },0);
-  }
 }
 
 function toggleEqSec(uid){
@@ -3592,8 +3581,6 @@ function scrollToEquipo(codigo){
    editable por Marcos. Se lee DIRECTO por gviz (sin snapshot) para que un
    cambio de precio impacte con solo recargar el panel.
 ═══════════════════════════════════════════════════════════════════ */
-let _chartCostos=null;
-
 async function cargarCostosDowntime(){
   const cont=document.getElementById('costosParams');
   try{
@@ -3627,16 +3614,8 @@ async function cargarCostosDowntime(){
 const _fmtUSD=n=>'US$ '+Math.round(n).toLocaleString('es-AR');
 
 function renderCostosDowntime(){
-  if(typeof Chart==='undefined')return;
   const cfg=window._costosCfg;
   if(!cfg)return;
-  const AMBER=_cssVar('--amber','#ffa030');
-  const CORP =_cssVar('--corp','#5d80e8');
-  const RED  =_cssVar('--red','#e5484d');
-  const GRID =_cssVar('--chart-grid','#1a2030');
-  const TEXT2=_cssVar('--text2','#aab3c8');
-  const TOOLTIP_BG=_cssVar('--chart-tooltip-bg','#0d1019');
-  const TOOLTIP_FG=_cssVar('--chart-tooltip-fg','#f1f4fb');
   const nomMes=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
   const repCorr=window._costosCorrPorMes||{};        // {ym:{codN: ARS}}
@@ -3685,64 +3664,50 @@ function renderCostosDowntime(){
   const badge=document.getElementById('costosBadge');
   if(badge)badge.textContent=yms.length?_fmtUSD(totAll/nMeses)+'/mes':'—';
 
-  // Chart: barras apiladas (repuestos + MO + oportunidad) por mes
-  if(_chartCostos){_chartCostos.destroy();_chartCostos=null;}
-  const el=document.getElementById('chartCostos');
-  if(el&&yms.length){
-    const mkDs=(label,data,color)=>({type:'bar',label,data,backgroundColor:color+'cc',borderColor:color,borderWidth:1,maxBarThickness:48,stack:'usd'});
-    _chartCostos=new Chart(el.getContext('2d'),{
-      type:'bar',
-      data:{labels,datasets:[
-        mkDs('Repuestos',serRep,AMBER),
-        mkDs('Mano de obra',serMo,CORP),
-        mkDs('Oportunidad',serOp,RED),
-      ]},
-      options:{
-        responsive:true,maintainAspectRatio:false,
-        interaction:{mode:'index',intersect:false},
-        plugins:{
-          legend:{display:false},
-          tooltip:{
-            backgroundColor:TOOLTIP_BG,titleColor:TOOLTIP_FG,bodyColor:TOOLTIP_FG,
-            padding:12,borderColor:GRID,borderWidth:1,
-            titleFont:{family:'JetBrains Mono',size:11,weight:'600'},
-            bodyFont:{family:'Inter',size:12},bodySpacing:6,
-            callbacks:{
-              label:c=>`  ${c.dataset.label}: ${_fmtUSD(c.raw)}`,
-              footer:items=>'Total: '+_fmtUSD(items.reduce((s,i)=>s+i.raw,0)),
-            }
-          }
-        },
-        scales:{
-          x:{stacked:true,ticks:{color:TEXT2,font:{size:11,family:'JetBrains Mono',weight:'500'}},grid:{display:false},border:{color:GRID}},
-          y:{stacked:true,beginAtZero:true,
-            title:{display:true,text:'USD',color:TEXT2,font:{size:10,family:'JetBrains Mono',weight:'600'},padding:{bottom:8}},
-            ticks:{color:TEXT2,font:{size:10,family:'JetBrains Mono'},callback:v=>v>=1e3?'$'+(v/1e3).toFixed(0)+'K':'$'+v},
-            grid:{color:GRID,drawTicks:false},border:{display:false}},
-        }
-      }
-    });
-  }
-
-  // Ranking top 10 por costo mensual promedio
+  // Tabla: costo mensual operativo por equipo, ordenada de mayor a menor.
+  // (El chart mensual de flota se sacó a pedido de Marcos — jul-2026; si se
+  // vuelve a necesitar, el cálculo por mes sigue disponible en serRep/serMo/serOp.)
   const _eqByCodN=codN=>(window._equiposOrdenados||[]).find(e=>normCod(e.codigo)===codN);
-  const top=Object.entries(porEquipo)
+  const filas=Object.entries(porEquipo)
     .filter(([,v])=>v.total>0)
-    .sort((a,b)=>b[1].total-a[1].total)
-    .slice(0,10);
-  const maxTot=top[0]?.[1].total||1;
-  const rankEl=document.getElementById('rankDowntime');
-  if(rankEl)setHTML(rankEl,top.length
-    ?new RawHTML(top.map(([codN,v],i)=>{
-      const eq=_eqByCodN(codN);const codDisplay=eq?eq.codigo:codN;
-      return html`<div class="rank-row" data-action="scrollToEquipo" data-arg="${codDisplay}" title="Ver detalle · rep ${_fmtUSD(v.rep/nMeses)} + MO ${_fmtUSD(v.mo/nMeses)} + op ${_fmtUSD(v.op/nMeses)}">
-        <span class="rank-pos${i<3?' top':''}">${String(i+1).padStart(2,'0')}</span>
-        <span class="rank-cod">${codDisplay}</span>
-        <div class="rank-bar-wrap"><div class="rank-bar-fill" style="width:${Math.round(v.total/maxTot*100)}%;background:${RED};box-shadow:0 0 8px ${RED}80"></div></div>
-        <span class="rank-val">${_fmtUSD(v.total/nMeses)}/mes</span>
-      </div>`.value;
-    }).join(''))
-    :'Sin datos correctivos.');
+    .sort((a,b)=>b[1].total-a[1].total);
+  const tablaEl=document.getElementById('costosTablaWrap');
+  if(tablaEl){
+    if(!filas.length){
+      setHTML(tablaEl,'Sin datos correctivos.');
+    }else{
+      const cuerpo=filas.map(([codN,v],i)=>{
+        const eq=_eqByCodN(codN);
+        const codDisplay=eq?eq.codigo:codN;
+        const nombre=eq?(eq.nombre||''):'';
+        const conAlq=cfg.alq[codN]!=null;
+        const opCell=conAlq
+          ?html`<td style="text-align:right">${_fmtUSD(v.op/nMeses)}</td>`
+          :html`<td style="text-align:right;color:var(--text3)" title="Sin alquiler cargado en el sheet — costo de oportunidad no computable">N/A</td>`;
+        return html`<tr data-action="scrollToEquipo" data-arg="${codDisplay}" style="cursor:pointer" title="Ver detalle del equipo">
+          <td style="color:var(--text3)">${String(i+1).padStart(2,'0')}</td>
+          <td class="mono" style="white-space:nowrap"><b>${codDisplay}</b></td>
+          <td>${nombre}</td>
+          <td style="text-align:right">${_fmtUSD(v.rep/nMeses)}</td>
+          <td style="text-align:right">${_fmtUSD(v.mo/nMeses)}</td>
+          ${opCell}
+          <td style="text-align:right;color:var(--amber)"><b>${_fmtUSD(v.total/nMeses)}</b></td>
+          <td style="text-align:right;color:var(--text3)">${_fmtUSD(v.total)}</td>
+        </tr>`.value;
+      }).join('');
+      setHTML(tablaEl,new RawHTML(`<div class="table-wrap"><table class="eq-inner-table">
+        <thead><tr>
+          <th>#</th><th>Código</th><th>Equipo</th>
+          <th style="text-align:right">Repuestos /mes</th>
+          <th style="text-align:right">Mano obra /mes</th>
+          <th style="text-align:right">Oportunidad /mes</th>
+          <th style="text-align:right">TOTAL USD/mes</th>
+          <th style="text-align:right">Acum. período</th>
+        </tr></thead>
+        <tbody>${cuerpo}</tbody>
+      </table></div>`));
+    }
+  }
 
   // Card de parámetros: valores vigentes + advertencias + link para editar
   const paramsEl=document.getElementById('costosParams');

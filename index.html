@@ -29,12 +29,12 @@
         referrerpolicy="no-referrer"></script>
 <!-- init.js: setea el tema en <html> ANTES del paint para evitar FOUC.
      Sin defer a propósito. -->
-<script src="./js/init.js?v=32"></script>
+<script src="./js/init.js?v=33"></script>
 <!-- app.js: toda la lógica de la app. Con defer corre tras parsear el DOM,
      equivalente a estar al final del <body>. Bump del query ?v= cuando se cambia
      app.js para forzar a clientes con HTTP cache a re-fetchear (el SW solo
      invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/app.js?v=32" defer></script>
+<script src="./js/app.js?v=33" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -1741,32 +1741,21 @@
       </div>
     </div>
 
-    <!-- Costos de downtime correctivo: repuestos + mano de obra + costo de
-         oportunidad, en USD, mes a mes. Parámetros editables en el sheet
-         COSTOS DOWNTIME (link en la card de parámetros). -->
+    <!-- Costos de downtime correctivo: costo mensual operativo POR EQUIPO
+         (repuestos + mano de obra + costo de oportunidad, USD/mes).
+         Parámetros editables en el sheet COSTOS DOWNTIME (link en la card). -->
     <div class="tab-panel" id="tabCostos">
       <div class="section-content" id="secCostos">
-        <div class="telemetria-card telemetria-combo">
+        <div class="telemetria-card">
           <div class="combo-header">
-            <div class="telemetria-card-title">costo de downtime correctivo por mes — USD</div>
-            <div class="combo-legend">
-              <span class="combo-leg-item"><span class="combo-swatch" style="background:var(--amber)"></span>repuestos</span>
-              <span class="combo-leg-item"><span class="combo-swatch" style="background:var(--corp)"></span>mano de obra</span>
-              <span class="combo-leg-item"><span class="combo-swatch" style="background:var(--red)"></span>oportunidad</span>
-            </div>
+            <div class="telemetria-card-title">costo mensual operativo por equipo — USD/mes</div>
           </div>
           <div class="combo-totals" id="costosTotals">—</div>
-          <div class="combo-chart-wrap"><canvas id="chartCostos"></canvas></div>
+          <div id="costosTablaWrap" style="margin-top:10px">cargando…</div>
         </div>
-        <div class="telemetria-grid" style="margin-top:12px">
-          <div class="telemetria-card">
-            <div class="telemetria-card-title">top 10 — costo mensual de downtime (USD/mes)</div>
-            <div id="rankDowntime"></div>
-          </div>
-          <div class="telemetria-card">
-            <div class="telemetria-card-title">parámetros del cálculo</div>
-            <div id="costosParams" style="font-size:12px;color:var(--text2);line-height:1.7;padding:6px 2px">cargando…</div>
-          </div>
+        <div class="telemetria-card" style="margin-top:12px">
+          <div class="telemetria-card-title">parámetros del cálculo</div>
+          <div id="costosParams" style="font-size:12px;color:var(--text2);line-height:1.7;padding:6px 2px">cargando…</div>
         </div>
       </div>
     </div>
