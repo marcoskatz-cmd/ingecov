@@ -3624,7 +3624,9 @@ async function cargarCostosDowntime(){
   }
 }
 
-const _fmtUSD=n=>'US$ '+Math.round(n).toLocaleString('es-AR');
+// Montos del tab de costos en ARS. formatMoney abrevia ($2.4M / $850K);
+// para celdas de tabla queremos el número completo con miles es-AR.
+const _fmtARS=n=>'$ '+Math.round(n).toLocaleString('es-AR');
 
 function renderCostosDowntime(){
   const cfg=window._costosCfg;
@@ -3641,22 +3643,24 @@ function renderCostosDowntime(){
     .sort();
   const labels=yms.map(ym=>{const[y,mm]=ym.split('-');return`${nomMes[+mm-1]}'${y.slice(2)}`;});
 
-  // Series por mes (USD) + acumulado por equipo para el ranking
+  // Series por mes (ARS) + acumulado por equipo para el ranking.
+  // Repuestos y MO son ARS nativos; la oportunidad convierte el alquiler
+  // (USD/mes del sheet) a ARS con el tipo de cambio.
   const serRep=[],serMo=[],serOp=[];
   const porEquipo={};       // codN → {rep,mo,op,total}
   const sinAlq=new Set();   // equipos con horas de parada pero sin alquiler cargado
-  const acc=(codN,campo,usd)=>{
+  const acc=(codN,campo,ars)=>{
     porEquipo[codN]=porEquipo[codN]||{rep:0,mo:0,op:0,total:0};
-    porEquipo[codN][campo]+=usd;porEquipo[codN].total+=usd;
+    porEquipo[codN][campo]+=ars;porEquipo[codN].total+=ars;
   };
   for(const ym of yms){
     let rep=0,mo=0,op=0;
-    for(const[codN,ars]of Object.entries(repCorr[ym]||{})){const u=ars/cfg.tc;rep+=u;acc(codN,'rep',u);}
-    for(const[codN,hr]of Object.entries(hCorr[ym]||{})){const u=hr*cfg.moArsH/cfg.tc;mo+=u;acc(codN,'mo',u);}
+    for(const[codN,ars]of Object.entries(repCorr[ym]||{})){rep+=ars;acc(codN,'rep',ars);}
+    for(const[codN,hr]of Object.entries(hCorr[ym]||{})){const u=hr*cfg.moArsH;mo+=u;acc(codN,'mo',u);}
     for(const[codN,hr]of Object.entries(pCorr[ym]||{})){
       const alq=cfg.alq[codN];
       if(!alq){if(hr>0)sinAlq.add(codN);continue;}
-      const u=hr/cfg.horasMes*alq;op+=u;acc(codN,'op',u);
+      const u=hr/cfg.horasMes*alq*cfg.tc;op+=u;acc(codN,'op',u);
     }
     serRep.push(Math.round(rep));serMo.push(Math.round(mo));serOp.push(Math.round(op));
   }
@@ -3671,11 +3675,11 @@ function renderCostosDowntime(){
   if(totalsEl){
     const periodo=yms.length?(labels[0]===labels[labels.length-1]?labels[0]:`${labels[0]}–${labels[labels.length-1]}`):'';
     setHTML(totalsEl,yms.length
-      ?html`promedio mensual <span class="v-costo">${_fmtUSD(totAll/nMeses)}</span><span class="sep">·</span>acumulado ${periodo} <span class="v-costo">${_fmtUSD(totAll)}</span><span class="sep">·</span>repuestos ${Math.round(totRep/totAll*100)||0}% · MO ${Math.round(totMo/totAll*100)||0}% · oportunidad ${Math.round(totOp/totAll*100)||0}%`
+      ?html`promedio mensual <span class="v-costo">${_fmtARS(totAll/nMeses)}</span><span class="sep">·</span>acumulado ${periodo} <span class="v-costo">${_fmtARS(totAll)}</span><span class="sep">·</span>repuestos ${Math.round(totRep/totAll*100)||0}% · MO ${Math.round(totMo/totAll*100)||0}% · oportunidad ${Math.round(totOp/totAll*100)||0}%`
       :'sin datos correctivos para graficar');
   }
   const badge=document.getElementById('costosBadge');
-  if(badge)badge.textContent=yms.length?_fmtUSD(totAll/nMeses)+'/mes':'—';
+  if(badge)badge.textContent=yms.length?formatMoney(totAll/nMeses)+'/mes':'—';
 
   // Tabla: costo mensual operativo por equipo, ordenada de mayor a menor.
   // Click en una fila → despliega debajo el gráfico mes a mes de ese equipo.
@@ -3700,17 +3704,17 @@ function renderCostosDowntime(){
         const nombre=eq?(eq.nombre||''):'';
         const conAlq=cfg.alq[codN]!=null;
         const opCell=conAlq
-          ?html`<td style="text-align:right">${_fmtUSD(v.op/nMeses)}</td>`
+          ?html`<td style="text-align:right">${_fmtARS(v.op/nMeses)}</td>`
           :html`<td style="text-align:right;color:var(--text3)" title="Sin alquiler cargado en el sheet — costo de oportunidad no computable">N/A</td>`;
         return html`<tr id="costoRow_${codN}" data-action="toggleCostoEquipo" data-arg="${codN}" style="cursor:pointer" title="Ver gasto mensual del equipo">
           <td style="color:var(--text3)">${String(i+1).padStart(2,'0')}</td>
           <td class="mono" style="white-space:nowrap"><b>${codDisplay}</b> <span class="eq-chev" id="costoChev_${codN}">▸</span></td>
           <td>${nombre}</td>
-          <td style="text-align:right">${_fmtUSD(v.rep/nMeses)}</td>
-          <td style="text-align:right">${_fmtUSD(v.mo/nMeses)}</td>
+          <td style="text-align:right">${_fmtARS(v.rep/nMeses)}</td>
+          <td style="text-align:right">${_fmtARS(v.mo/nMeses)}</td>
           ${opCell}
-          <td style="text-align:right;color:var(--amber)"><b>${_fmtUSD(v.total/nMeses)}</b></td>
-          <td style="text-align:right;color:var(--text3)">${_fmtUSD(v.total)}</td>
+          <td style="text-align:right;color:var(--amber)"><b>${_fmtARS(v.total/nMeses)}</b></td>
+          <td style="text-align:right;color:var(--text3)">${_fmtARS(v.total)}</td>
         </tr>`.value;
       }).join('');
       setHTML(tablaEl,new RawHTML(`<div class="table-wrap"><table class="eq-inner-table">
@@ -3719,7 +3723,7 @@ function renderCostosDowntime(){
           <th style="text-align:right">Repuestos /mes</th>
           <th style="text-align:right">Mano obra /mes</th>
           <th style="text-align:right">Oportunidad /mes</th>
-          <th style="text-align:right">TOTAL USD/mes</th>
+          <th style="text-align:right">TOTAL ARS/mes</th>
           <th style="text-align:right">Acum. período</th>
         </tr></thead>
         <tbody>${cuerpo}</tbody>
@@ -3741,7 +3745,8 @@ function renderCostosDowntime(){
       <b>Hs disp./mes:</b> ${String(cfg.horasMes)} ·
       <b>Alquileres cargados:</b> ${String(nAlq)} equipos<br>
       <b>Criterio correctivo:</b> RAZÓN = Reparación. Neumáticos EXCLUIDOS de este cálculo (en el KPI de horas del panel siguen contando como correctivo).<br>
-      <b>Oportunidad:</b> hs de PARADA declaradas en planilla / ${String(cfg.horasMes)} hs × alquiler USD/mes. Las hs de parada suelen estar subregistradas → la oportunidad es un piso, no el costo real.${sinAlqTxt}<br><br>
+      <b>Moneda:</b> todos los montos en ARS. Repuestos y mano de obra son ARS nativos; el tipo de cambio se usa solo para pasar el alquiler (USD/mes del sheet) a ARS en el costo de oportunidad.<br>
+      <b>Oportunidad:</b> hs de PARADA declaradas en planilla / ${String(cfg.horasMes)} hs × alquiler mensual × TC. Las hs de parada suelen estar subregistradas → la oportunidad es un piso, no el costo real.${sinAlqTxt}<br><br>
       <a href="https://docs.google.com/spreadsheets/d/${SHEET_IDS.costos}/edit" target="_blank" rel="noopener noreferrer" style="color:var(--blue);text-decoration:none">Editar parámetros y alquileres ↗</a> ·
       <a style="color:var(--blue);cursor:pointer" data-action="cargarCostosDowntime">↻ releer sheet</a>`);
   }
@@ -3780,9 +3785,10 @@ function toggleCostoEquipo(codN){
   const hCorr=window._horasCorrPorMesYEquipo||{};
   const pCorr=window._paradaCorrPorMesYEquipo||{};
   const alq=cfg.alq[codN];
-  const dRep=yms.map(ym=>Math.round(((repCorr[ym]||{})[codN]||0)/cfg.tc));
-  const dMo =yms.map(ym=>Math.round(((hCorr[ym]||{})[codN]||0)*cfg.moArsH/cfg.tc));
-  const dOp =yms.map(ym=>alq?Math.round(((pCorr[ym]||{})[codN]||0)/cfg.horasMes*alq):0);
+  // Series en ARS: repuestos y MO nativos; oportunidad convierte alquiler USD→ARS
+  const dRep=yms.map(ym=>Math.round((repCorr[ym]||{})[codN]||0));
+  const dMo =yms.map(ym=>Math.round(((hCorr[ym]||{})[codN]||0)*cfg.moArsH));
+  const dOp =yms.map(ym=>alq?Math.round(((pCorr[ym]||{})[codN]||0)/cfg.horasMes*alq*cfg.tc):0);
 
   // Fila nueva debajo de la del equipo, con canvas creado por DOM API (CSP-safe)
   const tr=document.createElement('tr');
@@ -3825,15 +3831,15 @@ function toggleCostoEquipo(codN){
           titleFont:{family:'JetBrains Mono',size:11,weight:'600'},
           bodyFont:{family:'Inter',size:12},bodySpacing:6,
           callbacks:{
-            label:c=>`  ${c.dataset.label}: ${_fmtUSD(c.raw)}`,
-            footer:items=>'Total: '+_fmtUSD(items.reduce((s,i)=>s+i.raw,0)),
+            label:c=>`  ${c.dataset.label}: ${_fmtARS(c.raw)}`,
+            footer:items=>'Total: '+_fmtARS(items.reduce((s,i)=>s+i.raw,0)),
           }
         }
       },
       scales:{
         x:{stacked:true,ticks:{color:TEXT2,font:{size:11,family:'JetBrains Mono',weight:'500'}},grid:{display:false},border:{color:GRID}},
         y:{stacked:true,beginAtZero:true,
-          ticks:{color:TEXT2,font:{size:10,family:'JetBrains Mono'},callback:v=>v>=1e3?'$'+(v/1e3).toFixed(1)+'K':'$'+v},
+          ticks:{color:TEXT2,font:{size:10,family:'JetBrains Mono'},callback:v=>formatMoney(v)},
           grid:{color:GRID,drawTicks:false},border:{display:false}},
       }
     }
