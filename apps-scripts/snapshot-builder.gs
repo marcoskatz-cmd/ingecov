@@ -381,6 +381,7 @@ function _buildCombLivianos_(snap){
     const iPat = _idx_(h, ['N SERIE N PATENTE','N° PATENTE','PATENTE','DOMINIO']);
     const iOdo = _idx_(h, ['ODÓMETRO (KM)','ODOMETRO','KM']);
     const iOpe = _idx_(h, ['OPERARIO','CHOFER']);
+    const iObr = _idx_(h, ['OBRA PARTICULAR','OBRA GENERAL','OBRA','LUGAR','LUGAR ENTREGA']);
     const iTot = _idx_(h, ['TOTAL','IMPORTE','COSTO']);
 
     const out = [['FECHA','','','TIPO','LITROS','PATENTE','ODOMETRO','OBRA','CHOFER','','','TOTAL']];
@@ -394,6 +395,7 @@ function _buildCombLivianos_(snap){
       row[4]  = _at_(r, iLit);
       row[5]  = pat;
       row[6]  = _at_(r, iOdo);
+      row[7]  = _at_(r, iObr);   // obra/lugar — el browser lee col 7 como 'lugar'
       row[8]  = _at_(r, iOpe);
       row[11] = _at_(r, iTot);
       out.push(row);
