@@ -224,12 +224,12 @@ function _buildTrabajos_(snap){
     const iCod = _idx_(h, ['CÓDIGO','CODIGO']);
     const iEqu = _idx_(h, ['EQUIPO']);
     const iFec = _idx_(h, ['FECHA','FECHA TRABAJO']);
-    const iLug = _idx_(h, ['LUGAR/OBRA','LUGAR','OBRA','LUGAR TRABAJO']);
-    const iPer = _idx_(h, ['PERSONAL']);
+    const iLug = _idx_(h, ['LUGAR/OBRA','LUGAR','OBRA','LUGAR TRABAJO','LUGAR TRABAJO/OBRA PARTICULAR 1']);
+    const iPer = _idx_(h, ['PERSONAL','PERSONAL 1']);
     const iDes = _idx_(h, ['DESCRIPCIÓN','DESCRIPCION','DESCRIPCIÓN TRABAJOS']);
-    const iTie = _idx_(h, ['T. TRABAJO (H)','T. TRABAJO','TIEMPO TRABAJO','TIEMPO']);
-    const iPar = _idx_(h, ['T. PARADA (H)','T. PARADA','TIEMPO PARADA']);
-    const iRaz = _idx_(h, ['RAZÓN','RAZON','RAZÓN TRABAJO']);
+    const iTie = _idx_(h, ['T. TRABAJO (H)','T. TRABAJO','TIEMPO TRABAJO','TIEMPO','TIEMPO TRABAJO (hr)']);
+    const iPar = _idx_(h, ['T. PARADA (H)','T. PARADA','TIEMPO PARADA','TIEMPO PARADA (hr)']);
+    const iRaz = _idx_(h, ['RAZÓN','RAZON','RAZÓN TRABAJO','RAZÓN 1']);
 
     const out = [['CÓDIGO','EQUIPO','FECHA TRABAJO','LUGAR TRABAJO','PERSONAL TRABAJO','DESCRIPCIÓN TRABAJOS','TIEMPO PARADA','TIEMPO TRABAJO','RAZÓN TRABAJO']];
     let n = 0;
@@ -240,7 +240,8 @@ function _buildTrabajos_(snap){
       n++;
     }
     _write_(snap, 'TRAB_LIVE', out, true);
-    return { tab:'TRAB_LIVE', rows:n, status:'OK', detalle:'' };
+    var _miss = [['iLug',iLug],['iPer',iPer],['iDes',iDes],['iTie',iTie],['iPar',iPar],['iRaz',iRaz]].filter(function(x){return x[1]<0;}).map(function(x){return x[0];});
+    return { tab:'TRAB_LIVE', rows:n, status:'OK', detalle: _miss.length ? ('⚠ cols sin match: '+_miss.join(',')+' | HDR fuente: '+h.join(' ¦ ')) : '' };
   }catch(e){ return { tab:'TRAB_LIVE', rows:0, status:'ERROR', detalle:String(e && e.message || e) }; }
 }
 
@@ -447,9 +448,9 @@ function _buildService_(snap){
     const iPat = _idx_(h, ['N° SERIE/PATENTE','PATENTE','SERIE']);
     const iFre = _idx_(h, ['FRECUENCIA']);
     const iAct = _idx_(h, ['HR/KM/FECHA ACTUAL','HR/KM ACTUAL','HRKM ACTUAL','ACTUAL']);
-    const iUFe = _idx_(h, ['ÚLTIMO SERVICE FECHA','ULTIMO SERVICE FECHA','ULT FECHA']);
-    const iUHr = _idx_(h, ['ÚLTIMO SERVICE HR/KM/FECHA','ÚLTIMO SERVICE HR/KM','ULTIMO SERVICE HR/KM','ULT HRKM']);
-    const iPro = _idx_(h, ['PRÓXIMO SERVICE','PROXIMO SERVICE','PROX']);
+    const iUFe = _idx_(h, ['ÚLTIMO SERVICE FECHA','ULTIMO SERVICE FECHA','ULT FECHA','FECHA ÚLTIMO SERVICE']);
+    const iUHr = _idx_(h, ['ÚLTIMO SERVICE HR/KM/FECHA','ÚLTIMO SERVICE HR/KM','ULTIMO SERVICE HR/KM','ULT HRKM','HR/KM/FECHA ÚLTIMO SERVICE']);
+    const iPro = _idx_(h, ['PRÓXIMO SERVICE','PROXIMO SERVICE','PROX','HR/KM/FECHA PRÓXIMO SERVICE']);
     const iOpv = _idx_(h, ['OPERATIVIDAD']);
     const iEst = _idx_(h, ['ESTADO']);
 
@@ -468,7 +469,8 @@ function _buildService_(snap){
     }
     _write_(snap, 'SVC_PANELPROG', panel, true);
     _write_(snap, 'SERVICE_EQ', eq, true);
-    return { tab:'SVC_PANELPROG', rows:n, status:'OK', detalle:n + ' equipos' };
+    var _miss = [['iAct',iAct],['iUFe',iUFe],['iUHr',iUHr],['iPro',iPro],['iOpv',iOpv],['iEst',iEst]].filter(function(x){return x[1]<0;}).map(function(x){return x[0];});
+    return { tab:'SVC_PANELPROG', rows:n, status:'OK', detalle: _miss.length ? (n+' eq ⚠ cols sin match: '+_miss.join(',')+' | HDR fuente: '+h.join(' ¦ ')) : (n+' equipos') };
   }catch(e){ return { tab:'SVC_PANELPROG', rows:0, status:'ERROR', detalle:String(e && e.message || e) }; }
 }
 
