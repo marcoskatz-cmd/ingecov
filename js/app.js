@@ -2666,6 +2666,7 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
     return ra-rb;
   });
   window._serviceCriticosList=_criticosList;
+  try{ renderServiceTab(); }catch(e){ console.warn('[INGECO] service tab:',e); }
 
   const serviceClass=serviceCritico>0?'red':(serviceAmber>0?'amber':'green');
   const serviceSub=serviceConDatos>0
@@ -4213,6 +4214,67 @@ function closeServiceCriticoModal(){
   if(!overlay)return;
   overlay.classList.remove('open');
   document.body.style.overflow='';
+}
+/* Tab "service": TODOS los equipos con datos de service, ordenados por prioridad
+   (tier de estado VENCIDO/CRÍTICO → INTERMEDIO → HOLGADO → sin-datos; dentro de
+   cada tier, restantes ascendente = más pasado primero). Reusa operatividadEquipo
+   (misma lógica del modal crítico). Solo lee del snapshot ya procesado — sin builder. */
+function renderServiceTab(){
+  const wrap=document.getElementById('svcTablaWrap');
+  const badge=document.getElementById('serviceBadge');
+  const sp=window._servicePanel||{};
+  const est=window._estadoEquipos||{};
+  const comb=window._combustiblePorEquipo||{};
+  const TIER={critico:0,intermedio:1,holgado:2,'sin-datos':3};
+  const rows=Object.keys(sp).map(codN=>{
+    const op=operatividadEquipo(codN);
+    const info=est[codN]||{};
+    const codigo=info.rawCod||sp[codN].codigo||codN;
+    // Texto del badge: ESTADO real de la fuente (VENCIDO/CRÍTICO/INTERMEDIO/
+    // HOLGADO) sin el símbolo ⚠, para distinguir vencido de crítico. Color = tier.
+    const estadoTxt=String(sp[codN].estado||'').replace(/[^\p{L} ]/gu,'').trim();
+    return {
+      codigo,
+      nombre: info.equipo||sp[codN].descripcion||'',
+      nivel: op.nivel, label: estadoTxt||op.label,
+      hrActual: op.hrActual, hrProximo: op.hrProximo, restantes: op.restantes,
+      frecuencia: op.frecuencia||sp[codN].frecuencia||'',
+      unidad: unidadDeEquipo(codigo),
+      ultFecha: (comb[codN]&&comb[codN].ultimaFecha)||sp[codN].ultFecha||'',
+    };
+  });
+  rows.sort((a,b)=>{
+    const ta=TIER[a.nivel]==null?9:TIER[a.nivel], tb=TIER[b.nivel]==null?9:TIER[b.nivel];
+    if(ta!==tb)return ta-tb;
+    const ra=a.restantes==null?Infinity:a.restantes, rb=b.restantes==null?Infinity:b.restantes;
+    return ra-rb;
+  });
+  if(badge)badge.textContent=fmtInt(rows.filter(r=>r.nivel==='critico').length);
+  if(!wrap)return;
+  if(!rows.length){ setHTML(wrap, html`<div class="svc-empty">Sin datos de service en el snapshot.</div>`); return; }
+  const badgeCls=n=>n==='critico'?'red':n==='intermedio'?'amber':n==='holgado'?'blue':'gray';
+  const fmtU=(v,u)=> v==null?'—':fmtInt(v)+' '+u;
+  const head=html`<div class="svc-row svc-head">
+    <div>código</div><div>equipo</div><div>estado</div>
+    <div class="svc-num">actual</div><div class="svc-num">próximo</div>
+    <div class="svc-num">restantes</div><div class="svc-num">frec.</div><div class="svc-num">últ. service</div>
+  </div>`;
+  const body=rows.map(r=>{
+    const rest=r.restantes==null?'—':r.restantes<=0?'−'+fmtInt(Math.abs(r.restantes)):'+'+fmtInt(r.restantes);
+    const restCls=r.restantes==null?'':r.restantes<=0?' red':' amber';
+    const dim=r.nivel==='sin-datos'?' svc-dim':'';
+    return html`<div class="svc-row${new RawHTML(dim)}" data-action="_irAEquipoDesdeKpi" data-arg="${r.codigo}" title="Abrir detalle del equipo">
+      <div class="svc-cod">${r.codigo}</div>
+      <div class="svc-nom" title="${r.nombre}">${r.nombre||'—'}</div>
+      <div><span class="svc-badge ${new RawHTML(badgeCls(r.nivel))}">${r.label||'sin datos'}</span></div>
+      <div class="svc-num">${fmtU(r.hrActual,r.unidad)}</div>
+      <div class="svc-num">${fmtU(r.hrProximo,r.unidad)}</div>
+      <div class="svc-num svc-rest2${new RawHTML(restCls)}">${rest}</div>
+      <div class="svc-num">${r.frecuencia||'—'}</div>
+      <div class="svc-num">${r.ultFecha||'—'}</div>
+    </div>`;
+  });
+  setHTML(wrap, html`${head}${body}`);
 }
 function _irAEquipoDesdeKpi(codigo){
   closeServiceCriticoModal();

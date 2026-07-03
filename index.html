@@ -29,12 +29,12 @@
         referrerpolicy="no-referrer"></script>
 <!-- init.js: setea el tema en <html> ANTES del paint para evitar FOUC.
      Sin defer a propósito. -->
-<script src="./js/init.js?v=37"></script>
+<script src="./js/init.js?v=38"></script>
 <!-- app.js: toda la lógica de la app. Con defer corre tras parsear el DOM,
      equivalente a estar al final del <body>. Bump del query ?v= cuando se cambia
      app.js para forzar a clientes con HTTP cache a re-fetchear (el SW solo
      invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/app.js?v=37" defer></script>
+<script src="./js/app.js?v=38" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -640,6 +640,27 @@
   .sv-hr small,.sv-rest small{display:block;color:var(--text3);font-size:9px;text-transform:uppercase;letter-spacing:.1em;font-weight:500;margin-bottom:2px;font-family:'IBM Plex Sans',sans-serif;}
   .sv-rest{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;text-align:right;color:var(--red);}
   .sv-rest.amber{color:var(--amber);}
+  /* Tab service: tabla de prioridad (todos los equipos). Clases propias para no
+     colisionar con .sv-row del modal crítico (que oculta columnas en mobile). */
+  .svc-table{overflow-x:auto;}
+  .svc-row{display:grid;grid-template-columns:80px minmax(150px,1fr) 108px 96px 96px 92px 68px 100px;gap:12px;align-items:center;min-width:820px;padding:10px 14px;border-bottom:1px solid var(--divider);cursor:pointer;transition:background var(--t-fast) var(--ease);}
+  .svc-row:hover{background:var(--bg-elev);}
+  .svc-row:last-child{border-bottom:none;}
+  .svc-row.svc-head{cursor:default;position:sticky;top:0;z-index:1;background:var(--bg);border-bottom:1px solid var(--accent);font-family:'IBM Plex Sans',sans-serif;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);}
+  .svc-row.svc-head:hover{background:var(--bg);}
+  .svc-row.svc-dim{opacity:.48;}
+  .svc-cod{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:var(--accent);}
+  .svc-nom{font-size:13px;color:var(--text);line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .svc-num{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text2);text-align:right;}
+  .svc-rest2{font-weight:700;color:var(--text2);}
+  .svc-rest2.red{color:var(--red);}
+  .svc-rest2.amber{color:var(--amber);}
+  .svc-badge{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:3px 7px;border-radius:4px;border:1px solid;white-space:nowrap;}
+  .svc-badge.red{color:var(--red);border-color:var(--red);}
+  .svc-badge.amber{color:var(--amber);border-color:var(--amber);}
+  .svc-badge.blue{color:var(--blue);border-color:var(--blue);}
+  .svc-badge.gray{color:var(--text3);border-color:var(--divider);}
+  .svc-empty{padding:36px;text-align:center;color:var(--text3);font-size:13px;}
   .sv-fuente{
     font-family:'JetBrains Mono',monospace;font-size:9px;
     color:var(--text3);text-transform:uppercase;letter-spacing:.08em;
@@ -1615,6 +1636,7 @@
       <button class="tab-btn" data-action="setTab" data-arg="tabInactivos">equipos inactivos<span class="tab-badge" id="inactivosBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabPedidos">pedidos pendientes<span class="tab-badge" id="pedidosPendBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabCostos">costos downtime<span class="tab-badge" id="costosBadge">—</span></button>
+      <button class="tab-btn" data-action="setTab" data-arg="tabService">service<span class="tab-badge" id="serviceBadge">—</span></button>
     </div>
 
     <!-- Telemetría de flota (gráficos + rankings) -->
@@ -1756,6 +1778,17 @@
         <div class="telemetria-card" style="margin-top:12px">
           <div class="telemetria-card-title">parámetros del cálculo</div>
           <div id="costosParams" style="font-size:12px;color:var(--text2);line-height:1.7;padding:6px 2px">cargando…</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tabService">
+      <div class="section-content">
+        <div class="telemetria-card">
+          <div class="combo-header">
+            <div class="telemetria-card-title">prioridad de service — todos los equipos (más vencidos primero)</div>
+          </div>
+          <div id="svcTablaWrap" class="svc-table" style="margin-top:10px">cargando…</div>
         </div>
       </div>
     </div>
