@@ -4226,6 +4226,8 @@ function renderServiceTab(){
   const est=window._estadoEquipos||{};
   const comb=window._combustiblePorEquipo||{};
   const TIER={critico:0,intermedio:1,holgado:2,'sin-datos':3};
+  // Parser numérico tolerante (miles con punto, decimal coma; descarta '-', fechas, S/H).
+  const num=v=>{const s=String(v==null?'':v).trim();if(!s||s==='-'||/\//.test(s)||/s\/?h/i.test(s))return null;const n=parseFloat(s.replace(/\./g,'').replace(',','.').replace(/[^\d.-]/g,''));return isFinite(n)?n:null;};
   const rows=Object.keys(sp).map(codN=>{
     const op=operatividadEquipo(codN);
     const info=est[codN]||{};
@@ -4233,6 +4235,14 @@ function renderServiceTab(){
     // Texto del badge: ESTADO real de la fuente (VENCIDO/CRÍTICO/INTERMEDIO/
     // HOLGADO) sin el símbolo ⚠, para distinguir vencido de crítico. Color = tier.
     const estadoTxt=String(sp[codN].estado||'').replace(/[^\p{L} ]/gu,'').trim();
+    // Dato inconsistente (imposible): el último service quedó por encima del hr/km
+    // actual, o falta más que un intervalo completo de frecuencia. La fuente los
+    // clasifica HOLGADO por error → los marcamos "⚠ REVISAR" y NO los mostramos como
+    // confiables. No cambia ningún número: surface del dato sucio, no lo esconde.
+    const frecN=num(op.frecuencia||sp[codN].frecuencia), ultN=num(sp[codN].ultHrKm);
+    const excesoRest=(frecN!=null&&op.restantes!=null&&op.restantes>frecN+0.5)?(op.restantes-frecN)/frecN:0;
+    const excesoUlt =(ultN!=null&&op.hrActual!=null&&ultN>op.hrActual+0.5&&frecN>0)?(ultN-op.hrActual)/frecN:0;
+    const revisar=excesoRest>0||excesoUlt>0;
     return {
       codigo,
       nombre: info.equipo||sp[codN].descripcion||'',
@@ -4241,15 +4251,18 @@ function renderServiceTab(){
       frecuencia: op.frecuencia||sp[codN].frecuencia||'',
       unidad: unidadDeEquipo(codigo),
       ultFecha: (comb[codN]&&comb[codN].ultimaFecha)||sp[codN].ultFecha||'',
+      revisar, sev: Math.max(excesoRest, excesoUlt),
     };
   });
   rows.sort((a,b)=>{
+    if(a.revisar!==b.revisar)return a.revisar?-1:1;           // inconsistentes primero
+    if(a.revisar&&b.revisar)return b.sev-a.sev;               // más grave arriba
     const ta=TIER[a.nivel]==null?9:TIER[a.nivel], tb=TIER[b.nivel]==null?9:TIER[b.nivel];
     if(ta!==tb)return ta-tb;
     const ra=a.restantes==null?Infinity:a.restantes, rb=b.restantes==null?Infinity:b.restantes;
     return ra-rb;
   });
-  if(badge)badge.textContent=fmtInt(rows.filter(r=>r.nivel==='critico').length);
+  if(badge)badge.textContent=fmtInt(rows.filter(r=>r.nivel==='critico'&&!r.revisar).length);
   if(!wrap)return;
   if(!rows.length){ setHTML(wrap, html`<div class="svc-empty">Sin datos de service en el snapshot.</div>`); return; }
   const badgeCls=n=>n==='critico'?'red':n==='intermedio'?'amber':n==='holgado'?'blue':'gray';
@@ -4262,11 +4275,14 @@ function renderServiceTab(){
   const body=rows.map(r=>{
     const rest=r.restantes==null?'—':r.restantes<=0?'−'+fmtInt(Math.abs(r.restantes)):'+'+fmtInt(r.restantes);
     const restCls=r.restantes==null?'':r.restantes<=0?' red':' amber';
-    const dim=r.nivel==='sin-datos'?' svc-dim':'';
-    return html`<div class="svc-row${new RawHTML(dim)}" data-action="_irAEquipoDesdeKpi" data-arg="${r.codigo}" title="Abrir detalle del equipo">
+    const rowCls=r.revisar?' svc-revisar':(r.nivel==='sin-datos'?' svc-dim':'');
+    const badgeC=r.revisar?'revisar':badgeCls(r.nivel);
+    const badgeT=r.revisar?'⚠ REVISAR':(r.label||'sin datos');
+    const tit=r.revisar?'Dato inconsistente en la planilla (último > actual o falta > frecuencia) — revisar carga':'Abrir detalle del equipo';
+    return html`<div class="svc-row${new RawHTML(rowCls)}" data-action="_irAEquipoDesdeKpi" data-arg="${r.codigo}" title="${tit}">
       <div class="svc-cod">${r.codigo}</div>
       <div class="svc-nom" title="${r.nombre}">${r.nombre||'—'}</div>
-      <div><span class="svc-badge ${new RawHTML(badgeCls(r.nivel))}">${r.label||'sin datos'}</span></div>
+      <div><span class="svc-badge ${new RawHTML(badgeC)}">${badgeT}</span></div>
       <div class="svc-num">${fmtU(r.hrActual,r.unidad)}</div>
       <div class="svc-num">${fmtU(r.hrProximo,r.unidad)}</div>
       <div class="svc-num svc-rest2${new RawHTML(restCls)}">${rest}</div>
