@@ -381,14 +381,18 @@ function _buildCombLivianos_(snap){
     const iFec = _idx_(h, ['FECHA ENTREGA','FECHA']);
     const iTip = _idx_(h, ['TIPO COMBUSTIBLE','TIPO DE COMBUSTIBLE','TIPO']);
     const iLit = _idx_(h, ['CANTIDAD (L)','CANTIDAD','LITROS']);
-    // La fuente ahora titula la patente 'N° SERIE - N° PATENTE' (→ NSERIENPATENTE).
-    // Sin este sinónimo iPat quedaba -1 → patente vacía → el ranking por equipo del
-    // KPI no matcheaba nada (el total sí, porque suma sin mirar patente).
-    const iPat = _idx_(h, ['N SERIE N PATENTE','N° PATENTE','PATENTE','DOMINIO']);
-    const iOdo = _idx_(h, ['ODÓMETRO (KM)','ODOMETRO','KM']);
+    // La patente cambió de título varias veces: 'N° SERIE - N° PATENTE'
+    // (→ NSERIENPATENTE) y luego 'N° SERIE/PATENTE' (→ NSERIEPATENTE, sin la 2ª N).
+    // Sin el sinónimo iPat queda -1 → patente vacía → el ranking por equipo del
+    // KPI no matchea (el total sí, porque suma sin mirar patente).
+    const iPat = _idx_(h, ['N SERIE PATENTE','N SERIE N PATENTE','N° PATENTE','PATENTE','DOMINIO']);
+    const iOdo = _idx_(h, ['HORÓMETRO/ODÓMETRO','ODÓMETRO (KM)','ODOMETRO','KM']);
     const iOpe = _idx_(h, ['OPERARIO','CHOFER']);
     const iObr = _idx_(h, ['OBRA PARTICULAR','OBRA GENERAL','OBRA','LUGAR','LUGAR ENTREGA']);
-    const iTot = _idx_(h, ['TOTAL','IMPORTE','COSTO']);
+    // jul-2026: la columna de costo pasó de 'TOTAL' a 'PRECIO TOTAL' (hay también
+    // 'PRECIO UNITARIO', NO usar esa). Sin el sinónimo iTot quedaba -1 → costo
+    // vacío → KPI de gasto en combustible livianos en blanco (WARN en META).
+    const iTot = _idx_(h, ['PRECIO TOTAL','TOTAL','IMPORTE','COSTO']);
 
     const out = [['FECHA','','','TIPO','LITROS','PATENTE','ODOMETRO','OBRA','CHOFER','','','TOTAL']];
     let n = 0;
