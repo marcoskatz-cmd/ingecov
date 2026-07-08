@@ -4235,14 +4235,16 @@ function renderServiceTab(){
     // Texto del badge: ESTADO real de la fuente (VENCIDO/CRÍTICO/INTERMEDIO/
     // HOLGADO) sin el símbolo ⚠, para distinguir vencido de crítico. Color = tier.
     const estadoTxt=String(sp[codN].estado||'').replace(/[^\p{L} ]/gu,'').trim();
-    // Dato inconsistente (imposible): el último service quedó por encima del hr/km
-    // actual, o falta más que un intervalo completo de frecuencia. La fuente los
-    // clasifica HOLGADO por error → los marcamos "⚠ REVISAR" y NO los mostramos como
-    // confiables. No cambia ningún número: surface del dato sucio, no lo esconde.
+    // Dato inconsistente (imposible): el último service quedó registrado POR ENCIMA
+    // del hr/km actual del equipo. No podés hacer un service a más horas de las que
+    // marca el horómetro hoy → o la fecha/lectura del service está mal, o el horómetro
+    // de combustible está mal cargado. Lo marcamos "⚠ REVISAR" para que se examine y
+    // corrija. No cambia ningún número: surface del dato sucio, no lo esconde.
+    // (Antes también flageábamos "restantes > frecuencia", pero eso NO es error: solo
+    //  dice que falta mucho para el próximo service. Se sacó.)
     const frecN=num(op.frecuencia||sp[codN].frecuencia), ultN=num(sp[codN].ultHrKm);
-    const excesoRest=(frecN!=null&&op.restantes!=null&&op.restantes>frecN+0.5)?(op.restantes-frecN)/frecN:0;
-    const excesoUlt =(ultN!=null&&op.hrActual!=null&&ultN>op.hrActual+0.5&&frecN>0)?(ultN-op.hrActual)/frecN:0;
-    const revisar=excesoRest>0||excesoUlt>0;
+    const excesoUlt=(ultN!=null&&op.hrActual!=null&&ultN>op.hrActual+0.5)?(ultN-op.hrActual)/(frecN>0?frecN:1):0;
+    const revisar=excesoUlt>0;
     return {
       codigo,
       nombre: info.equipo||sp[codN].descripcion||'',
@@ -4251,7 +4253,7 @@ function renderServiceTab(){
       frecuencia: op.frecuencia||sp[codN].frecuencia||'',
       unidad: unidadDeEquipo(codigo),
       ultFecha: (comb[codN]&&comb[codN].ultimaFecha)||sp[codN].ultFecha||'',
-      revisar, sev: Math.max(excesoRest, excesoUlt),
+      revisar, sev: excesoUlt,
     };
   });
   rows.sort((a,b)=>{
@@ -4278,7 +4280,7 @@ function renderServiceTab(){
     const rowCls=r.revisar?' svc-revisar':(r.nivel==='sin-datos'?' svc-dim':'');
     const badgeC=r.revisar?'revisar':badgeCls(r.nivel);
     const badgeT=r.revisar?'⚠ REVISAR':(r.label||'sin datos');
-    const tit=r.revisar?'Dato inconsistente en la planilla (último > actual o falta > frecuencia) — revisar carga':'Abrir detalle del equipo';
+    const tit=r.revisar?'Dato inconsistente: el último service quedó por encima del hr/km actual del equipo — revisar carga':'Abrir detalle del equipo';
     return html`<div class="svc-row${new RawHTML(rowCls)}" data-action="_irAEquipoDesdeKpi" data-arg="${r.codigo}" title="${tit}">
       <div class="svc-cod">${r.codigo}</div>
       <div class="svc-nom" title="${r.nombre}">${r.nombre||'—'}</div>
