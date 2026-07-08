@@ -4245,6 +4245,43 @@ function renderServiceTab(){
     const frecN=num(op.frecuencia||sp[codN].frecuencia), ultN=num(sp[codN].ultHrKm);
     const excesoUlt=(ultN!=null&&op.hrActual!=null&&ultN>op.hrActual+0.5)?(ultN-op.hrActual)/(frecN>0?frecN:1):0;
     const revisar=excesoUlt>0;
+    // ¿DÓNDE está la discrepancia? Clasificamos la causa para dejarla escrita en el
+    // tablero, en vez de solo decir "revisar". Tres orígenes posibles:
+    //   • 'combustible' → typo en la carga: el equipo YA había superado ese horómetro
+    //     en una carga anterior; solo la ÚLTIMA lectura bajó (dígito comido). Se
+    //     corrige esa fila del sheet de combustible.
+    //   • 'service' → la planilla de service tiene el último service por encima del
+    //     hr/km real (sea el máximo de combustible, o el HR/KM ACTUAL del propio sheet
+    //     cuando el equipo no carga combustible). Se corrige la hr/fecha del service.
+    //   • 'codigo' → no hay combustible bajo este código pero SÍ bajo otros del mismo
+    //     prefijo → el consumo puede estar cargándose con un código distinto.
+    let causa='', causaTxt='', causaShort='';
+    if(revisar){
+      const cc=comb[codN];
+      const hrsC=(cc&&cc.cargas)?cc.cargas.map(x=>x.hr).filter(h=>h!=null):[];
+      const maxComb=hrsC.length?Math.max(...hrsC):null;
+      if(op.fuente==='combustible'&&maxComb!=null&&maxComb+0.5>=ultN){
+        causa='combustible';
+        causaShort='typo en carga de combustible';
+        causaTxt=`Typo en combustible: la última carga marcó ${fmtInt(op.hrActual)} pero una carga anterior ya llegó a ${fmtInt(maxComb)} (por encima del último service ${fmtInt(ultN)}). Corregir esa fila en la planilla de combustible.`;
+      }else if(!cc){
+        const pref=_prefijoCod(codN);
+        const hayHermanos=Object.keys(comb).some(k=>k!==codN&&_prefijoCod(k)===pref);
+        if(hayHermanos){
+          causa='codigo';
+          causaShort='posible código mal cargado';
+          causaTxt=`Posible problema de código: no hay combustible bajo "${codigo}" pero sí bajo otros del prefijo ${pref}. El consumo puede estar cargándose con un código distinto. Verificar; si no, el último service (${fmtInt(ultN)}) quedó por encima del HR/KM actual del sheet de service (${fmtInt(op.hrActual)}).`;
+        }else{
+          causa='service';
+          causaShort='planilla de service';
+          causaTxt=`Planilla de service: el último service (${fmtInt(ultN)}) quedó por encima del HR/KM actual (${fmtInt(op.hrActual)}) en el propio sheet. Revisar la carga del service.`;
+        }
+      }else{
+        causa='service';
+        causaShort='planilla de service';
+        causaTxt=`Planilla de service: el último service (${fmtInt(ultN)}) está por encima de la última lectura de combustible (${fmtInt(op.hrActual)}). Revisar la hr/fecha del último service.`;
+      }
+    }
     return {
       codigo,
       nombre: info.equipo||sp[codN].descripcion||'',
@@ -4253,7 +4290,7 @@ function renderServiceTab(){
       frecuencia: op.frecuencia||sp[codN].frecuencia||'',
       unidad: unidadDeEquipo(codigo),
       ultFecha: (comb[codN]&&comb[codN].ultimaFecha)||sp[codN].ultFecha||'',
-      revisar, sev: excesoUlt,
+      revisar, sev: excesoUlt, causa, causaShort, causaTxt,
     };
   });
   rows.sort((a,b)=>{
@@ -4279,11 +4316,15 @@ function renderServiceTab(){
     const restCls=r.restantes==null?'':r.restantes<=0?' red':' amber';
     const rowCls=r.revisar?' svc-revisar':(r.nivel==='sin-datos'?' svc-dim':'');
     const badgeC=r.revisar?'revisar':badgeCls(r.nivel);
-    const badgeT=r.revisar?'⚠ REVISAR':(r.label||'sin datos');
-    const tit=r.revisar?'Dato inconsistente: el último service quedó por encima del hr/km actual del equipo — revisar carga':'Abrir detalle del equipo';
+    // El badge nombra el ORIGEN de la inconsistencia (combustible / service / código),
+    // no solo "revisar". El detalle completo va en el tooltip de la fila.
+    const badgeT=r.revisar
+      ?(r.causa==='combustible'?'⚠ COMBUSTIBLE':r.causa==='codigo'?'⚠ CÓDIGO':'⚠ SERVICE')
+      :(r.label||'sin datos');
+    const tit=r.revisar?r.causaTxt:'Abrir detalle del equipo';
     return html`<div class="svc-row${new RawHTML(rowCls)}" data-action="_irAEquipoDesdeKpi" data-arg="${r.codigo}" title="${tit}">
       <div class="svc-cod">${r.codigo}</div>
-      <div class="svc-nom" title="${r.nombre}">${r.nombre||'—'}</div>
+      <div class="svc-nom" title="${r.nombre}">${r.nombre||'—'}${r.revisar?html`<span class="svc-causa">↳ ${r.causaShort}</span>`:''}</div>
       <div><span class="svc-badge ${new RawHTML(badgeC)}">${badgeT}</span></div>
       <div class="svc-num">${fmtU(r.hrActual,r.unidad)}</div>
       <div class="svc-num">${fmtU(r.hrProximo,r.unidad)}</div>
