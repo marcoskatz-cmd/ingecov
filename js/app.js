@@ -4691,9 +4691,27 @@ function repRecalc(){
   if(badge) badge.textContent = r.decision==='CONSERVAR' ? 'conservar' : 'reemplazar';
 }
 
-function repAddFalla(){}
-function repDelFalla(){}
-function repReset(){}
+function repAddFalla(){
+  repReadForm();
+  _repState.modosFalla.push({ nombre:'Nuevo modo', p:0.05, costo:1000000 });
+  _repRenderForm();
+  repRecalc();
+}
+function repDelFalla(i){
+  repReadForm();
+  _repState.modosFalla.splice(i,1);
+  _repRenderForm();
+  repRecalc();
+}
+function repReset(){
+  const codN = _repState.codN;
+  const all = _repLoadLS();
+  delete all[codN || REP_MANUAL];
+  try{ localStorage.setItem(REP_LS_KEY, JSON.stringify(all)); }catch(_){}
+  _repState = codN ? _repDerivarEquipo(codN) : _repDefaults();
+  _repRenderForm();
+  repRecalc();
+}
 
 /* ═══════════════════════════════════════════════════════
    ACTIONS — capa de adaptación entre data-action y funciones
