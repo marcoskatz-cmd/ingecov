@@ -535,6 +535,24 @@
   .rep-input.rep-derived{border-color:var(--blue);}
   .rep-hint{font-size:11px;color:var(--text3);margin-top:4px;}
   .rep-warn{font-size:11px;color:var(--amber);margin-top:6px;}
+  /* Pickers de entregas (ítems únicos / neumáticos) */
+  .rep-picker-block{margin-top:12px;}
+  .rep-picker-legend{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:6px;}
+  .rep-picker{border:1px solid var(--border);border-radius:8px;background:var(--bg);max-height:180px;overflow-y:auto;}
+  .rep-pick-row{display:grid;grid-template-columns:20px 70px 92px 110px 1fr;align-items:center;gap:8px;
+    padding:5px 10px;font-size:12px;border-bottom:1px solid var(--border);cursor:pointer;}
+  .rep-pick-row:last-child{border-bottom:none;}
+  .rep-pick-row:hover{background:var(--bg2);}
+  .rep-pick-row input{cursor:pointer;}
+  .rep-pick-nro{color:var(--text2);font-variant-numeric:tabular-nums;}
+  .rep-pick-fecha{color:var(--text3);}
+  .rep-pick-costo{text-align:right;color:var(--text);font-variant-numeric:tabular-nums;}
+  .rep-pick-items{color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .rep-picker-empty{font-size:11px;color:var(--text3);padding:8px 2px;font-style:italic;}
+  @media (max-width:640px){
+    .rep-pick-row{grid-template-columns:20px 1fr auto;}
+    .rep-pick-fecha,.rep-pick-items{display:none;}
+  }
   /* Modos de falla */
   .rep-falla-table{width:100%;border-collapse:collapse;font-size:12px;}
   .rep-falla-table th{text-align:left;font-size:10px;letter-spacing:.1em;text-transform:uppercase;

@@ -765,7 +765,7 @@ function procesarPanelRepuestos(panelObj){
     if(codN&&codN!=='-'){
       (ctx.entregasPorEquipo[codN]=ctx.entregasPorEquipo[codN]||[]).push({
         nro:nro||'—', fecha:fecha||'—',
-        items:itemsStr||'—', costo:costo,
+        items:itemsStr||'—', costo:costo, razon:razon||'',
       });
     }
     // 6) Entregas del mes actual (para el dashboard inicial)
@@ -4442,6 +4442,7 @@ function _repDefaults(){
     codN: null,
     mesesHorizonte: 6,
     costos: { neumaticos: 0, serviceOficial: 0, fallaTotal: 0, itemsUnicos: 0 },
+    itemsUnicosSel: [], neumaticosSel: [],
     horas:  { improductivasViejo: 0, serviceYGomas: 0 },
     alquilerMensual: 0, horasProductivasMes: 176, factorServiceNoOficial: 1/3, dolar: 1400,
     nuevo: { precioUSD: 180000, residualPct: 0.5, vidaUtilAnios: 10, tasaAnual: 0,
@@ -4506,6 +4507,51 @@ function _repInputDerived(id, val, unit){
        + `data-action="repRecalc" data-event="input"></div>`;
 }
 
+// Filtra las entregas de un equipo por tipo para los pickers:
+//   'neum' → items con neumático/cubierta/pinchadura
+//   'corr' → correctivo NO neumático (las que alimentan fallaTotal)
+function _repEntregasDe(codN, tipo){
+  const list = (window._entregasPorEquipo||{})[codN]||[];
+  return list.filter(e=>{
+    const d = String(e.items||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+    const esNeum = d.includes('neumatic')||d.includes('cubierta')||d.includes('pinchad');
+    if(tipo==='neum') return esNeum;
+    return !esNeum && esCorrectivoCosto(e.razon, e.items);
+  });
+}
+// Suma el costo de las entregas seleccionadas para un campo.
+function _repSumEntregas(codN, selKey){
+  const list = (window._entregasPorEquipo||{})[codN]||[];
+  const sel = _repState[selKey]||[];
+  let s=0;
+  for(const e of list){ if(sel.includes(String(e.nro))) s+=(e.costo||0); }
+  return Math.round(s);
+}
+// Widget de selección de entregas (checkbox → auto-suma al campo).
+function _repEntregaPicker(field, codN){
+  if(!codN) return '';
+  const tipo = field==='neumaticos' ? 'neum' : 'corr';
+  const selKey = field==='neumaticos' ? 'neumaticosSel' : 'itemsUnicosSel';
+  const sel = _repState[selKey]||[];
+  const list = _repEntregasDe(codN, tipo);
+  if(!list.length){
+    return `<div class="rep-picker-empty">Sin entregas ${tipo==='neum'?'de neumáticos':'correctivas'} registradas para este equipo.</div>`;
+  }
+  const rows = list.map(e=>{
+    const nro = String(e.nro);
+    const chk = sel.includes(nro) ? ' checked' : '';
+    const snip = esc(String(e.items||'—').slice(0,70));
+    return `<label class="rep-pick-row">`
+         + `<input type="checkbox"${chk} data-action="repToggleEntrega" data-arg="${esc(field+':'+nro)}" data-event="change">`
+         + `<span class="rep-pick-nro">N°${esc(nro)}</span>`
+         + `<span class="rep-pick-fecha">${esc(String(e.fecha||'—'))}</span>`
+         + `<span class="rep-pick-costo">${_fmtARS(e.costo||0)}</span>`
+         + `<span class="rep-pick-items">${snip}</span>`
+         + `</label>`;
+  }).join('');
+  return `<div class="rep-picker">${rows}</div>`;
+}
+
 function _repRenderForm(){
   const c = _repState;
   const cont = document.getElementById('repForm');
@@ -4538,6 +4584,15 @@ function _repRenderForm(){
         ${_repInput('rep_factorServiceNoOficial', c.factorServiceNoOficial, 'Factor service no oficial', 0.01)}
         ${_repInputDerived('rep_dolar', c.dolar, 'Dólar (ARS/USD)')}
       </div>
+      ${c.codN ? `
+      <div class="rep-picker-block">
+        <div class="rep-picker-legend">Ítems únicos a excluir · tildá entregas correctivas one-off (se restan de Falla total)</div>
+        ${_repEntregaPicker('itemsUnicos', c.codN)}
+      </div>
+      <div class="rep-picker-block">
+        <div class="rep-picker-legend">Neumáticos · tildá entregas de cubiertas (se suman al costo del equipo)</div>
+        ${_repEntregaPicker('neumaticos', c.codN)}
+      </div>` : ''}
       ${warn}
     </div>
     <div class="rep-fieldset">
@@ -4703,6 +4758,19 @@ function repDelFalla(i){
   _repRenderForm();
   repRecalc();
 }
+function repToggleEntrega(arg){
+  const i = arg.indexOf(':');
+  const field = arg.slice(0,i);            // 'itemsUnicos' | 'neumaticos'
+  const nro = arg.slice(i+1);
+  const selKey = field==='neumaticos' ? 'neumaticosSel' : 'itemsUnicosSel';
+  repReadForm();
+  const sel = _repState[selKey] || (_repState[selKey]=[]);
+  const idx = sel.indexOf(nro);
+  if(idx>=0) sel.splice(idx,1); else sel.push(nro);
+  _repState.costos[field] = _repSumEntregas(_repState.codN, selKey);
+  _repRenderForm();
+  repRecalc();
+}
 function repReset(){
   const codN = _repState.codN;
   const all = _repLoadLS();
@@ -4731,6 +4799,7 @@ const ACTIONS = {
   repRecalc:                     () => repRecalc(),
   repAddFalla:                   () => repAddFalla(),
   repDelFalla:                   (arg) => repDelFalla(+arg),
+  repToggleEntrega:              (arg) => repToggleEntrega(arg),
   repReset:                      () => repReset(),
   onSearch:                      (_, t) => onSearch(t.value),
   clearSearch:                   () => clearSearch(),
