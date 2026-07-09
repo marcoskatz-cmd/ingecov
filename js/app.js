@@ -4478,8 +4478,8 @@ async function renderReemplazo(){
     .concat(equipos.map(e=>{
       const codN = normCod(e.codigo);
       const sel = _repState.codN===codN ? ' selected' : '';
-      const nom = e.nombre ? ' · '+e.nombre : '';
-      return `<option value="${codN}"${sel}>${e.codigo}${nom}</option>`;
+      const nom = e.nombre ? ' · '+esc(e.nombre) : '';
+      return `<option value="${codN}"${sel}>${esc(e.codigo)}${nom}</option>`;
     })).join('');
 
   setHTML(root, new RawHTML(`
@@ -4516,7 +4516,7 @@ function _repRenderForm(){
     : '';
   const fallas = c.modosFalla.map((f,i)=>`
     <tr>
-      <td><input class="rep-input" style="text-align:left" id="rep_falla_nombre_${i}" type="text" value="${f.nombre}" data-action="repRecalc" data-event="input"></td>
+      <td><input class="rep-input" style="text-align:left" id="rep_falla_nombre_${i}" type="text" value="${esc(f.nombre)}" data-action="repRecalc" data-event="input"></td>
       <td><input class="rep-input" id="rep_falla_p_${i}" type="number" step="0.01" value="${f.p}" data-action="repRecalc" data-event="input"></td>
       <td><input class="rep-input" id="rep_falla_costo_${i}" type="number" value="${f.costo}" data-action="repRecalc" data-event="input"></td>
       <td><button class="rep-falla-del" data-action="repDelFalla" data-arg="${i}" title="Quitar">×</button></td>
