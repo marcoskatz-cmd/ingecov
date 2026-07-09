@@ -4566,8 +4566,131 @@ function _repRenderForm(){
   `));
 }
 
-function repSelectEquipo(){}
-function repRecalc(){}
+function _repDerivarEquipo(codN){
+  const d = _repDefaults();
+  d.codN = codN;
+  const cfg = window._costosCfg;
+  const corr = window._costosCorrPorMes || {};        // {ym:{codN:ARS}}
+  const hCorr = window._horasCorrPorMesYEquipo || {};  // {ym:{codN:hr}}
+  let fallaTotal = 0, horas = 0;
+  const meses = new Set();
+  for(const ym of Object.keys(corr)){
+    const v = corr[ym][codN]; if(v){ fallaTotal += v; meses.add(ym); }
+  }
+  for(const ym of Object.keys(hCorr)){
+    const v = hCorr[ym][codN]; if(v){ horas += v; meses.add(ym); }
+  }
+  d.costos.fallaTotal = Math.round(fallaTotal);
+  d.horas.improductivasViejo = Math.round(horas*10)/10;
+  d.mesesHorizonte = meses.size || 1;
+  if(cfg){
+    d.dolar = cfg.tc;
+    d.horasProductivasMes = cfg.horasMes;
+    const alqUSD = cfg.alq[codN];
+    d.alquilerMensual = alqUSD!=null ? Math.round(alqUSD*cfg.tc) : 0;
+  }
+  return d;
+}
+
+function repSelectEquipo(val){
+  if(val===REP_MANUAL){
+    const saved = _repLoadLS()[REP_MANUAL];
+    _repState = saved || _repDefaults();
+    _repState.codN = null;
+  }else{
+    const codN = val;
+    const derived = _repDerivarEquipo(codN);
+    const saved = _repLoadLS()[codN];
+    _repState = saved ? Object.assign(derived, saved, {codN}) : derived;
+  }
+  _repRenderForm();
+  repRecalc();
+}
+
+function _repNum(id){ const el=document.getElementById(id); const v=el?parseFloat(el.value):NaN; return isFinite(v)?v:0; }
+function _repStr(id){ const el=document.getElementById(id); return el?el.value:''; }
+
+function repReadForm(){
+  const c = _repState;
+  c.mesesHorizonte        = _repNum('rep_mesesHorizonte') || 1;
+  c.costos.fallaTotal     = _repNum('rep_fallaTotal');
+  c.costos.itemsUnicos    = _repNum('rep_itemsUnicos');
+  c.costos.serviceOficial = _repNum('rep_serviceOficial');
+  c.costos.neumaticos     = _repNum('rep_neumaticos');
+  c.horas.improductivasViejo = _repNum('rep_improductivasViejo');
+  c.horas.serviceYGomas   = _repNum('rep_serviceYGomas');
+  c.alquilerMensual       = _repNum('rep_alquilerMensual');
+  c.horasProductivasMes   = _repNum('rep_horasProductivasMes') || 1;
+  c.factorServiceNoOficial = _repNum('rep_factorServiceNoOficial');
+  c.dolar                 = _repNum('rep_dolar');
+  c.nuevo.precioUSD          = _repNum('rep_precioUSD');
+  c.nuevo.residualPct        = _repNum('rep_residualPct');
+  c.nuevo.vidaUtilAnios      = _repNum('rep_vidaUtilAnios') || 1;
+  c.nuevo.tasaAnual          = _repNum('rep_tasaAnual');
+  c.nuevo.tradeInPct         = _repNum('rep_tradeInPct');
+  c.nuevo.plazoFinancMeses   = _repNum('rep_plazoFinancMeses') || 1;
+  c.nuevo.reparacionesMensual = _repNum('rep_reparacionesMensual');
+  c.modosFalla = c.modosFalla.map((_,i)=>({
+    nombre: _repStr('rep_falla_nombre_'+i),
+    p:      _repNum('rep_falla_p_'+i),
+    costo:  _repNum('rep_falla_costo_'+i),
+  }));
+}
+
+function repRecalc(){
+  if(!document.getElementById('repResult')) return;
+  repReadForm();
+  const r = _repEvaluar(_repState);
+  _repSaveLS();
+
+  const f = _fmtARS;
+  const cls = r.decision==='CONSERVAR' ? 'conservar' : 'reemplazar';
+  const factor = isFinite(r.factorEscalaRiesgo) ? '×'+r.factorEscalaRiesgo.toFixed(2) : 'n/a';
+  const vida = isFinite(r.vidaBreakEvenAnios) ? r.vidaBreakEvenAnios.toFixed(1)+' años' : 'a cualquier vida';
+  const netoAbs = f(Math.abs(r.netoMensual));
+  const sub = r.decision==='CONSERVAR'
+    ? `Seguir cuesta ${netoAbs}/mes menos que comprar 0km.`
+    : `Comprar 0km cuesta ${netoAbs}/mes menos que seguir.`;
+
+  setHTML(document.getElementById('repResult'), new RawHTML(`
+    <div class="rep-verdict ${cls}">
+      <div class="rep-verdict-word">${r.decision}</div>
+      <div class="rep-verdict-sub">${sub}</div>
+    </div>
+    <div class="rep-ledger">
+      <div class="rep-ledger-col">
+        <h4>Seguir con el actual · ARS/mes</h4>
+        <div class="rep-line"><span>Service (no oficial)</span><span>${f(r.viejo.service)}</span></div>
+        <div class="rep-line"><span>Falla corriente</span><span>${f(r.viejo.fallaCorriente)}</span></div>
+        <div class="rep-line"><span>Neumáticos</span><span>${f(r.viejo.neumaticos)}</span></div>
+        <div class="rep-line"><span>Oportunidad</span><span>${f(r.viejo.oportunidad)}</span></div>
+        <div class="rep-line"><span>Riesgo esperado</span><span>${f(r.riesgo.mensual)}</span></div>
+        <div class="rep-line rep-sub"><span>Total seguir</span><span>${f(r.viejoTotal)}</span></div>
+      </div>
+      <div class="rep-ledger-col">
+        <h4>Comprar 0km · ARS/mes</h4>
+        <div class="rep-line"><span>Depreciación</span><span>${f(r.nuevo.depreciacion)}</span></div>
+        <div class="rep-line"><span>Interés financ.</span><span>${f(r.nuevo.interesMensual)}</span></div>
+        <div class="rep-line"><span>Service oficial</span><span>${f(r.nuevo.service)}</span></div>
+        <div class="rep-line"><span>Reparaciones</span><span>${f(r.nuevo.reparaciones)}</span></div>
+        <div class="rep-line"><span>Neumáticos</span><span>${f(r.nuevo.neumaticos)}</span></div>
+        <div class="rep-line"><span>Oportunidad</span><span>${f(r.nuevo.oportunidad)}</span></div>
+        <div class="rep-line rep-sub"><span>Total comprar</span><span>${f(r.nuevoTotal)}</span></div>
+      </div>
+    </div>
+    <div class="rep-metrics">
+      <div class="rep-line"><span>Neto mensual</span><span>${f(r.netoMensual)}</span></div>
+      <div class="rep-line"><span>Cuota 24m (flujo caja)</span><span>${f(r.cuotaMensual)}</span></div>
+      <div class="rep-line"><span>Umbral de riesgo</span><span>${f(r.umbralRiesgoMensual)}/mes · ${f(r.umbralRiesgoAnual)}/año</span></div>
+      <div class="rep-line"><span>El riesgo debe escalar</span><span>${factor}</span></div>
+      <div class="rep-line"><span>Vida de indiferencia</span><span>${vida}</span></div>
+    </div>
+  `));
+
+  const badge = document.getElementById('reemplazoBadge');
+  if(badge) badge.textContent = r.decision==='CONSERVAR' ? 'conservar' : 'reemplazar';
+}
+
 function repAddFalla(){}
 function repDelFalla(){}
 function repReset(){}
