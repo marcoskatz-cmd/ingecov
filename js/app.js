@@ -4359,6 +4359,80 @@ document.addEventListener('keydown',e=>{
   if(ovKd&&ovKd.classList.contains('open'))cerrarDetalleKpi();
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// ─── TAB CONSERVAR vs REEMPLAZAR ───
+// Modelo de decisión de recambio de equipo. Motor = funciones puras
+// (matemática de Marcos, jul-2026). Todo en ARS; `dolar` convierte USD.
+// ═══════════════════════════════════════════════════════════════════
+
+function _repValorHora(c){ return c.alquilerMensual / c.horasProductivasMes; }
+
+function _repCostoViejo(c){
+  const m = c.mesesHorizonte || 1;
+  const service        = c.costos.serviceOficial * c.factorServiceNoOficial / m;
+  const fallaCorriente = (c.costos.fallaTotal - c.costos.itemsUnicos) / m;
+  const neumaticos     = c.costos.neumaticos / m;
+  const oportunidad    = c.horas.improductivasViejo * _repValorHora(c) / m;
+  return { service, fallaCorriente, neumaticos, oportunidad,
+           total: service + fallaCorriente + neumaticos + oportunidad };
+}
+
+function _repCostoNuevo(c){
+  const m           = c.mesesHorizonte || 1;
+  const residualUSD = c.nuevo.precioUSD * c.nuevo.residualPct;
+  const vidaMeses   = c.nuevo.vidaUtilAnios * 12;
+  const capFinanciado = c.nuevo.precioUSD * (1 - c.nuevo.tradeInPct);
+  const interesMensual = c.nuevo.tasaAnual > 0
+    ? capFinanciado * (1 + c.nuevo.residualPct) / 2 * c.nuevo.tasaAnual / 12 * c.dolar
+    : 0;
+  const depreciacion = (c.nuevo.precioUSD - residualUSD) / vidaMeses * c.dolar;
+  const service      = c.costos.serviceOficial / m;
+  const reparaciones = c.nuevo.reparacionesMensual;
+  const neumaticos   = c.costos.neumaticos / m;
+  const oportunidad  = c.horas.serviceYGomas * _repValorHora(c) / m;
+  return { depreciacion, interesMensual, service, reparaciones, neumaticos, oportunidad,
+           total: depreciacion + interesMensual + service + reparaciones + neumaticos + oportunidad };
+}
+
+function _repRiesgoCola(c){
+  const anual = c.modosFalla.reduce((s,f)=> s + (f.p||0) * (f.costo||0), 0);
+  return { anual, mensual: anual / 12 };
+}
+
+function _repVidaBreakEven(c){
+  const viejo  = _repCostoViejo(c);
+  const riesgo = _repRiesgoCola(c);
+  const viejoTotal = viejo.total + riesgo.mensual;
+  const residualUSD = c.nuevo.precioUSD * c.nuevo.residualPct;
+  const m = c.mesesHorizonte || 1;
+  const nuevoSinDep = c.costos.serviceOficial / m + c.nuevo.reparacionesMensual
+                    + c.costos.neumaticos / m + c.horas.serviceYGomas * _repValorHora(c) / m;
+  const depNecesaria = viejoTotal - nuevoSinDep;
+  if (depNecesaria <= 0) return Infinity;
+  return (c.nuevo.precioUSD - residualUSD) * c.dolar / (depNecesaria * 12);
+}
+
+function _repEvaluar(c){
+  const viejo  = _repCostoViejo(c);
+  const nuevo  = _repCostoNuevo(c);
+  const riesgo = _repRiesgoCola(c);
+  const viejoTotal  = viejo.total + riesgo.mensual;
+  const nuevoTotal  = nuevo.total;
+  const netoMensual = nuevoTotal - viejoTotal;
+  const umbralRiesgoMensual = nuevo.total - viejo.total;
+  const cuotaMensual = c.nuevo.precioUSD * (1 - c.nuevo.tradeInPct)
+                     / c.nuevo.plazoFinancMeses * c.dolar;
+  return {
+    viejo, nuevo, riesgo, viejoTotal, nuevoTotal, netoMensual,
+    decision: netoMensual > 0 ? 'CONSERVAR' : 'REEMPLAZAR',
+    umbralRiesgoMensual,
+    umbralRiesgoAnual: umbralRiesgoMensual * 12,
+    factorEscalaRiesgo: riesgo.anual > 0 ? (umbralRiesgoMensual * 12) / riesgo.anual : Infinity,
+    cuotaMensual,
+    vidaBreakEvenAnios: _repVidaBreakEven(c),
+  };
+}
+
 /* ═══════════════════════════════════════════════════════
    ACTIONS — capa de adaptación entre data-action y funciones
    Mantiene compatibilidad de firmas con los onclick/onchange viejos:
