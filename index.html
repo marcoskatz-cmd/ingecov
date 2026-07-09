@@ -515,6 +515,61 @@
   .tab-panel.active{display:block;animation:tabIn .22s var(--ease);}
   @keyframes tabIn{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
 
+  /* ───────────────────────────────────────────────────────────────
+     TAB CONSERVAR vs REEMPLAZAR · estética de planilla analítica,
+     deliberadamente distinta del dashboard (sin telemetria-card). */
+  .rep-console{max-width:920px;margin:0 auto;font-size:13px;color:var(--text);}
+  .rep-head{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;
+    padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--bg2);margin-bottom:14px;}
+  .rep-head-title{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--text3);}
+  .rep-select{font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;
+    background:var(--bg);color:var(--text);min-width:220px;}
+  .rep-fieldset{border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px;background:var(--bg2);}
+  .rep-legend{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--text3);margin-bottom:10px;}
+  .rep-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px;}
+  .rep-row{display:flex;flex-direction:column;gap:3px;}
+  .rep-row label{font-size:11px;color:var(--text2);}
+  .rep-row .rep-unit{color:var(--text3);}
+  .rep-input{font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;
+    background:var(--bg);color:var(--text);font-variant-numeric:tabular-nums;text-align:right;}
+  .rep-input.rep-derived{border-color:var(--blue);}
+  .rep-hint{font-size:11px;color:var(--text3);margin-top:4px;}
+  .rep-warn{font-size:11px;color:var(--amber);margin-top:6px;}
+  /* Modos de falla */
+  .rep-falla-table{width:100%;border-collapse:collapse;font-size:12px;}
+  .rep-falla-table th{text-align:left;font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--text3);padding:4px 6px;border-bottom:1px solid var(--border);}
+  .rep-falla-table td{padding:4px 6px;}
+  .rep-falla-table .rep-input{width:100%;}
+  .rep-falla-del{cursor:pointer;color:var(--text3);border:none;background:none;font-size:15px;padding:0 4px;}
+  .rep-falla-del:hover{color:var(--red);}
+  .rep-btn{cursor:pointer;font-size:12px;padding:5px 11px;border:1px solid var(--border);border-radius:7px;
+    background:var(--bg);color:var(--text2);}
+  .rep-btn:hover{color:var(--text);border-color:var(--accent);}
+  /* Resultado */
+  .rep-verdict{padding:16px;border-radius:10px;text-align:center;margin-bottom:14px;border:1px solid var(--border);}
+  .rep-verdict.conservar{background:color-mix(in srgb,var(--green) 12%,transparent);border-color:var(--green);}
+  .rep-verdict.reemplazar{background:color-mix(in srgb,var(--amber) 12%,transparent);border-color:var(--amber);}
+  .rep-verdict-word{font-size:26px;font-weight:700;letter-spacing:.04em;}
+  .rep-verdict.conservar .rep-verdict-word{color:var(--green);}
+  .rep-verdict.reemplazar .rep-verdict-word{color:var(--amber);}
+  .rep-verdict-sub{font-size:13px;color:var(--text2);margin-top:4px;}
+  .rep-ledger{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
+  .rep-ledger-col{border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:var(--bg2);}
+  .rep-ledger-col h4{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin:0 0 8px;}
+  .rep-line{display:flex;justify-content:space-between;font-size:12.5px;padding:3px 0;font-variant-numeric:tabular-nums;}
+  .rep-line span:last-child{color:var(--text);}
+  .rep-line.rep-sub{border-top:1px solid var(--border);margin-top:6px;padding-top:7px;font-weight:600;}
+  .rep-metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:8px 18px;font-size:12.5px;
+    border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:var(--bg2);
+    font-variant-numeric:tabular-nums;}
+  .rep-metrics .rep-line span:first-child{color:var(--text2);}
+  @media (max-width:640px){
+    .rep-grid{grid-template-columns:1fr;}
+    .rep-ledger{grid-template-columns:1fr;}
+    .rep-metrics{grid-template-columns:1fr;}
+  }
+
   /* ═══════════════════════════════════════════════════════════════
      KPIs · números heroicos display
   ═══════════════════════════════════════════════════════════════ */
@@ -1643,6 +1698,7 @@
       <button class="tab-btn" data-action="setTab" data-arg="tabPedidos">pedidos pendientes<span class="tab-badge" id="pedidosPendBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabCostos">costos downtime<span class="tab-badge" id="costosBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabService">service<span class="tab-badge" id="serviceBadge">—</span></button>
+      <button class="tab-btn" data-action="setTab" data-arg="tabReemplazo">conservar vs reemplazar<span class="tab-badge" id="reemplazoBadge">—</span></button>
     </div>
 
     <!-- Telemetría de flota (gráficos + rankings) -->
@@ -1797,6 +1853,10 @@
           <div id="svcTablaWrap" class="svc-table" style="margin-top:10px">cargando…</div>
         </div>
       </div>
+    </div>
+
+    <div class="tab-panel" id="tabReemplazo">
+      <div class="rep-console" id="repRoot">cargando…</div>
     </div>
 
   </div>
