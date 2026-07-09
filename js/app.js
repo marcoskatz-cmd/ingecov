@@ -1727,6 +1727,7 @@ function setTab(id,t){
   // Chart.js renderizado mientras el panel está oculto (display:none) colapsa a
   // 0px; al mostrar telemetría hay que reajustarlo.
   if(id==='tabTelemetria'&&_chartComboFlota){try{_chartComboFlota.resize();}catch(_){}}
+  if(id==='tabReemplazo'){ renderReemplazo(); }
 }
 
 function toggleEqSec(uid){
@@ -4433,6 +4434,144 @@ function _repEvaluar(c){
   };
 }
 
+const REP_LS_KEY = 'ingecov_reemplazo_v1';
+const REP_MANUAL = '__manual__';
+
+function _repDefaults(){
+  return {
+    codN: null,
+    mesesHorizonte: 6,
+    costos: { neumaticos: 0, serviceOficial: 0, fallaTotal: 0, itemsUnicos: 0 },
+    horas:  { improductivasViejo: 0, serviceYGomas: 0 },
+    alquilerMensual: 0, horasProductivasMes: 176, factorServiceNoOficial: 1/3, dolar: 1400,
+    nuevo: { precioUSD: 180000, residualPct: 0.5, vidaUtilAnios: 10, tasaAnual: 0,
+             tradeInPct: 0.5, plazoFinancMeses: 24, reparacionesMensual: 0 },
+    modosFalla: [
+      { nombre:'Caja', p:0.08, costo:15000000 },
+      { nombre:'Motor', p:0.04, costo:25000000 },
+      { nombre:'Diferencial', p:0.05, costo:9000000 },
+      { nombre:'Turbo/inyección', p:0.08, costo:5000000 },
+      { nombre:'Embrague pesado', p:0.06, costo:4000000 },
+    ],
+  };
+}
+let _repState = _repDefaults();
+
+function _repLoadLS(){ try{ return JSON.parse(localStorage.getItem(REP_LS_KEY)||'{}'); }catch(_){ return {}; } }
+function _repSaveLS(){
+  try{
+    const all = _repLoadLS();
+    all[_repState.codN || REP_MANUAL] = _repState;
+    localStorage.setItem(REP_LS_KEY, JSON.stringify(all));
+  }catch(_){}
+}
+
+async function renderReemplazo(){
+  const root = document.getElementById('repRoot');
+  if(!root) return;
+  if(!window._costosCfg){ try{ await cargarCostosDowntime(); }catch(_){}}
+
+  const equipos = (window._equiposOrdenados||[])
+    .filter(e=>e.codigo)
+    .sort((a,b)=>String(a.codigo).localeCompare(String(b.codigo),'es'));
+  const opciones = [`<option value="${REP_MANUAL}">— manual / sin equipo —</option>`]
+    .concat(equipos.map(e=>{
+      const codN = normCod(e.codigo);
+      const sel = _repState.codN===codN ? ' selected' : '';
+      const nom = e.nombre ? ' · '+e.nombre : '';
+      return `<option value="${codN}"${sel}>${e.codigo}${nom}</option>`;
+    })).join('');
+
+  setHTML(root, new RawHTML(`
+    <div class="rep-head">
+      <div class="rep-head-title">conservar vs reemplazar · modelo de decisión</div>
+      <select class="rep-select" id="repEquipoSel" data-action="repSelectEquipo" data-event="change">${opciones}</select>
+    </div>
+    <div id="repForm"></div>
+    <div id="repResult"></div>
+  `));
+  _repRenderForm();
+  repRecalc();
+}
+
+function _repInput(id, val, unit, step){
+  const s = step!=null ? ` step="${step}"` : '';
+  return `<div class="rep-row"><label>${unit||''}</label>`
+       + `<input class="rep-input" id="${id}" type="number"${s} value="${val}" `
+       + `data-action="repRecalc" data-event="input"></div>`;
+}
+function _repInputDerived(id, val, unit){
+  return `<div class="rep-row"><label>${unit} <span class="rep-unit">(del panel)</span></label>`
+       + `<input class="rep-input rep-derived" id="${id}" type="number" value="${val}" `
+       + `data-action="repRecalc" data-event="input"></div>`;
+}
+
+function _repRenderForm(){
+  const c = _repState;
+  const cont = document.getElementById('repForm');
+  if(!cont) return;
+  const sinAlq = c.codN && window._costosCfg && window._costosCfg.alq[c.codN]==null;
+  const warn = sinAlq
+    ? `<div class="rep-warn">⚠ Este equipo no tiene alquiler cargado en el sheet (pestaña ALQUILERES). El costo de oportunidad no se computa; cargalo o completá "alquiler mensual" a mano.</div>`
+    : '';
+  const fallas = c.modosFalla.map((f,i)=>`
+    <tr>
+      <td><input class="rep-input" style="text-align:left" id="rep_falla_nombre_${i}" type="text" value="${f.nombre}" data-action="repRecalc" data-event="input"></td>
+      <td><input class="rep-input" id="rep_falla_p_${i}" type="number" step="0.01" value="${f.p}" data-action="repRecalc" data-event="input"></td>
+      <td><input class="rep-input" id="rep_falla_costo_${i}" type="number" value="${f.costo}" data-action="repRecalc" data-event="input"></td>
+      <td><button class="rep-falla-del" data-action="repDelFalla" data-arg="${i}" title="Quitar">×</button></td>
+    </tr>`).join('');
+
+  setHTML(cont, new RawHTML(`
+    <div class="rep-fieldset">
+      <div class="rep-legend">Equipo actual · período con datos</div>
+      <div class="rep-grid">
+        ${_repInput('rep_mesesHorizonte', c.mesesHorizonte, 'Meses de horizonte')}
+        ${_repInputDerived('rep_fallaTotal', c.costos.fallaTotal, 'Falla total (repuestos correctivos ARS)')}
+        ${_repInput('rep_itemsUnicos', c.costos.itemsUnicos, 'Ítems únicos a excluir (ARS)')}
+        ${_repInput('rep_serviceOficial', c.costos.serviceOficial, 'Service oficial (ARS)')}
+        ${_repInput('rep_neumaticos', c.costos.neumaticos, 'Neumáticos (ARS)')}
+        ${_repInputDerived('rep_improductivasViejo', c.horas.improductivasViejo, 'Horas improductivas (correctivo)')}
+        ${_repInput('rep_serviceYGomas', c.horas.serviceYGomas, 'Horas service+gomas')}
+        ${_repInputDerived('rep_alquilerMensual', c.alquilerMensual, 'Alquiler mensual (ARS)')}
+        ${_repInput('rep_horasProductivasMes', c.horasProductivasMes, 'Horas productivas/mes')}
+        ${_repInput('rep_factorServiceNoOficial', c.factorServiceNoOficial, 'Factor service no oficial', 0.01)}
+        ${_repInputDerived('rep_dolar', c.dolar, 'Dólar (ARS/USD)')}
+      </div>
+      ${warn}
+    </div>
+    <div class="rep-fieldset">
+      <div class="rep-legend">0km + financiación</div>
+      <div class="rep-grid">
+        ${_repInput('rep_precioUSD', c.nuevo.precioUSD, 'Precio 0km (USD)')}
+        ${_repInput('rep_residualPct', c.nuevo.residualPct, 'Valor residual (0–1)', 0.05)}
+        ${_repInput('rep_vidaUtilAnios', c.nuevo.vidaUtilAnios, 'Vida útil (años)')}
+        ${_repInput('rep_tasaAnual', c.nuevo.tasaAnual, 'Tasa anual financ. (0–1)', 0.01)}
+        ${_repInput('rep_tradeInPct', c.nuevo.tradeInPct, 'Trade-in (0–1)', 0.05)}
+        ${_repInput('rep_plazoFinancMeses', c.nuevo.plazoFinancMeses, 'Plazo financ. (meses)')}
+        ${_repInput('rep_reparacionesMensual', c.nuevo.reparacionesMensual, 'Reparaciones/mes (ARS)')}
+      </div>
+    </div>
+    <div class="rep-fieldset">
+      <div class="rep-legend">Riesgo de cola · modos de falla mayores</div>
+      <table class="rep-falla-table">
+        <thead><tr><th>Modo</th><th>Prob. anual</th><th>Costo (ARS)</th><th></th></tr></thead>
+        <tbody>${fallas}</tbody>
+      </table>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button class="rep-btn" data-action="repAddFalla">+ modo de falla</button>
+        <button class="rep-btn" data-action="repReset">↻ restaurar defaults del equipo</button>
+      </div>
+    </div>
+  `));
+}
+
+function repSelectEquipo(){}
+function repRecalc(){}
+function repAddFalla(){}
+function repDelFalla(){}
+function repReset(){}
+
 /* ═══════════════════════════════════════════════════════
    ACTIONS — capa de adaptación entre data-action y funciones
    Mantiene compatibilidad de firmas con los onclick/onchange viejos:
@@ -4447,6 +4586,11 @@ const ACTIONS = {
   syncNow:                       () => syncNow(),
   toggleSection:                 (id) => toggleSection(id),
   setTab:                        (id, t) => setTab(id, t),
+  repSelectEquipo:               (arg, t) => repSelectEquipo(t.value),
+  repRecalc:                     () => repRecalc(),
+  repAddFalla:                   () => repAddFalla(),
+  repDelFalla:                   (arg) => repDelFalla(+arg),
+  repReset:                      () => repReset(),
   onSearch:                      (_, t) => onSearch(t.value),
   clearSearch:                   () => clearSearch(),
   setViewMode:                   (mode) => setViewMode(mode),
