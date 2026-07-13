@@ -29,12 +29,12 @@
         referrerpolicy="no-referrer"></script>
 <!-- init.js: setea el tema en <html> ANTES del paint para evitar FOUC.
      Sin defer a propósito. -->
-<script src="./js/init.js?v=43"></script>
+<script src="./js/init.js?v=44"></script>
 <!-- app.js: toda la lógica de la app. Con defer corre tras parsear el DOM,
      equivalente a estar al final del <body>. Bump del query ?v= cuando se cambia
      app.js para forzar a clientes con HTTP cache a re-fetchear (el SW solo
      invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/app.js?v=43" defer></script>
+<script src="./js/app.js?v=44" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -1715,7 +1715,6 @@
     <div class="tab-bar" id="tabBar">
       <button class="tab-btn active" data-action="setTab" data-arg="tabTelemetria">telemetría de flota<span class="tab-badge" id="telemetriaBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabEquipos">equipos<span class="tab-badge" id="equipoCount">—</span></button>
-      <button class="tab-btn" data-action="setTab" data-arg="tabInactivos">equipos inactivos<span class="tab-badge" id="inactivosBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabPedidos">pedidos pendientes<span class="tab-badge" id="pedidosPendBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabCostos">costos downtime<span class="tab-badge" id="costosBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabService">service<span class="tab-badge" id="serviceBadge">—</span></button>
@@ -1809,19 +1808,21 @@
             <div class="equipo-detail-body" id="eqDetailBody"></div>
           </div>
         </div>
-      </div>
-    </div>
 
-    <!-- Equipos inactivos (en desuso / no operativos) -->
-    <div class="tab-panel" id="tabInactivos">
-      <div class="section-content" id="secInactivos">
-        <div class="filter-bar" id="filterBarInact">
-          <button class="filter-btn active" data-action="setFiltroInactivo" data-arg="todos">Todos <span class="f-count" id="fcInactTodos">—</span></button>
-          <button class="filter-btn" data-action="setFiltroInactivo" data-arg="desuso"><span style="color:var(--text3)">●</span> En desuso <span class="f-count" id="fcInactDesuso">0</span></button>
-          <button class="filter-btn" data-action="setFiltroInactivo" data-arg="no-operativo"><span style="color:var(--red)">●</span> No operativo <span class="f-count" id="fcInactNoOp">0</span></button>
-          <button class="filter-btn" data-action="setFiltroInactivo" data-arg="sin-estado"><span style="color:var(--text-mute)">●</span> Sin estado <span class="f-count" id="fcInactSinEst">0</span></button>
+        <!-- Equipos inactivos (en desuso / no operativos / sin estado): sección
+             desplegable al pie del tab de equipos, minimizada por default. -->
+        <div class="eq-sub-label" data-action="toggleInactivosSec" style="margin-top:22px;cursor:pointer" title="Mostrar/ocultar equipos inactivos">
+          <span class="eq-chev" id="inactChev">▸</span>equipos inactivos <span class="tab-badge" id="inactivosBadge">—</span>
         </div>
-        <div id="inactivosBody"></div>
+        <div id="inactivosSec" style="display:none">
+          <div class="filter-bar" id="filterBarInact">
+            <button class="filter-btn active" data-action="setFiltroInactivo" data-arg="todos">Todos <span class="f-count" id="fcInactTodos">—</span></button>
+            <button class="filter-btn" data-action="setFiltroInactivo" data-arg="desuso"><span style="color:var(--text3)">●</span> En desuso <span class="f-count" id="fcInactDesuso">0</span></button>
+            <button class="filter-btn" data-action="setFiltroInactivo" data-arg="no-operativo"><span style="color:var(--red)">●</span> No operativo <span class="f-count" id="fcInactNoOp">0</span></button>
+            <button class="filter-btn" data-action="setFiltroInactivo" data-arg="sin-estado"><span style="color:var(--text-mute)">●</span> Sin estado <span class="f-count" id="fcInactSinEst">0</span></button>
+          </div>
+          <div id="inactivosBody"></div>
+        </div>
       </div>
     </div>
 

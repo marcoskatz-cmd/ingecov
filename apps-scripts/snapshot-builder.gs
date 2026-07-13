@@ -455,23 +455,109 @@ function _buildService_(snap){
     const iOpv = _idx_(h, ['OPERATIVIDAD']);
     const iEst = _idx_(h, ['ESTADO']);
 
-    const panel = [['CODIGO','DESCRIPCION','PATENTE','ULT FECHA','ULT HRKM','HRKM ACTUAL','EST HRKM','OPERATIVIDAD','FRECUENCIA','ESTADO']];
-    const eq = [SNAP_SVCEQ_HEADER.slice()];
-    let n = 0;
+    // ── Base: filas del RESUMEN tal cual (frecuencia, desc, patente + fallback) ──
+    const base = {}; // cod -> {desc,pat,frec,ultFecha,ultHr,actual,prox,oper,est}
+    const orden = [];
     for(const r of t.rows){
       const cod = _at_(r, iCod);
       if(!_snapNormCod(cod)) continue;
-      const desc = _at_(r, iDes), pat = _at_(r, iPat);
-      const ultFecha = _at_(r, iUFe), ultHr = _at_(r, iUHr), actual = _at_(r, iAct), prox = _at_(r, iPro);
-      panel.push([cod, desc, pat, ultFecha, ultHr, actual, prox, _at_(r, iOpv), _at_(r, iFre), _at_(r, iEst)]);
+      base[cod] = { desc:_at_(r,iDes), pat:_at_(r,iPat), frec:_at_(r,iFre),
+                    ultFecha:_at_(r,iUFe), ultHr:_at_(r,iUHr), actual:_at_(r,iAct),
+                    prox:_at_(r,iPro), oper:_at_(r,iOpv), est:_at_(r,iEst) };
+      orden.push(cod);
+    }
+
+    // ── Refresco desde los archivos VIVOS (jul-2026, pedido de Marcos: el tab
+    // de service tiene que seguir a los archivos sin esperar a que el encargado
+    // corra "Actualizar resumen" en su planilla) ──
+    //  · último/próximo service: fila MÁS RECIENTE de REGISTROS por código
+    //  · hr/km actual: col HORÓMETRO/ODÓMETRO de LISTA DE EQUIPOS (curada);
+    //    equipos S/H (frecuencia por días): actual = hoy
+    //  · OPERATIVIDAD y ESTADO se recalculan con las MISMAS fórmulas del script
+    //    del encargado (calcularEstadoSrv: <0 vencido; S/H 56/22 días; resto
+    //    62,5%/25% de la frecuencia). Si algo no parsea, queda lo del RESUMEN.
+    let sintetizado = false;
+    try{
+      const reg = _readTab_(SNAP_SRC.services, 'REGISTROS');
+      const eqm = _readTab_(SNAP_SRC.equipos, 'EQUIPOS');
+      if(reg && eqm){
+        const rh = reg.header;
+        const rCod = _idx_(rh, ['CÓDIGO','CODIGO']);
+        const rFec = _idx_(rh, ['FECHA']);
+        const rHr  = _idx_(rh, ['HR/KM/FECHA SERVICE']);
+        const rPro = _idx_(rh, ['HR/KM/FECHA PRÓXIMO SERVICE']);
+        const ult = {};
+        for(const r of reg.rows){
+          const cod = _at_(r, rCod); if(!cod) continue;
+          const f = _audParseFecha_(_at_(r, rFec)); if(!f) continue;
+          if(!ult[cod] || f > ult[cod].f) ult[cod] = { f, hr:_at_(r,rHr), prox:_at_(r,rPro) };
+        }
+        const eh = eqm.header;
+        const qCod = _idx_(eh, ['CÓDIGO','CODIGO']);
+        const qHor = _idx_(eh, ['HORÓMETRO/ODÓMETRO','HOROMETRO/ODOMETRO','HORÓMETRO','ODÓMETRO']);
+        const qDes = { cla:_idx_(eh,['CLASIFICACIÓN','CLASIFICACION']), mar:_idx_(eh,['MARCA']), mod:_idx_(eh,['MODELO']) };
+        const qPat = _idx_(eh, ['N° SERIE/PATENTE','PATENTE/SERIE','PATENTE']);
+        const lista = {};
+        for(const r of eqm.rows){
+          const cod = _at_(r, qCod); if(!cod) continue;
+          lista[cod] = { hor:_at_(r,qHor),
+            desc:[_at_(r,qDes.cla),_at_(r,qDes.mar),_at_(r,qDes.mod)].filter(function(v){return v && v!=='-';}).join(' '),
+            pat:_at_(r,qPat) };
+        }
+        const hoy = new Date(); hoy.setHours(0,0,0,0);
+        const hoyStr = Utilities.formatDate(hoy, Session.getScriptTimeZone(), 'dd/MM/yyyy');
+        // Equipos con service en REGISTROS que todavía no figuran en RESUMEN
+        for(const cod in ult){ if(!base[cod]){ base[cod] = { desc:(lista[cod]||{}).desc||'', pat:(lista[cod]||{}).pat||'', frec:'', ultFecha:'', ultHr:'', actual:'', prox:'', oper:'', est:'-' }; orden.push(cod); } }
+        orden.sort();
+        for(const cod of orden){
+          const b = base[cod];
+          const esSH = /S\s*\/\s*H/i.test(b.frec);
+          const u = ult[cod];
+          if(u){
+            b.ultFecha = Utilities.formatDate(u.f, Session.getScriptTimeZone(), 'dd/MM/yyyy');
+            b.ultHr = u.hr; b.prox = u.prox;
+          }
+          if(esSH){
+            b.actual = hoyStr;
+            const pf = _audParseFecha_(b.prox);
+            if(pf){
+              const dias = Math.round((pf.getTime() - hoy.getTime()) / 86400000);
+              b.oper = String(dias);
+              b.est = dias < 0 ? '⚠ VENCIDO' : dias > 56 ? '🟢 HOLGADO' : dias > 22 ? '🟡 INTERMEDIO' : '🔴 CRÍTICO';
+            }
+          } else {
+            const horLista = _audNum_((lista[cod]||{}).hor);
+            if(horLista != null) b.actual = String(horLista);
+            const actN = _audNum_(b.actual), proxN = _audNum_(b.prox), frecN = _audNum_(b.frec);
+            if(actN != null && proxN != null){
+              const oper = proxN - actN;
+              b.oper = String(oper);
+              if(frecN && frecN > 0){
+                const pct = oper / frecN;
+                b.est = oper < 0 ? '⚠ VENCIDO' : pct > 0.625 ? '🟢 HOLGADO' : pct > 0.25 ? '🟡 INTERMEDIO' : '🔴 CRÍTICO';
+              } else if(oper < 0) b.est = '⚠ VENCIDO';
+            }
+          }
+        }
+        sintetizado = true;
+      }
+    }catch(e){ Logger.log('[service] síntesis falló, quedo verbatim RESUMEN: ' + (e && e.message || e)); }
+
+    const panel = [['CODIGO','DESCRIPCION','PATENTE','ULT FECHA','ULT HRKM','HRKM ACTUAL','EST HRKM','OPERATIVIDAD','FRECUENCIA','ESTADO']];
+    const eq = [SNAP_SVCEQ_HEADER.slice()];
+    let n = 0;
+    for(const cod of orden){
+      const b = base[cod];
+      panel.push([cod, b.desc, b.pat, b.ultFecha, b.ultHr, b.actual, b.prox, b.oper, b.frec, b.est]);
       // SERVICE_EQ: ACTUAL = hr/km actual del equipo, PROXIMO = próximo service.
-      eq.push([_snapNormCod(cod), cod, cod, '', '', '', ultFecha, '', actual, prox, pat]);
+      eq.push([_snapNormCod(cod), cod, cod, '', '', '', b.ultFecha, '', b.actual, b.prox, b.pat]);
       n++;
     }
     _write_(snap, 'SVC_PANELPROG', panel, true);
     _write_(snap, 'SERVICE_EQ', eq, true);
     var _miss = [['iAct',iAct],['iUFe',iUFe],['iUHr',iUHr],['iPro',iPro],['iOpv',iOpv],['iEst',iEst]].filter(function(x){return x[1]<0;}).map(function(x){return x[0];});
-    return { tab:'SVC_PANELPROG', rows:n, status:'OK', detalle: _miss.length ? (n+' eq ⚠ cols sin match: '+_miss.join(',')+' | HDR fuente: '+h.join(' ¦ ')) : (n+' equipos') };
+    var _det = n + ' equipos' + (sintetizado ? ' · sintetizado de REGISTROS+LISTA' : ' · verbatim RESUMEN');
+    return { tab:'SVC_PANELPROG', rows:n, status:'OK', detalle: _miss.length ? (_det+' ⚠ cols sin match: '+_miss.join(',')+' | HDR fuente: '+h.join(' ¦ ')) : _det };
   }catch(e){ return { tab:'SVC_PANELPROG', rows:0, status:'ERROR', detalle:String(e && e.message || e) }; }
 }
 

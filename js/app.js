@@ -3564,11 +3564,25 @@ function renderTelemetriaFlota(){
 }
 
 // Click en una fila del ranking → scroll al equipo y abrir su detalle
+// Sección desplegable "equipos inactivos" al pie del tab de equipos (default
+// minimizada; los inactivos dejaron de tener tab propio, jul-2026).
+function toggleInactivosSec(forceOpen){
+  const sec=document.getElementById('inactivosSec');
+  const chev=document.getElementById('inactChev');
+  if(!sec||!chev)return;
+  const hidden=sec.style.display==='none';
+  const abrir=forceOpen===true?true:hidden;
+  sec.style.display=abrir?'':'none';
+  chev.textContent=abrir?'▾':'▸';
+}
+
 function scrollToEquipo(codigo){
   setTab('tabEquipos'); // los rankings viven en telemetría; la tarjeta está en el tab de equipos
   const id='eqcard_'+codigo.replace(/[^a-z0-9]/gi,'_');
   const el=document.getElementById(id);
   if(!el)return;
+  // Si la tarjeta vive en la sección de inactivos y está colapsada, expandirla.
+  if(el.closest('#inactivosSec'))toggleInactivosSec(true);
   el.scrollIntoView({behavior:'smooth',block:'center'});
   // breve highlight visual
   el.style.transition='box-shadow .3s ease';
@@ -4887,6 +4901,7 @@ const ACTIONS = {
   cerrarAuditoria:               () => cerrarAuditoria(),
   cerrarAuditoriaIfBg:           (_, t, e) => { if (e.target === t) cerrarAuditoria(); },
   audSubmitPin:                  () => audSubmitPin(),
+  toggleInactivosSec:            () => toggleInactivosSec(),
 };
 
 function _dispatchAction(e) {
