@@ -13,6 +13,30 @@ function toggleTheme(){
   document.documentElement.setAttribute('data-theme', nxt);
   try{ localStorage.setItem('ingecov-theme', nxt); }catch(_){}
 }
+
+// PWA: registrar el service worker habilita "instalar app" en PC y celular y
+// cachea el app-shell para uso offline. sw.js está en la raíz del scope
+// /ingecov/, así controla toda la app. Se registra en 'load' para no competir
+// con la carga inicial; si falla (p.ej. servido por http local) la app anda igual.
+// La CSP tiene require-trusted-types-for 'script' → register() exige una
+// TrustedScriptURL. Creamos la policy 'ingecov-sw' (declarada en la meta CSP,
+// junto a 'ingecov-html' de app.js) sólo para envolver la URL del sw.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function(){
+    var swUrl = './sw.js';
+    try{
+      if (window.trustedTypes && window.trustedTypes.createPolicy) {
+        var swPolicy = window.trustedTypes.createPolicy('ingecov-sw', {
+          createScriptURL: function(u){ return u; }
+        });
+        swUrl = swPolicy.createScriptURL('./sw.js');
+      }
+    }catch(_){ /* si TT no está o la policy ya existe, cae al string plano */ }
+    navigator.serviceWorker.register(swUrl).catch(function(err){
+      console.warn('[INGECO] service worker no se registró:', err);
+    });
+  });
+}
 // Reloj running en status bar
 function _tickClock(){
   const el = document.getElementById('hsClock');
