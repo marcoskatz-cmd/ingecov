@@ -700,6 +700,7 @@ function procesarPanelRepuestos(panelObj){
     itemsPorEntrega:{},    // { nro: [items...] }
     costosPorMes:{},       // { ym: { codN: costo } }
     costosCorrPorMes:{},   // { ym: { codN: costo } } — solo entregas correctivas (tab costos downtime)
+    entregasCorrPorEquipo:{}, // { codN: [{nro,fecha,ym,items,costo}] } — line items del tab costos (desglose "de dónde sale")
     entregasPorEquipo:{},  // { codN: [{nro,fecha,items,costo}] }
     repuestosHistorial:{}, // { codN: { ym: costoTotal } }
     entregasMesActual:[],  // entregas del mes actual: {nro,fecha,equipo,codigo,costo,costoNum,razon,responsable,nroPedido,items}
@@ -759,6 +760,10 @@ function procesarPanelRepuestos(panelObj){
       if(esCorrectivoCosto(razon,itemsStr)){
         (ctx.costosCorrPorMes[ym]=ctx.costosCorrPorMes[ym]||{});
         ctx.costosCorrPorMes[ym][codN]=(ctx.costosCorrPorMes[ym][codN]||0)+costo;
+        // Mismo predicado/monto que el total → el desglove reconcilia exacto.
+        (ctx.entregasCorrPorEquipo[codN]=ctx.entregasCorrPorEquipo[codN]||[]).push({
+          nro:nro||'—', fecha:fecha||'—', ym, items:itemsStr||'—', razon:razon||'', costo:costo,
+        });
       }
     }
     // 5) _entregasPorEquipo[codN]
@@ -837,6 +842,7 @@ function procesarPanelTrabajos(rawRows){
     horasPrevPorEquipo:{},horasCorrPorEquipo:{},
     horasPorMesYEquipo:{}, // {ym: {codN: horas}} — para listado de horas filtrado por rango
     horasCorrPorMesYEquipo:{},  // {ym: {codN: hr correctivas}} — tab costos downtime (MO + oportunidad)
+    trabajosCorrPorEquipo:{},   // {codN: [{fecha,ym,desc,hs}]} — line items del tab costos (desglose MO/oportunidad)
   };
   if(!rawRows||!rawRows.length)return out;
   const SINONIMOS={
@@ -902,6 +908,10 @@ function procesarPanelTrabajos(rawRows){
         if(esCorrectivoCosto(get(SINONIMOS.razon),get(SINONIMOS.desc))){
           out.horasCorrPorMesYEquipo[ym]=out.horasCorrPorMesYEquipo[ym]||{};
           out.horasCorrPorMesYEquipo[ym][codN]=(out.horasCorrPorMesYEquipo[ym][codN]||0)+tNum;
+          // Mismo predicado/horas que el total → el desglose reconcilia exacto.
+          (out.trabajosCorrPorEquipo[codN]=out.trabajosCorrPorEquipo[codN]||[]).push({
+            fecha:fecha||'—', ym, desc:get(SINONIMOS.desc)||get(SINONIMOS.razon)||'—', hs:tNum,
+          });
         }
       }
     }
@@ -2227,6 +2237,7 @@ async function loadAll(){
     window._costosCorrPorMes  = ctx.costosCorrPorMes;
     window._repuestosHistorial= ctx.repuestosHistorial;
     window._entregasPorEquipo = ctx.entregasPorEquipo;
+    window._entregasCorrPorEquipo = ctx.entregasCorrPorEquipo;
 
     // Procesar PANEL_TRABAJOS para telemetría de flota (horas por equipo, por mes).
     // Cacheamos el raw para que loadTrabajosRegistro (modal de equipo) no re-descargue.
@@ -2242,6 +2253,7 @@ async function loadAll(){
     window._horasCorrPorEquipo = tctx.horasCorrPorEquipo;
     window._horasPorMesYEquipo = tctx.horasPorMesYEquipo;
     window._horasCorrPorMesYEquipo  = tctx.horasCorrPorMesYEquipo;
+    window._trabajosCorrPorEquipo   = tctx.trabajosCorrPorEquipo;
 
     // Procesar SERVICES PLANIFICADOS y cruzar con PANEL_TRABAJOS.
     // Suma al preventivo horas estimadas de los services que el planning dice
@@ -3780,6 +3792,92 @@ function _cerrarCostoChart(){
   _costoChartCod=null;
 }
 
+/* Desglose "de dónde sale cada gasto y cómo se calculó" para UN equipo.
+   Reconstruye los 3 componentes a partir de los MISMOS line items que
+   alimentaron los totales (entregasCorrPorEquipo + trabajosCorrPorEquipo,
+   capturados con idéntico predicado esCorrectivoCosto), así los subtotales
+   cierran exacto con la fila de la tabla. Devuelve RawHTML. */
+function _costoBreakdownHTML(codN, cfg, yms){
+  const fARS=n=>'$ '+fmtInt(n);
+  const fHs=n=>Number(n).toLocaleString('es-AR',{maximumFractionDigits:1});
+  const ymsSet=new Set(yms);
+  const nMeses=yms.length||1;
+  const M=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const periodo=(()=>{const a=yms[0],b=yms[yms.length-1];const lab=y=>{const[yy,mm]=y.split('-');return M[+mm-1]+"'"+yy.slice(2);};return a===b?lab(a):lab(a)+'–'+lab(b);})();
+
+  const entregas=((window._entregasCorrPorEquipo||{})[codN]||[])
+    .filter(e=>ymsSet.has(e.ym)).slice().sort((a,b)=>String(a.ym).localeCompare(b.ym));
+  const trabajos=((window._trabajosCorrPorEquipo||{})[codN]||[])
+    .filter(t=>ymsSet.has(t.ym)).slice().sort((a,b)=>String(a.ym).localeCompare(b.ym));
+
+  const repTotal=entregas.reduce((s,e)=>s+e.costo,0);
+  const hsTotal =trabajos.reduce((s,t)=>s+t.hs,0);
+  const moTotal =hsTotal*cfg.moArsH;
+  const alq=cfg.alq[codN];
+  const opTotal=(alq!=null)?(hsTotal/cfg.horasMes*alq*cfg.tc):null;
+  const total=repTotal+moTotal+(opTotal||0);
+
+  const secStyle='background:var(--bg3);border:1px solid var(--border);margin-bottom:10px';
+  const headStyle='padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg2);font-family:\'JetBrains Mono\',monospace;font-size:11px;font-weight:600;letter-spacing:.04em';
+  const formulaStyle='padding:8px 12px;font-family:\'IBM Plex Mono\',monospace;font-size:12px;color:var(--text)';
+  const noteStyle='padding:0 12px 8px;font-size:11px;color:var(--text3);line-height:1.5';
+  const liWrap='max-height:190px;overflow:auto;border-top:1px solid var(--border)';
+  const liRow='display:grid;grid-template-columns:70px 1fr auto;gap:10px;padding:5px 12px;border-bottom:1px solid var(--border);font-size:11.5px;align-items:baseline';
+
+  // ① Repuestos
+  const repItems = entregas.length
+    ? entregas.map(e=>html`<div style="${new RawHTML(liRow)}">
+        <span class="mono" style="color:var(--text3)">${e.fecha}</span>
+        <span>${e.items}${e.nro&&e.nro!=='—'?html` <span style="color:var(--text3)">· Nº ${e.nro}</span>`:''}</span>
+        <span class="mono" style="text-align:right;white-space:nowrap">${new RawHTML(fARS(e.costo))}</span>
+      </div>`)
+    : [html`<div style="${new RawHTML(liRow)};color:var(--text3)">Sin entregas correctivas en el período.</div>`];
+
+  // ② Mano de obra
+  const moItems = trabajos.length
+    ? trabajos.map(t=>html`<div style="${new RawHTML(liRow)}">
+        <span class="mono" style="color:var(--text3)">${t.fecha}</span>
+        <span>${t.desc}</span>
+        <span class="mono" style="text-align:right;white-space:nowrap">${new RawHTML(fHs(t.hs))} hs</span>
+      </div>`)
+    : [html`<div style="${new RawHTML(liRow)};color:var(--text3)">Sin horas correctivas registradas.</div>`];
+
+  return html`
+  <div style="margin-bottom:14px">
+    <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text2);margin-bottom:10px;letter-spacing:.03em">
+      CÓMO SE CALCULA · ${periodo} · ${String(nMeses)} ${nMeses===1?'mes':'meses'} · todos los importes en ARS
+    </div>
+
+    <div style="${new RawHTML(secStyle)}">
+      <div style="${new RawHTML(headStyle)};color:var(--amber)">① REPUESTOS · ${new RawHTML(fARS(repTotal))}</div>
+      <div style="${new RawHTML(noteStyle)};padding-top:8px">Suma de las entregas de repuestos con RAZÓN = Reparación (neumáticos excluidos). Importe en ARS nativo, sin conversión.</div>
+      <div style="${new RawHTML(liWrap)}">${repItems}</div>
+    </div>
+
+    <div style="${new RawHTML(secStyle)}">
+      <div style="${new RawHTML(headStyle)};color:var(--corp,#5d80e8)">② MANO DE OBRA · ${new RawHTML(fARS(moTotal))}</div>
+      <div style="${new RawHTML(formulaStyle)}">${new RawHTML(fHs(hsTotal))} hs correctivas × ${new RawHTML(fARS(cfg.moArsH))}/h = <b>${new RawHTML(fARS(moTotal))}</b></div>
+      <div style="${new RawHTML(noteStyle)}">Horas de TIEMPO TRABAJO de las reparaciones (mismas que alimentan la oportunidad). Tarifa editable en el sheet COSTOS DOWNTIME.</div>
+      <div style="${new RawHTML(liWrap)}">${moItems}</div>
+    </div>
+
+    <div style="${new RawHTML(secStyle)}">
+      <div style="${new RawHTML(headStyle)};color:var(--red)">③ OPORTUNIDAD · ${opTotal!=null?new RawHTML(fARS(opTotal)):'N/A'}</div>
+      ${opTotal!=null
+        ? html`<div style="${new RawHTML(formulaStyle)}">(${new RawHTML(fHs(hsTotal))} hs ÷ ${String(cfg.horasMes)} hs/mes) × US$ ${new RawHTML(fmtInt(alq))}/mes × ${new RawHTML(fmtInt(cfg.tc))} ARS/US$ = <b>${new RawHTML(fARS(opTotal))}</b></div>
+           <div style="${new RawHTML(noteStyle)}">Lucro cesante: la fracción del mes que el equipo estuvo parado por reparación, valuada al alquiler mensual. Único componente que usa el tipo de cambio (el alquiler está en USD).</div>`
+        : html`<div style="${new RawHTML(noteStyle)};padding-top:8px;color:var(--amber)">Sin alquiler cargado para este equipo en la pestaña ALQUILERES → no se computa. Cargá su alquiler mensual (USD) para incluir el lucro cesante.</div>`}
+    </div>
+
+    <div style="background:var(--bg2);border:1px solid var(--border);padding:10px 12px;font-family:'IBM Plex Mono',monospace;font-size:12px">
+      <span style="color:var(--text3)">TOTAL ${periodo} =</span>
+      ${new RawHTML(fARS(repTotal))} <span style="color:var(--text3)">+</span> ${new RawHTML(fARS(moTotal))} <span style="color:var(--text3)">+</span> ${opTotal!=null?new RawHTML(fARS(opTotal)):'0'}
+      <span style="color:var(--text3)">=</span> <b style="color:var(--amber)">${new RawHTML(fARS(total))}</b>
+      <span style="color:var(--text3)"> · promedio ${new RawHTML(fARS(total/nMeses))}/mes</span>
+    </div>
+  </div>`;
+}
+
 function toggleCostoEquipo(codN){
   if(typeof Chart==='undefined')return;
   const mismo=(_costoChartCod===codN);
@@ -3806,6 +3904,10 @@ function toggleCostoEquipo(codN){
   const td=document.createElement('td');
   td.colSpan=filaEq.children.length;
   td.style.cssText='padding:14px 12px;background:var(--bg2)';
+  // Desglose "de dónde sale cada gasto" (CSP-safe vía setHTML) + chart mensual.
+  const brk=document.createElement('div');
+  setHTML(brk,_costoBreakdownHTML(codN,cfg,yms));
+  td.appendChild(brk);
   const wrap=document.createElement('div');
   wrap.style.cssText='position:relative;height:240px';
   const canvas=document.createElement('canvas');
