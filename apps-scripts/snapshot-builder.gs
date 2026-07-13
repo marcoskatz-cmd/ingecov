@@ -382,17 +382,13 @@ function _buildCombLivianos_(snap){
     const iFec = _idx_(h, ['FECHA ENTREGA','FECHA']);
     const iTip = _idx_(h, ['TIPO COMBUSTIBLE','TIPO DE COMBUSTIBLE','TIPO']);
     const iLit = _idx_(h, ['CANTIDAD (L)','CANTIDAD','LITROS']);
-    // La patente cambió de título varias veces: 'N° SERIE - N° PATENTE'
-    // (→ NSERIENPATENTE) y luego 'N° SERIE/PATENTE' (→ NSERIEPATENTE, sin la 2ª N).
-    // Sin el sinónimo iPat queda -1 → patente vacía → el ranking por equipo del
-    // KPI no matchea (el total sí, porque suma sin mirar patente).
+    // La fuente titula la patente 'N° SERIE - N° PATENTE' (→ NSERIENPATENTE).
+    // Sin este sinónimo iPat quedaba -1 → patente vacía → el ranking del KPI
+    // no matcheaba nada (el total sí, porque suma sin mirar patente).
     const iPat = _idx_(h, ['N SERIE PATENTE','N SERIE N PATENTE','N° PATENTE','PATENTE','DOMINIO']);
     const iOdo = _idx_(h, ['HORÓMETRO/ODÓMETRO','ODÓMETRO (KM)','ODOMETRO','KM']);
     const iOpe = _idx_(h, ['OPERARIO','CHOFER']);
     const iObr = _idx_(h, ['OBRA PARTICULAR','OBRA GENERAL','OBRA','LUGAR','LUGAR ENTREGA']);
-    // jul-2026: la columna de costo pasó de 'TOTAL' a 'PRECIO TOTAL' (hay también
-    // 'PRECIO UNITARIO', NO usar esa). Sin el sinónimo iTot quedaba -1 → costo
-    // vacío → KPI de gasto en combustible livianos en blanco (WARN en META).
     const iTot = _idx_(h, ['PRECIO TOTAL','TOTAL','IMPORTE','COSTO']);
 
     const out = [['FECHA','','','TIPO','LITROS','PATENTE','ODOMETRO','OBRA','CHOFER','','','TOTAL']];
@@ -431,7 +427,8 @@ function _buildService_(snap){
   try{
     // La 2ª hoja de SERVICES (operatividad pre-calculada). Si no se llama
     // "OPERATIVIDAD", la ubicamos por tener una columna OPERATIVIDAD.
-    const t = _readTab_(SNAP_SRC.services, 'OPERATIVIDAD') || _readTabByHeader_(SNAP_SRC.services, ['OPERATIVIDAD']);
+    // jul-2026: la pestaña se renombró OPERATIVIDAD → RESUMEN (mismo layout).
+    const t = _readTab_(SNAP_SRC.services, 'OPERATIVIDAD') || _readTab_(SNAP_SRC.services, 'RESUMEN') || _readTabByHeader_(SNAP_SRC.services, ['OPERATIVIDAD']);
     // SVC_FREC / TRIM vacíos (el browser tolera sin filas).
     _write_(snap, 'SVC_FREC',  [['']], false);
     _write_(snap, 'SVC_TRIM1', [['']], false);
@@ -505,8 +502,17 @@ function _getOrCreateSnapshotSS_(){
   const props = PropertiesService.getScriptProperties();
   let id = props.getProperty(SNAP_PROP_KEY);
   if(id){
-    try{ return SpreadsheetApp.openById(id); }
-    catch(e){ Logger.log('Snapshot guardado (' + id + ') ya no abre; recreo. ' + e.message); }
+    // Reintentos: el 7/7/2026 un fallo TRANSITORIO de openById hizo recrear el
+    // snapshot y repuntar el property → el panel (ID hardcodeado en app.js)
+    // quedó leyendo el viejo congelado 6 días. Recrear es el último recurso.
+    for(let intento = 1; intento <= 3; intento++){
+      try{ return SpreadsheetApp.openById(id); }
+      catch(e){
+        Logger.log('Snapshot (' + id + ') no abre, intento ' + intento + '/3: ' + e.message);
+        if(intento < 3) Utilities.sleep(2000 * intento);
+      }
+    }
+    Logger.log('Snapshot guardado (' + id + ') no abre tras 3 intentos; recreo. OJO: hay que actualizar SNAPSHOT_ID en app.js o repuntar el property.');
   }
   const ss = SpreadsheetApp.create(SNAP_NAME);
   id = ss.getId();
