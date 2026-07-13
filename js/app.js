@@ -4640,11 +4640,81 @@ async function renderReemplazo(){
       <div class="rep-head-title">conservar vs reemplazar · modelo de decisión</div>
       <select class="rep-select" id="repEquipoSel" data-action="repSelectEquipo" data-event="change">${opciones}</select>
     </div>
+    <div class="rep-toolbar">
+      <button class="rep-btn" id="repGuideBtn" data-action="toggleRepGuide">ⓘ cómo usar esto</button>
+      <button class="rep-btn primary" data-action="repDescargarPDF">⭳ descargar PDF del análisis</button>
+    </div>
+    <div class="rep-guide" id="repGuide" style="display:none"><div class="rep-guide-body">${_repInstructivoHTML()}</div></div>
     <div id="repForm"></div>
     <div id="repResult"></div>
   `));
   _repRenderForm();
   repRecalc();
+}
+
+function toggleRepGuide(){
+  const g=document.getElementById('repGuide');
+  const b=document.getElementById('repGuideBtn');
+  if(!g)return;
+  const open=g.style.display==='none';
+  g.style.display=open?'':'none';
+  if(b)b.textContent=open?'ⓘ ocultar instructivo':'ⓘ cómo usar esto';
+}
+
+// Instructivo de uso — qué va en cada campo y por qué. String HTML estático
+// (sin datos de usuario), se envuelve en RawHTML en renderReemplazo.
+function _repInstructivoHTML(){
+  return `
+    <p>Esta herramienta compara, <b>en ARS por mes</b>, lo que cuesta <b>seguir</b> con el equipo actual contra <b>comprar uno 0km</b>, y te dice cuál conviene. El costo de seguir incluye reparaciones, service, gomas, el equipo parado y el riesgo de una falla mayor; el de comprar incluye la depreciación, el interés de la financiación y los gastos del 0km.</p>
+    <div class="g-tip">Elegí un equipo en el desplegable de arriba: los campos con borde azul y etiqueta <span class="g-auto">del panel</span> se completan solos con los datos reales del panel. Los campos en blanco son supuestos que cargás vos. Todo lo que edites queda guardado por equipo en este navegador.</div>
+
+    <h5>Paso 1 · Equipo actual</h5>
+    <ul>
+      <li><b>Meses de horizonte</b> <span class="g-auto">del panel</span> — cuántos meses de datos se están promediando. Se autocompleta con la cantidad de meses que tienen gasto correctivo cargado. Sirve para pasar los montos acumulados a promedio mensual. Solo tocalo si querés forzar otro período.</li>
+      <li><b>Falla total (repuestos correctivos)</b> <span class="g-auto">del panel</span> — suma de todos los repuestos correctivos del equipo (sin neumáticos), tomada del tab costos downtime. Es la base del gasto de reparaciones.</li>
+      <li><b>Ítems únicos a excluir</b> — repuestos grandes que <b>no se van a repetir</b> (un eje que ya se cambió, una rotura puntual). Se <b>restan</b> de la falla total para no proyectar al futuro un gasto irrepetible. Usá el selector de entregas de abajo para tildarlos: la suma se carga sola acá.</li>
+      <li><b>Service oficial</b> — lo que sale un service en concesionario. Para el 0km se paga completo; para el usado se ajusta con el factor de más abajo.</li>
+      <li><b>Neumáticos</b> — gasto en cubiertas del equipo. Tildalas en el selector de abajo.</li>
+      <li><b>Horas improductivas (correctivo)</b> <span class="g-auto">del panel</span> — horas que el equipo estuvo parado por reparación. Valorizan el tiempo fuera de servicio (costo de oportunidad) del equipo actual.</li>
+      <li><b>Horas service+gomas</b> — horas por mes que el 0km igual estaría parado por su service y cambio de gomas. Es la oportunidad "inevitable" del equipo nuevo.</li>
+      <li><b>Alquiler mensual</b> <span class="g-auto">del panel</span> — cuánto cuesta alquilar un equipo equivalente por mes. Es la base para valorizar cada hora parada. Sale de la pestaña ALQUILERES × dólar. Si el equipo no tiene alquiler cargado, aparece un aviso y lo podés poner a mano.</li>
+      <li><b>Horas productivas/mes</b> — horas que el equipo puede trabajar en el mes (default 176). Es el divisor para sacar el valor de una hora.</li>
+      <li><b>Factor service no oficial</b> — qué fracción del service oficial pagás en taller propio para el usado (default 1/3 ≈ 0,33). Refleja que al viejo no le hacés service de concesionario.</li>
+      <li><b>Dólar</b> <span class="g-auto">del panel</span> — tipo de cambio para convertir los precios en USD (0km, alquiler).</li>
+    </ul>
+
+    <h5>Paso 2 · Selección de entregas (opcional pero recomendado)</h5>
+    <ul>
+      <li><b>Ítems únicos</b> — tildá las entregas correctivas que fueron gastos one-off; su suma se descuenta de la falla total.</li>
+      <li><b>Neumáticos</b> — tildá las entregas de cubiertas; su suma se carga como gasto de neumáticos.</li>
+    </ul>
+    <p style="color:var(--text3)">Tildar acá evita tener que sumar a mano: el número entra solo en el campo de arriba.</p>
+
+    <h5>Paso 3 · 0km + financiación</h5>
+    <ul>
+      <li><b>Precio 0km (USD)</b> — precio del equipo nuevo equivalente.</li>
+      <li><b>Valor residual (0–1)</b> — qué fracción del precio recuperás al final de la vida útil (0,5 = te queda el 50%). Cuanto más alto, menos deprecia.</li>
+      <li><b>Vida útil (años)</b> — sobre cuántos años se reparte la depreciación del 0km.</li>
+      <li><b>Tasa anual financ. (0–1)</b> — interés de la financiación (0 = contado, 0,3 = 30% anual).</li>
+      <li><b>Trade-in (0–1)</b> — qué fracción del precio cubrís entregando el usado como parte de pago (0,5 = la mitad).</li>
+      <li><b>Plazo financ. (meses)</b> — en cuántas cuotas se financia el saldo. Afecta la cuota de flujo de caja, no el costo económico.</li>
+      <li><b>Reparaciones/mes (ARS)</b> — reparaciones esperadas del 0km (normalmente bajo o cero los primeros años).</li>
+    </ul>
+
+    <h5>Paso 4 · Riesgo de cola (fallas mayores)</h5>
+    <p>Cada fila es una falla grande posible (caja, motor, diferencial…). Cargá la <b>probabilidad anual</b> (0,08 = 8% de chance en el año) y el <b>costo</b> si ocurre. El modelo hace <b>probabilidad × costo</b> de cada una, las suma (riesgo esperado anual), lo pasa a mensual y lo agrega al costo de seguir. Agregá, editá o quitá modos según el estado real del equipo con <b>+ modo de falla</b> / la ✕.</p>
+
+    <h5>Cómo leer el resultado</h5>
+    <ul>
+      <li><b>Veredicto</b> — CONSERVAR o REEMPLAZAR, con cuánto es la diferencia mensual.</li>
+      <li><b>Las dos columnas</b> — el costo mensual de seguir vs. el de comprar, renglón por renglón.</li>
+      <li><b>Neto mensual</b> — la diferencia entre ambos totales.</li>
+      <li><b>Cuota</b> — el desembolso mensual de la cuota (flujo de caja); es otra cosa que el costo económico.</li>
+      <li><b>Umbral de riesgo</b> — cuánto riesgo esperado por año haría falta para que convenga reemplazar.</li>
+      <li><b>El riesgo debe escalar ×N</b> — cuántas veces más grande tendría que ser el riesgo que cargaste para dar vuelta la decisión. Si es ×5, hoy conservar gana con margen.</li>
+      <li><b>Vida de indiferencia</b> — a cuántos años de vida útil del 0km da exactamente lo mismo seguir que comprar.</li>
+    </ul>
+    <div class="g-tip">Cuando termines de cargar todo, <b>⭳ descargar PDF del análisis</b> genera un informe imprimible con el veredicto, las dos columnas, las métricas, los supuestos usados y los modos de falla — listo para adjuntar o presentar.</div>`;
 }
 
 function _repInput(id, val, unit, step){
@@ -4933,6 +5003,114 @@ function repReset(){
   repRecalc();
 }
 
+/* PDF del análisis: arma un documento imprimible estático en #repPrintDoc y
+   dispara window.print(). El navegador ofrece "Guardar como PDF" (PC y celular).
+   CSP-safe: sin librerías externas ni document.write; solo setHTML + print(). */
+function repDescargarPDF(){
+  repReadForm();                      // volcar los inputs actuales a _repState
+  const c = _repState;
+  const r = _repEvaluar(c);
+  _repBuildPrintDoc(c, r);
+  window.print();
+}
+
+function _repBuildPrintDoc(c, r){
+  const doc = document.getElementById('repPrintDoc');
+  if(!doc) return;
+  const fARS = n => '$ ' + fmtInt(n);
+  const pct  = n => (Math.round(n*1000)/10).toLocaleString('es-AR') + '%';
+  const eq = (window._equiposOrdenados||[]).find(e=>normCod(e.codigo)===c.codN);
+  const equipoLabel = c.codN
+    ? (eq ? (eq.codigo + (eq.nombre?' · '+eq.nombre:'')) : c.codN)
+    : 'Manual / sin equipo';
+  const d = new Date();
+  const p2 = n => String(n).padStart(2,'0');
+  const fecha = `${p2(d.getDate())}/${p2(d.getMonth()+1)}/${d.getFullYear()}`;
+  const factor = isFinite(r.factorEscalaRiesgo) ? '×'+r.factorEscalaRiesgo.toFixed(2) : 'n/a';
+  const vida   = isFinite(r.vidaBreakEvenAnios) ? r.vidaBreakEvenAnios.toFixed(1)+' años' : 'a cualquier vida';
+  const netoAbs = fARS(Math.abs(r.netoMensual));
+  const sub = r.decision==='CONSERVAR'
+    ? `Seguir cuesta ${netoAbs}/mes menos que comprar 0km.`
+    : `Comprar 0km cuesta ${netoAbs}/mes menos que seguir.`;
+
+  const fallasRows = c.modosFalla.map(f=>
+    `<tr><td>${esc(f.nombre||'—')}</td><td class="n">${pct(f.p||0)}</td><td class="n">${fARS(f.costo||0)}</td><td class="n">${fARS((f.p||0)*(f.costo||0))}</td></tr>`
+  ).join('');
+
+  const supuestos = [
+    ['Meses de horizonte', String(c.mesesHorizonte)],
+    ['Dólar (ARS/USD)', fmtInt(c.dolar)],
+    ['Alquiler mensual', fARS(c.alquilerMensual)],
+    ['Horas productivas/mes', String(c.horasProductivasMes)],
+    ['Factor service no oficial', (Math.round(c.factorServiceNoOficial*100)/100).toLocaleString('es-AR')],
+    ['Precio 0km (USD)', 'US$ '+fmtInt(c.nuevo.precioUSD)],
+    ['Valor residual', pct(c.nuevo.residualPct)],
+    ['Vida útil', c.nuevo.vidaUtilAnios+' años'],
+    ['Tasa anual financ.', pct(c.nuevo.tasaAnual)],
+    ['Trade-in', pct(c.nuevo.tradeInPct)],
+    ['Plazo financiación', c.nuevo.plazoFinancMeses+' meses'],
+    ['Reparaciones 0km/mes', fARS(c.nuevo.reparacionesMensual)],
+  ].map(([k,v])=>`<tr><td>${k}</td><td class="n">${v}</td></tr>`).join('');
+
+  const html_ = `
+    <div class="pd-h1">Análisis conservar vs reemplazar</div>
+    <div class="pd-meta">Equipo: <b>${esc(equipoLabel)}</b> · Período analizado: ${c.mesesHorizonte} ${c.mesesHorizonte===1?'mes':'meses'} · Generado el ${fecha} · Panel INGECO</div>
+
+    <div class="pd-verdict">
+      <div class="w">${r.decision}</div>
+      <div class="s">${sub}</div>
+    </div>
+
+    <h2>Costo mensual comparado (ARS/mes)</h2>
+    <div class="pd-two">
+      <table>
+        <tr><th>Seguir con el actual</th><th class="n"></th></tr>
+        <tr><td>Service (no oficial)</td><td class="n">${fARS(r.viejo.service)}</td></tr>
+        <tr><td>Falla corriente</td><td class="n">${fARS(r.viejo.fallaCorriente)}</td></tr>
+        <tr><td>Neumáticos</td><td class="n">${fARS(r.viejo.neumaticos)}</td></tr>
+        <tr><td>Oportunidad (parado)</td><td class="n">${fARS(r.viejo.oportunidad)}</td></tr>
+        <tr><td>Riesgo esperado</td><td class="n">${fARS(r.riesgo.mensual)}</td></tr>
+        <tr class="tot"><td>Total seguir</td><td class="n">${fARS(r.viejoTotal)}</td></tr>
+      </table>
+      <table>
+        <tr><th>Comprar 0km</th><th class="n"></th></tr>
+        <tr><td>Depreciación</td><td class="n">${fARS(r.nuevo.depreciacion)}</td></tr>
+        <tr><td>Interés financiación</td><td class="n">${fARS(r.nuevo.interesMensual)}</td></tr>
+        <tr><td>Service oficial</td><td class="n">${fARS(r.nuevo.service)}</td></tr>
+        <tr><td>Reparaciones</td><td class="n">${fARS(r.nuevo.reparaciones)}</td></tr>
+        <tr><td>Neumáticos</td><td class="n">${fARS(r.nuevo.neumaticos)}</td></tr>
+        <tr><td>Oportunidad (service+gomas)</td><td class="n">${fARS(r.nuevo.oportunidad)}</td></tr>
+        <tr class="tot"><td>Total comprar</td><td class="n">${fARS(r.nuevoTotal)}</td></tr>
+      </table>
+    </div>
+
+    <h2>Métricas de decisión</h2>
+    <table>
+      <tr><td>Neto mensual (comprar − seguir)</td><td class="n">${fARS(r.netoMensual)}</td></tr>
+      <tr><td>Cuota mensual (flujo de caja)</td><td class="n">${fARS(r.cuotaMensual)}</td></tr>
+      <tr><td>Umbral de riesgo para reemplazar</td><td class="n">${fARS(r.umbralRiesgoMensual)}/mes · ${fARS(r.umbralRiesgoAnual)}/año</td></tr>
+      <tr><td>El riesgo debe escalar</td><td class="n">${factor}</td></tr>
+      <tr><td>Vida de indiferencia del 0km</td><td class="n">${vida}</td></tr>
+    </table>
+
+    <h2>Riesgo de cola · modos de falla mayores</h2>
+    <table>
+      <tr><th>Modo</th><th class="n">Prob. anual</th><th class="n">Costo</th><th class="n">Esperado/año</th></tr>
+      ${fallasRows}
+      <tr class="tot"><td>Riesgo esperado total</td><td class="n"></td><td class="n"></td><td class="n">${fARS(r.riesgo.anual)}</td></tr>
+    </table>
+
+    <h2>Supuestos usados</h2>
+    <table>${supuestos}</table>
+
+    <div class="pd-foot">
+      <b>Metodología.</b> Todos los importes en ARS/mes. <b>Seguir</b> = service no oficial (service oficial × factor) + falla corriente (repuestos correctivos − ítems únicos) + neumáticos + oportunidad (horas paradas × valor-hora) + riesgo esperado (Σ prob × costo ÷ 12). <b>Comprar</b> = depreciación ((precio − residual) ÷ vida útil) + interés de financiación + service oficial + reparaciones + neumáticos + oportunidad inevitable. <b>Valor-hora</b> = alquiler mensual ÷ horas productivas/mes. La decisión compara ambos totales; el <b>umbral de riesgo</b> indica cuánto debería crecer la probabilidad de falla mayor para invertir el resultado.
+      <br>Informe generado automáticamente por el Panel de Mantenimiento INGECO. Los supuestos de financiación y 0km son editables en el tab y quedan guardados por equipo.
+    </div>`;
+
+  setHTML(doc, new RawHTML(html_));
+}
+
 /* ═══════════════════════════════════════════════════════
    ACTIONS — capa de adaptación entre data-action y funciones
    Mantiene compatibilidad de firmas con los onclick/onchange viejos:
@@ -4953,6 +5131,8 @@ const ACTIONS = {
   repDelFalla:                   (arg) => repDelFalla(+arg),
   repToggleEntrega:              (arg) => repToggleEntrega(arg),
   repReset:                      () => repReset(),
+  toggleRepGuide:                () => toggleRepGuide(),
+  repDescargarPDF:               () => repDescargarPDF(),
   onSearch:                      (_, t) => onSearch(t.value),
   clearSearch:                   () => clearSearch(),
   setViewMode:                   (mode) => setViewMode(mode),
