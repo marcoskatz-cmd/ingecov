@@ -1271,9 +1271,11 @@ function procesarProgramaService(frecRows,trimRows){
 }
 
 // Operatividad de service: clasifica un equipo en holgado / intermedio / critico
-// según los hr/km restantes hasta el próximo service. La hr/km "actual" sale del
-// combustible (lectura más fresca); si el equipo no tiene cargas, se usa la del
-// PROGRAMA DE SERVICE. Rangos por equipo desde FRECUENCIA - OPERATIVIDAD.
+// según los hr/km restantes hasta el próximo service. La hr/km "actual" sale
+// EXCLUSIVAMENTE del RESUMEN de service (SVC_PANELPROG). Antes se prefería la
+// última carga de combustible por ser "más fresca", pero los typos de carga
+// (dígitos comidos, códigos cruzados) contaminaban la operatividad — decisión
+// jul-2026: una sola fuente curada, la del encargado de mantenimiento.
 function operatividadEquipo(codN){
   const SD={nivel:'sin-datos',color:'var(--text3)',label:'Sin datos',
             restantes:null,hrActual:null,hrProximo:null,fuente:'',frecuencia:''};
@@ -1295,10 +1297,9 @@ function operatividadEquipo(codN){
   };
   const hrProximo=numHr(sp.estHrKm);
   const restantes=numHr(sp.operatividad);  // columna OPERATIVIDAD = hr/km restantes (ya calculado)
-  const comb=(window._combustiblePorEquipo||{})[codN];
-  let hrActual,fuente;
-  if(comb&&comb.ultimaHr!=null){ hrActual=comb.ultimaHr; fuente='combustible'; }
-  else { hrActual=numHr(sp.hrActual); if(hrActual==null)hrActual=numHr(sp.ultHrKm); fuente='programa de service'; }
+  let hrActual=numHr(sp.hrActual);
+  if(hrActual==null)hrActual=numHr(sp.ultHrKm);
+  const fuente='resumen de service';
   return{nivel,color,label,restantes,hrActual,hrProximo,fuente,frecuencia:sp.frecuencia};
 }
 
@@ -2654,7 +2655,7 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
         estimadoFmt: op.hrProximo!=null ? fmtInt(op.hrProximo) : '—',
         restantes: op.restantes,
         fuente: op.fuente,
-        ultFecha: (window._combustiblePorEquipo||{})[codN]?.ultimaFecha || sp[codN].ultFecha || '',
+        ultFecha: sp[codN].ultFecha || '',
       });
     }
     else if(op.nivel==='intermedio')serviceAmber++;
@@ -2923,15 +2924,12 @@ async function toggleEquipoDetail(codigo,cardEl){
   const sp=(window._servicePanel||{})[codN]||null;
   let horHTML='';
   if(sp){
-    // Operatividad del PROGRAMA DE TRABAJOS DE SERVICE. operatividadEquipo() resuelve
-    // la hr/km actual: combustible (lo más fresco) o, si no hay cargas, el programa de service.
+    // Operatividad del resumen de service. operatividadEquipo() toma la hr/km
+    // actual SOLO del RESUMEN (fuente única curada; ver nota en la función).
     const op=operatividadEquipo(codN);
-    const usarComb = op.fuente==='combustible';
     const ultHr = op.hrActual!=null ? op.hrActual : (sp.ultHrKm||serviceRow?.horActual||'—');
-    const ultFecha = usarComb ? (comb?.ultimaFecha||'—')
-                              : (sp.ultFecha||serviceRow?.fecha||serviceRow?.mes||'—');
-    const ultFuente = usarComb ? `vía combustible (${formatFechaCorta(comb?.ultimaFecha)})`
-                               : (op.fuente?`vía ${op.fuente}`:'');
+    const ultFecha = sp.ultFecha||serviceRow?.fecha||serviceRow?.mes||'—';
+    const ultFuente = op.fuente?`vía ${op.fuente}`:'';
     const estHr=sp.estHrKm||serviceRow?.horProximo||'—';
     const frec=sp.frecuencia||'—';
     const estadoColor=op.color;
@@ -4225,7 +4223,6 @@ function renderServiceTab(){
   const badge=document.getElementById('serviceBadge');
   const sp=window._servicePanel||{};
   const est=window._estadoEquipos||{};
-  const comb=window._combustiblePorEquipo||{};
   const TIER={critico:0,intermedio:1,holgado:2,'sin-datos':3};
   // Parser numérico tolerante (miles con punto, decimal coma; descarta '-', fechas, S/H).
   const num=v=>{const s=String(v==null?'':v).trim();if(!s||s==='-'||/\//.test(s)||/s\/?h/i.test(s))return null;const n=parseFloat(s.replace(/\./g,'').replace(',','.').replace(/[^\d.-]/g,''));return isFinite(n)?n:null;};
@@ -4237,51 +4234,19 @@ function renderServiceTab(){
     // HOLGADO) sin el símbolo ⚠, para distinguir vencido de crítico. Color = tier.
     const estadoTxt=String(sp[codN].estado||'').replace(/[^\p{L} ]/gu,'').trim();
     // Dato inconsistente (imposible): el último service quedó registrado POR ENCIMA
-    // del hr/km actual del equipo. No podés hacer un service a más horas de las que
-    // marca el horómetro hoy → o la fecha/lectura del service está mal, o el horómetro
-    // de combustible está mal cargado. Lo marcamos "⚠ REVISAR" para que se examine y
-    // corrija. No cambia ningún número: surface del dato sucio, no lo esconde.
-    // (Antes también flageábamos "restantes > frecuencia", pero eso NO es error: solo
-    //  dice que falta mucho para el próximo service. Se sacó.)
+    // del hr/km actual del equipo. Como ahora AMBOS números salen del RESUMEN de
+    // service (jul-2026: el combustible ya no participa de la operatividad), esto
+    // solo puede ser una inconsistencia interna de esa planilla: la hr del último
+    // service o el HR/KM ACTUAL están mal cargados ahí. Lo marcamos "⚠ REVISAR".
+    // No cambia ningún número: surface del dato sucio, no lo esconde.
     const frecN=num(op.frecuencia||sp[codN].frecuencia), ultN=num(sp[codN].ultHrKm);
     const excesoUlt=(ultN!=null&&op.hrActual!=null&&ultN>op.hrActual+0.5)?(ultN-op.hrActual)/(frecN>0?frecN:1):0;
     const revisar=excesoUlt>0;
-    // ¿DÓNDE está la discrepancia? Clasificamos la causa para dejarla escrita en el
-    // tablero, en vez de solo decir "revisar". Tres orígenes posibles:
-    //   • 'combustible' → typo en la carga: el equipo YA había superado ese horómetro
-    //     en una carga anterior; solo la ÚLTIMA lectura bajó (dígito comido). Se
-    //     corrige esa fila del sheet de combustible.
-    //   • 'service' → la planilla de service tiene el último service por encima del
-    //     hr/km real (sea el máximo de combustible, o el HR/KM ACTUAL del propio sheet
-    //     cuando el equipo no carga combustible). Se corrige la hr/fecha del service.
-    //   • 'codigo' → no hay combustible bajo este código pero SÍ bajo otros del mismo
-    //     prefijo → el consumo puede estar cargándose con un código distinto.
     let causa='', causaTxt='', causaShort='';
     if(revisar){
-      const cc=comb[codN];
-      const hrsC=(cc&&cc.cargas)?cc.cargas.map(x=>x.hr).filter(h=>h!=null):[];
-      const maxComb=hrsC.length?Math.max(...hrsC):null;
-      if(op.fuente==='combustible'&&maxComb!=null&&maxComb+0.5>=ultN){
-        causa='combustible';
-        causaShort='typo en carga de combustible';
-        causaTxt=`Typo en combustible: la última carga marcó ${fmtInt(op.hrActual)} pero una carga anterior ya llegó a ${fmtInt(maxComb)} (por encima del último service ${fmtInt(ultN)}). Corregir esa fila en la planilla de combustible.`;
-      }else if(!cc){
-        const pref=_prefijoCod(codN);
-        const hayHermanos=Object.keys(comb).some(k=>k!==codN&&_prefijoCod(k)===pref);
-        if(hayHermanos){
-          causa='codigo';
-          causaShort='posible código mal cargado';
-          causaTxt=`Posible problema de código: no hay combustible bajo "${codigo}" pero sí bajo otros del prefijo ${pref}. El consumo puede estar cargándose con un código distinto. Verificar; si no, el último service (${fmtInt(ultN)}) quedó por encima del HR/KM actual del sheet de service (${fmtInt(op.hrActual)}).`;
-        }else{
-          causa='service';
-          causaShort='planilla de service';
-          causaTxt=`Planilla de service: el último service (${fmtInt(ultN)}) quedó por encima del HR/KM actual (${fmtInt(op.hrActual)}) en el propio sheet. Revisar la carga del service.`;
-        }
-      }else{
-        causa='service';
-        causaShort='planilla de service';
-        causaTxt=`Planilla de service: el último service (${fmtInt(ultN)}) está por encima de la última lectura de combustible (${fmtInt(op.hrActual)}). Revisar la hr/fecha del último service.`;
-      }
+      causa='service';
+      causaShort='planilla de service';
+      causaTxt=`Planilla de service: el último service (${fmtInt(ultN)}) quedó por encima del HR/KM ACTUAL (${fmtInt(op.hrActual)}) en el propio RESUMEN. Revisar ahí la hr del service o el horómetro actual.`;
     }
     return {
       codigo,
@@ -4290,7 +4255,7 @@ function renderServiceTab(){
       hrActual: op.hrActual, hrProximo: op.hrProximo, restantes: op.restantes,
       frecuencia: op.frecuencia||sp[codN].frecuencia||'',
       unidad: unidadDeEquipo(codigo),
-      ultFecha: (comb[codN]&&comb[codN].ultimaFecha)||sp[codN].ultFecha||'',
+      ultFecha: sp[codN].ultFecha||'',
       revisar, sev: excesoUlt, causa, causaShort, causaTxt,
     };
   });
