@@ -140,6 +140,10 @@ function construirSnapshot(){
   _escribirMeta_(snap, meta, errores);
   _limpiarTabsSobrantes_(snap);
 
+  // Auditoría de consistencia de cargas (resultado PRIVADO: va a Script
+  // Properties, NO al snapshot público; lo sirve la webapp con PIN).
+  try{ _auditar_(); }catch(e){ Logger.log('[auditoría] falló: ' + (e && e.message || e)); }
+
   const dt = ((Date.now() - t0) / 1000).toFixed(1);
   const msg = 'Snapshot OK en ' + dt + 's · ' + meta.length + ' pestañas · '
             + errores.length + ' con problema'
@@ -559,4 +563,193 @@ function verSnapshotId(){
   Logger.log('Snapshot ID: ' + id);
   Logger.log('URL: https://docs.google.com/spreadsheets/d/' + id + '/edit');
   return id;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   AUDITORÍA DE CONSISTENCIA DE CARGAS (2026-07-13)
+   Cruza las fuentes entre sí y contra LISTA DE EQUIPOS (maestro único).
+   El resultado va a Script Property AUDIT_JSON (PRIVADO — nunca al snapshot,
+   que es público por gviz). Lo sirve refresh.js ?ep=audit contra AUDIT_PIN.
+   Reglas:
+     R1 código↔patente/serie no coincide con LISTA (o patente de flota sin código)
+     R2 horómetro/odómetro retrocede en la línea de tiempo (combustible+services)
+     R3 próximo service ≠ último + frecuencia (solo último registro por equipo)
+     R4 RESUMEN desactualizado respecto de REGISTROS
+     R5 el builder no está escribiendo el snapshot que lee el panel
+     R6 código inexistente en LISTA DE EQUIPOS
+═══════════════════════════════════════════════════════════════════════ */
+const SNAP_CANON_ID = '1E883xvPP_Oyt1mjQ2FjZLiY-Jmvyzgi0_UhEq2dFbGY'; // el que lee app.js
+
+function _audParseFecha_(s){
+  const m = String(s||'').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(!m) return null;
+  const d = new Date(+m[3], +m[2]-1, +m[1]);
+  return isNaN(d.getTime()) ? null : d;
+}
+function _audNum_(v){
+  const s = String(v==null?'':v).trim();
+  if(!s || s==='-' || /^S\/H/i.test(s) || /\d{1,2}\/\d{1,2}\/\d{4}/.test(s)) return null;
+  const m = s.replace(/\./g,'').replace(',','.').match(/-?\d+(\.\d+)?/);
+  return m ? parseFloat(m[0]) : null;
+}
+
+function _auditar_(){
+  const F = []; // findings: {r, fuente, fila, codigo, msg}
+  const add = (r, fuente, fila, codigo, msg) => F.push({ r, fuente, fila, codigo, msg });
+
+  // ── Maestro ──
+  const eq = _readTab_(SNAP_SRC.equipos, 'EQUIPOS');
+  if(!eq) throw new Error('no pude leer LISTA DE EQUIPOS');
+  const hE = eq.header;
+  const eCod = _idx_(hE, ['CÓDIGO','CODIGO','CODIGO INTERNO','CODIO INTERNO']);
+  const ePat = _idx_(hE, ['PATENTE/SERIE','PATENTE','N° SERIE/PATENTE','N SERIE N PATENTE','SERIE']);
+  const codmap = {}, master = {};
+  for(const r of eq.rows){
+    const cod = _at_(r, eCod); if(!cod) continue;
+    const patN = _snapNormCod(_at_(r, ePat) === '-' ? '' : _at_(r, ePat));
+    codmap[cod] = patN;
+    if(patN) master[patN] = cod;
+  }
+
+  // ── Lector genérico de una fuente tabular ──
+  const leer = (id, tabs, cols) => {
+    let t = null;
+    for(const tb of tabs){ t = _readTab_(id, tb); if(t) break; }
+    if(!t) return null;
+    const ix = {};
+    for(const k in cols) ix[k] = _idx_(t.header, cols[k]);
+    return { rows: t.rows, ix };
+  };
+
+  const SRC = {
+    'SERVICE REGISTROS': leer(SNAP_SRC.services, ['REGISTROS'],
+      { cod:['CÓDIGO','CODIGO'], pat:['N° SERIE/PATENTE','PATENTE'], fec:['FECHA'],
+        hr:['HR/KM/FECHA SERVICE'], prox:['HR/KM/FECHA PRÓXIMO SERVICE'] }),
+    'SERVICE RESUMEN': leer(SNAP_SRC.services, ['RESUMEN','OPERATIVIDAD'],
+      { cod:['CÓDIGO','CODIGO'], pat:['N° SERIE/PATENTE','PATENTE'], frec:['FRECUENCIA'],
+        ufec:['FECHA ÚLTIMO SERVICE'], uhr:['HR/KM/FECHA ÚLTIMO SERVICE'],
+        prox:['HR/KM/FECHA PRÓXIMO SERVICE'] }),
+    'COMB PESADOS': leer(SNAP_SRC.combPesados, ['ENTREGAS'],
+      { cod:['CÓDIGO','CODIGO'], pat:['N° SERIE/PATENTE','PATENTE'], fec:['FECHA'],
+        hr:['HORÓMETRO ACTUAL','HOROMETRO ACTUAL'] }),
+    'COMB LIVIANOS': leer(SNAP_SRC.combLivianos, ['ENTREGAS'],
+      { cod:['CÓDIGO','CODIGO'], pat:['N° SERIE/PATENTE','PATENTE'], fec:['FECHA'],
+        hr:['HORÓMETRO/ODÓMETRO','HOROMETRO/ODOMETRO','ODÓMETRO'] }),
+  };
+
+  // ── R1 + R6 por fuente · además junta serie temporal para R2 ──
+  const series = {}; // cod -> [{f:Date, v:num, ref:'fuente f123'}]
+  for(const nombre in SRC){
+    const s = SRC[nombre];
+    if(!s){ add('R5','pipeline',0,'', 'no pude leer la fuente '+nombre); continue; }
+    s.rows.forEach((r, i) => {
+      const fila = i + 2;
+      const cod = _at_(r, s.ix.cod);
+      const patRaw = _at_(r, s.ix.pat);
+      const patN = _snapNormCod(patRaw === '-' ? '' : patRaw);
+      if(cod && cod !== '-'){
+        if(!(cod in codmap)){
+          add('R6', nombre, fila, cod, 'código inexistente en LISTA DE EQUIPOS (patente "'+patRaw+'")');
+        } else if(patN && codmap[cod] && codmap[cod] !== patN){
+          const dueno = master[patN];
+          add('R1', nombre, fila, cod, 'patente/serie "'+patRaw+'" no es de '+cod+
+            (dueno ? ' — según LISTA pertenece a '+dueno : ' — no figura en LISTA'));
+        }
+      } else if(patN && master[patN]){
+        add('R1', nombre, fila, master[patN], 'fila sin código pero la patente "'+patRaw+'" es de '+master[patN]);
+      }
+      // serie temporal (solo fuentes con fecha + valor numérico)
+      if(s.ix.fec >= 0 && s.ix.hr >= 0 && cod && cod !== '-'){
+        const f = _audParseFecha_(_at_(r, s.ix.fec));
+        const v = _audNum_(_at_(r, s.ix.hr));
+        if(f && v != null && v > 0){
+          (series[cod] = series[cod] || []).push({ f, v, ref: nombre+' f'+fila });
+        }
+      }
+    });
+  }
+
+  // ── R2: retrocesos de horómetro (tolerancia: 2% del valor y mínimo 300) ──
+  for(const cod in series){
+    const pts = series[cod].sort((a,b)=>a.f-b.f);
+    for(let i = 1; i < pts.length; i++){
+      const prev = pts[i-1], cur = pts[i];
+      const tol = Math.max(300, prev.v * 0.02);
+      if(cur.v < prev.v - tol){
+        add('R2','cronología',0,cod,'horómetro retrocede: '+prev.v+' ('+prev.ref+', '+
+          Utilities.formatDate(prev.f,'GMT-3','dd/MM')+') → '+cur.v+' ('+cur.ref+', '+
+          Utilities.formatDate(cur.f,'GMT-3','dd/MM')+')');
+      }
+    }
+  }
+
+  // ── R3 + R4: services ──
+  const reg = SRC['SERVICE REGISTROS'], res = SRC['SERVICE RESUMEN'];
+  if(reg && res){
+    // frecuencia por código según RESUMEN
+    const frecMap = {}, resUlt = {}, resSet = {};
+    res.rows.forEach(r => {
+      const cod = _at_(r, res.ix.cod); if(!cod) return;
+      resSet[cod] = true;
+      frecMap[cod] = _audNum_(_at_(r, res.ix.frec)); // null si "S/H (90 días)"
+      resUlt[cod] = _audParseFecha_(_at_(r, res.ix.ufec));
+    });
+    // último registro por código
+    const ult = {};
+    reg.rows.forEach((r, i) => {
+      const cod = _at_(r, reg.ix.cod); if(!cod) return;
+      const f = _audParseFecha_(_at_(r, reg.ix.fec)); if(!f) return;
+      if(!ult[cod] || f > ult[cod].f) ult[cod] = { f, fila: i+2, r };
+    });
+    for(const cod in ult){
+      const u = ult[cod];
+      const frec = frecMap[cod];
+      const hr = _audNum_(_at_(u.r, reg.ix.hr));
+      const prox = _audNum_(_at_(u.r, reg.ix.prox));
+      if(frec && hr != null && prox != null && Math.abs(prox - (hr + frec)) > 0.5){
+        add('R3','SERVICE REGISTROS',u.fila,cod,'próximo '+prox+' ≠ último '+hr+' + frecuencia '+frec+' (esperado '+(hr+frec)+')');
+      }
+      // R4: RESUMEN atrasado o sin el equipo
+      if(!resSet[cod]){
+        add('R4','SERVICE RESUMEN',0,cod,'tiene services en REGISTROS pero no figura en RESUMEN (correr «Actualizar resumen»)');
+      } else if(resUlt[cod] && u.f > resUlt[cod]){
+        add('R4','SERVICE RESUMEN',0,cod,'RESUMEN muestra último service '+
+          Utilities.formatDate(resUlt[cod],'GMT-3','dd/MM/yyyy')+' pero REGISTROS tiene uno del '+
+          Utilities.formatDate(u.f,'GMT-3','dd/MM/yyyy')+' (correr «Actualizar resumen»)');
+      }
+    }
+  }
+
+  // ── R5: pipeline del snapshot ──
+  const propId = PropertiesService.getScriptProperties().getProperty(SNAP_PROP_KEY);
+  if(propId && propId !== SNAP_CANON_ID){
+    add('R5','pipeline',0,'','el builder escribe en '+propId+' pero el panel lee '+SNAP_CANON_ID+' — repuntar el property');
+  }
+
+  // ── Persistir (con firstSeen para distinguir novedades) ──
+  const props = PropertiesService.getScriptProperties();
+  let seen = {};
+  try{ seen = JSON.parse(props.getProperty('AUDIT_SEEN') || '{}'); }catch(e){}
+  const hoy = Utilities.formatDate(new Date(), 'GMT-3', 'dd/MM/yyyy');
+  const seenNew = {};
+  F.forEach(x => {
+    const k = [x.r, x.fuente, x.codigo, x.msg].join('|');
+    x.desde = seen[k] || hoy;
+    seenNew[k] = x.desde;
+  });
+  const counts = {};
+  F.forEach(x => counts[x.r] = (counts[x.r]||0) + 1);
+  let lista = F;
+  let truncado = false;
+  if(lista.length > 120){ lista = lista.slice(0, 120); truncado = true; }
+  const payload = { at: new Date().toISOString(), total: F.length, counts, truncado, findings: lista };
+  let json = JSON.stringify(payload);
+  while(json.length > 8800 && lista.length > 10){ // límite 9KB por property
+    lista = lista.slice(0, Math.floor(lista.length * 0.7));
+    payload.findings = lista; payload.truncado = true;
+    json = JSON.stringify(payload);
+  }
+  props.setProperty('AUDIT_JSON', json);
+  props.setProperty('AUDIT_SEEN', JSON.stringify(seenNew).slice(0, 9000));
+  Logger.log('[auditoría] ' + F.length + ' hallazgos ' + JSON.stringify(counts));
 }

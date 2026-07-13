@@ -4351,14 +4351,106 @@ function _irAEquipoDesdeKpi(codigo){
   };
   if(!open())setTimeout(open,80);
 }
-// Esc cierra el modal de service crítico o el modal de detalle de KPI.
+// Esc cierra el modal de service crítico, el de detalle de KPI o el de auditoría.
 document.addEventListener('keydown',e=>{
   if(e.key!=='Escape')return;
   const ovSv=document.getElementById('svModalOverlay');
   if(ovSv&&ovSv.classList.contains('open'))closeServiceCriticoModal();
   const ovKd=document.getElementById('kpiDetailOverlay');
   if(ovKd&&ovKd.classList.contains('open'))cerrarDetalleKpi();
+  const ovAu=document.getElementById('audOverlay');
+  if(ovAu&&ovAu.classList.contains('open'))cerrarAuditoria();
 });
+
+/* ═══════════════════════════════════════════════════════════════════
+   AUDITORÍA DE CARGAS · modal con PIN validado SERVER-SIDE
+   El panel no tiene ni el PIN ni los datos: los sirve la webapp de
+   refresh (?ep=audit&pin=…) leyendo un Script Property privado que
+   escribe el builder (_auditar_) en cada rebuild. Acá solo UI + fetch.
+═══════════════════════════════════════════════════════════════════ */
+const AUD_REGLAS={
+  R1:'Código no coincide con patente/serie',
+  R2:'Horómetro retrocede en el tiempo',
+  R3:'Próximo service mal calculado',
+  R4:'RESUMEN de service desactualizado',
+  R5:'Pipeline del snapshot',
+  R6:'Código inexistente en LISTA DE EQUIPOS',
+};
+let _audPin=null;
+function abrirAuditoria(){
+  const ov=document.getElementById('audOverlay'); if(!ov)return;
+  ov.classList.add('open'); document.body.style.overflow='hidden';
+  _audPin=sessionStorage.getItem('_audPin')||null;
+  if(_audPin)_audFetch(); else _audAskPin();
+}
+function cerrarAuditoria(){
+  const ov=document.getElementById('audOverlay'); if(!ov)return;
+  ov.classList.remove('open'); document.body.style.overflow='';
+}
+function _audAskPin(msg){
+  const body=document.getElementById('audBody'); if(!body)return;
+  const meta=document.getElementById('audMeta'); if(meta)meta.textContent='';
+  setHTML(body, html`<div style="display:flex;flex-direction:column;gap:10px;align-items:center;padding:26px 0">
+    ${msg?html`<div style="color:var(--red);font-size:12px">${msg}</div>`:''}
+    <div style="display:flex;gap:8px">
+      <input id="audPinInput" type="password" inputmode="numeric" maxlength="12" placeholder="PIN de auditoría" autocomplete="off"
+        style="background:transparent;border:1px solid var(--border);color:var(--text);padding:8px 12px;font-size:14px;width:170px;letter-spacing:2px"/>
+      <button class="refresh-btn" data-action="audSubmitPin">ver</button>
+    </div>
+    <div style="font-size:11px;color:var(--text3)">se valida en el servidor · el PIN no está en esta página</div>
+  </div>`);
+  const inp=document.getElementById('audPinInput');
+  if(inp){inp.focus();inp.addEventListener('keydown',ev=>{if(ev.key==='Enter')audSubmitPin();});}
+}
+function audSubmitPin(){
+  const inp=document.getElementById('audPinInput');
+  const v=inp?String(inp.value||'').trim():'';
+  if(!v)return;
+  _audPin=v;_audFetch();
+}
+async function _audFetch(){
+  const body=document.getElementById('audBody'); if(!body)return;
+  setHTML(body, html`<div style="padding:30px;text-align:center;color:var(--text3);font-size:13px">consultando…</div>`);
+  try{
+    const r=await fetch(REFRESH_URL+'?ep=audit&pin='+encodeURIComponent(_audPin));
+    const j=await r.json();
+    if(!j.ok){
+      sessionStorage.removeItem('_audPin');_audPin=null;
+      _audAskPin(j.error==='pin'?'PIN incorrecto':'Error del servidor: '+(j.error||'desconocido'));
+      return;
+    }
+    sessionStorage.setItem('_audPin',_audPin);
+    _audRender(j.audit);
+  }catch(e){
+    setHTML(body, html`<div style="padding:24px;text-align:center;color:var(--red);font-size:13px">No se pudo consultar la auditoría: ${(e&&e.message)||e}</div>`);
+  }
+}
+function _audRender(a){
+  const body=document.getElementById('audBody'), meta=document.getElementById('audMeta');
+  if(!body)return;
+  if(!a){setHTML(body, html`<div style="padding:24px;text-align:center;color:var(--text3)">La auditoría todavía no corrió — esperá el próximo build del snapshot (30 min) o tocá sync.</div>`);return;}
+  const f=new Date(a.at);
+  if(meta)meta.textContent=' · '+a.total+' hallazgos · calculada '+f.toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+  if(!a.findings||!a.findings.length){
+    setHTML(body, html`<div style="padding:30px;text-align:center;color:var(--green);font-size:14px">✓ Sin inconsistencias detectadas</div>`);
+    return;
+  }
+  const grupos={};
+  a.findings.forEach(x=>{(grupos[x.r]=grupos[x.r]||[]).push(x);});
+  const bloques=Object.keys(grupos).sort().map(r=>{
+    const rows=grupos[r].map(x=>html`<div style="padding:7px 10px;border-bottom:1px solid var(--border);font-size:12px;line-height:1.5">
+      <span class="mono" style="color:var(--accent);font-weight:600">${x.codigo||'—'}</span>
+      <span style="color:var(--text3)"> · ${x.fuente}${x.fila?' fila '+x.fila:''}</span><br>
+      <span>${x.msg}</span>
+      <span style="color:var(--text3);font-size:11px"> · desde ${x.desde||'—'}</span>
+    </div>`);
+    return html`<div style="margin-bottom:14px">
+      <div style="font-size:12px;font-weight:700;letter-spacing:.4px;margin-bottom:4px;color:var(--text2)">${r} · ${AUD_REGLAS[r]||''} <span style="color:var(--text3);font-weight:400">(${grupos[r].length})</span></div>
+      <div style="border:1px solid var(--border)">${rows}</div>
+    </div>`;
+  });
+  setHTML(body, html`${bloques}${a.truncado?html`<div style="color:var(--text3);font-size:11px;padding-top:4px">lista truncada — corregí lo visible y el resto aparece en el próximo build</div>`:''}`);
+}
 
 // ═══════════════════════════════════════════════════════════════════
 // ─── TAB CONSERVAR vs REEMPLAZAR ───
@@ -4826,6 +4918,10 @@ const ACTIONS = {
   cerrarDetalleKpi:              () => cerrarDetalleKpi(),
   cerrarDetalleKpiIfBg:          (_, t, e) => { if (e.target === t) cerrarDetalleKpi(); },
   _irAEquipoDesdeKpiDetail:      (codigo) => _irAEquipoDesdeKpiDetail(codigo),
+  abrirAuditoria:                () => abrirAuditoria(),
+  cerrarAuditoria:               () => cerrarAuditoria(),
+  cerrarAuditoriaIfBg:           (_, t, e) => { if (e.target === t) cerrarAuditoria(); },
+  audSubmitPin:                  () => audSubmitPin(),
 };
 
 function _dispatchAction(e) {

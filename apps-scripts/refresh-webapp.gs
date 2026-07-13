@@ -50,6 +50,33 @@
 function doGet(e) {
   var params = (e && e.parameter) || {};
 
+  // ── AUDITORÍA (?ep=audit&pin=…) ──────────────────────────────────────
+  // Gate propio: AUDIT_PIN se valida SERVER-SIDE contra Script Property.
+  // El PIN no existe en ningún código público (a diferencia de REFRESH_KEY,
+  // que está hardcodeado en app.js y solo disuade crawlers). El payload sale
+  // de AUDIT_JSON (privado, lo escribe _auditar_ en cada build del snapshot).
+  if (params.ep === 'audit') {
+    var pinOk = PropertiesService.getScriptProperties().getProperty('AUDIT_PIN');
+    if (!pinOk) return _refreshJson({ ok: false, error: 'audit_pin_not_set' });
+    if (String(params.pin || '') !== pinOk) {
+      Utilities.sleep(800); // freno suave a fuerza bruta
+      return _refreshJson({ ok: false, error: 'pin' });
+    }
+    var raw = PropertiesService.getScriptProperties().getProperty('AUDIT_JSON');
+    if (!raw) return _refreshJson({ ok: true, audit: null, message: 'todavía no corrió la auditoría' });
+    try { return _refreshJson({ ok: true, audit: JSON.parse(raw) }); }
+    catch (err) { return _refreshJson({ ok: false, error: 'audit_json_corrupto' }); }
+  }
+  // Setea el PIN UNA sola vez (solo si no existe; después se cambia desde
+  // el editor de Apps Script → Configuración → Propiedades del script).
+  if (params.ep === 'audit_setpin') {
+    var props = PropertiesService.getScriptProperties();
+    if (props.getProperty('AUDIT_PIN')) return _refreshJson({ ok: false, error: 'ya_seteado' });
+    if (!params.nuevo || String(params.nuevo).length < 4) return _refreshJson({ ok: false, error: 'pin_corto' });
+    props.setProperty('AUDIT_PIN', String(params.nuevo));
+    return _refreshJson({ ok: true, message: 'AUDIT_PIN seteado' });
+  }
+
   // El token también protege contra que un crawler que encuentre la URL dispare
   // una reconstrucción al azar.
   var expected = PropertiesService.getScriptProperties().getProperty('REFRESH_KEY');

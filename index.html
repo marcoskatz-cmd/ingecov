@@ -29,12 +29,12 @@
         referrerpolicy="no-referrer"></script>
 <!-- init.js: setea el tema en <html> ANTES del paint para evitar FOUC.
      Sin defer a propósito. -->
-<script src="./js/init.js?v=41"></script>
+<script src="./js/init.js?v=42"></script>
 <!-- app.js: toda la lógica de la app. Con defer corre tras parsear el DOM,
      equivalente a estar al final del <body>. Bump del query ?v= cuando se cambia
      app.js para forzar a clientes con HTTP cache a re-fetchear (el SW solo
      invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/app.js?v=41" defer></script>
+<script src="./js/app.js?v=42" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -1660,6 +1660,9 @@
         </select>
         <span class="auto-countdown" id="autoCountdown">—</span>
       </div>
+      <button class="icon-btn" data-action="abrirAuditoria" title="Auditoría de cargas" aria-label="Auditoría de cargas">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/><path d="M9 12l2 2 4-4"/></svg>
+      </button>
       <button class="icon-btn" data-action="toggleTheme" title="Cambiar tema" aria-label="Cambiar tema">
         <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
@@ -1882,6 +1885,18 @@
 </main>
 
 <!-- Modal: equipos con service en estado crítico -->
+<!-- Modal de auditoría de cargas: el contenido lo sirve la webapp (ep=audit)
+     contra un PIN validado server-side. Acá no hay datos ni PIN hardcodeados. -->
+<div class="sv-modal-overlay" id="audOverlay" data-action="cerrarAuditoriaIfBg" role="dialog" aria-modal="true" aria-labelledby="audTitle">
+  <div class="sv-modal">
+    <div class="sv-modal-head">
+      <div class="sv-modal-title" id="audTitle">Auditoría de cargas <span id="audMeta" style="font-weight:400;font-size:11px;color:var(--text3)"></span></div>
+      <button class="sv-modal-close" data-action="cerrarAuditoria" title="Cerrar (Esc)" aria-label="Cerrar">×</button>
+    </div>
+    <div class="sv-modal-list" id="audBody" style="padding:14px 16px"></div>
+  </div>
+</div>
+
 <div class="sv-modal-overlay" id="svModalOverlay" data-action="closeServiceCriticoModalIfBg" role="dialog" aria-modal="true" aria-labelledby="svModalTitle">
   <div class="sv-modal">
     <div class="sv-modal-head">
