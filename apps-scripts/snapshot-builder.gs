@@ -467,15 +467,18 @@ function _buildService_(snap){
       orden.push(cod);
     }
 
-    // ── Refresco desde los archivos VIVOS (jul-2026, pedido de Marcos: el tab
-    // de service tiene que seguir a los archivos sin esperar a que el encargado
-    // corra "Actualizar resumen" en su planilla) ──
+    // ── Refresco desde la PLANILLA DE SERVICE viva (jul-2026, pedido de
+    // Marcos: TODO sale únicamente de esa planilla — nada de LISTA ni de
+    // combustible en las horas) ──
     //  · último/próximo service: fila MÁS RECIENTE de REGISTROS por código
-    //  · hr/km actual: col HORÓMETRO/ODÓMETRO de LISTA DE EQUIPOS (curada);
-    //    equipos S/H (frecuencia por días): actual = hoy
+    //  · hr/km actual: columna HR/KM/FECHA ACTUAL del RESUMEN, tal cual;
+    //    equipos S/H (frecuencia por días): actual = hoy (así los días
+    //    restantes descuentan solos, igual que hace su script al regenerar)
     //  · OPERATIVIDAD y ESTADO se recalculan con las MISMAS fórmulas del script
     //    del encargado (calcularEstadoSrv: <0 vencido; S/H 56/22 días; resto
     //    62,5%/25% de la frecuencia). Si algo no parsea, queda lo del RESUMEN.
+    // LISTA DE EQUIPOS se usa SOLO para desc/patente de equipos nuevos que
+    // aún no figuran en RESUMEN.
     let sintetizado = false;
     try{
       const reg = _readTab_(SNAP_SRC.services, 'REGISTROS');
@@ -526,8 +529,6 @@ function _buildService_(snap){
               b.est = dias < 0 ? '⚠ VENCIDO' : dias > 56 ? '🟢 HOLGADO' : dias > 22 ? '🟡 INTERMEDIO' : '🔴 CRÍTICO';
             }
           } else {
-            const horLista = _audNum_((lista[cod]||{}).hor);
-            if(horLista != null) b.actual = String(horLista);
             const actN = _audNum_(b.actual), proxN = _audNum_(b.prox), frecN = _audNum_(b.frec);
             if(actN != null && proxN != null){
               const oper = proxN - actN;

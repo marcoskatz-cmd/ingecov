@@ -4247,21 +4247,10 @@ function renderServiceTab(){
     // Texto del badge: ESTADO real de la fuente (VENCIDO/CRÍTICO/INTERMEDIO/
     // HOLGADO) sin el símbolo ⚠, para distinguir vencido de crítico. Color = tier.
     const estadoTxt=String(sp[codN].estado||'').replace(/[^\p{L} ]/gu,'').trim();
-    // Dato inconsistente (imposible): el último service quedó registrado POR ENCIMA
-    // del hr/km actual del equipo. Como ahora AMBOS números salen del RESUMEN de
-    // service (jul-2026: el combustible ya no participa de la operatividad), esto
-    // solo puede ser una inconsistencia interna de esa planilla: la hr del último
-    // service o el HR/KM ACTUAL están mal cargados ahí. Lo marcamos "⚠ REVISAR".
-    // No cambia ningún número: surface del dato sucio, no lo esconde.
-    const frecN=num(op.frecuencia||sp[codN].frecuencia), ultN=num(sp[codN].ultHrKm);
-    const excesoUlt=(ultN!=null&&op.hrActual!=null&&ultN>op.hrActual+0.5)?(ultN-op.hrActual)/(frecN>0?frecN:1):0;
-    const revisar=excesoUlt>0;
-    let causa='', causaTxt='', causaShort='';
-    if(revisar){
-      causa='service';
-      causaShort='planilla de service';
-      causaTxt=`Planilla de service: el último service (${fmtInt(ultN)}) quedó por encima del HR/KM ACTUAL (${fmtInt(op.hrActual)}) en el propio RESUMEN. Revisar ahí la hr del service o el horómetro actual.`;
-    }
+    // Sin flags de inconsistencia acá (jul-2026): que el último service quede
+    // por encima del horómetro "actual" es NORMAL (la lectura del service es
+    // más fresca que la del horómetro) y llenaba el tab de falsos ⚠. La calidad
+    // de datos se vigila en la auditoría privada, no en este tablero.
     return {
       codigo,
       nombre: info.equipo||sp[codN].descripcion||'',
@@ -4270,18 +4259,15 @@ function renderServiceTab(){
       frecuencia: op.frecuencia||sp[codN].frecuencia||'',
       unidad: unidadDeEquipo(codigo),
       ultFecha: sp[codN].ultFecha||'',
-      revisar, sev: excesoUlt, causa, causaShort, causaTxt,
     };
   });
   rows.sort((a,b)=>{
-    if(a.revisar!==b.revisar)return a.revisar?-1:1;           // inconsistentes primero
-    if(a.revisar&&b.revisar)return b.sev-a.sev;               // más grave arriba
     const ta=TIER[a.nivel]==null?9:TIER[a.nivel], tb=TIER[b.nivel]==null?9:TIER[b.nivel];
     if(ta!==tb)return ta-tb;
     const ra=a.restantes==null?Infinity:a.restantes, rb=b.restantes==null?Infinity:b.restantes;
     return ra-rb;
   });
-  if(badge)badge.textContent=fmtInt(rows.filter(r=>r.nivel==='critico'&&!r.revisar).length);
+  if(badge)badge.textContent=fmtInt(rows.filter(r=>r.nivel==='critico').length);
   if(!wrap)return;
   if(!rows.length){ setHTML(wrap, html`<div class="svc-empty">Sin datos de service en el snapshot.</div>`); return; }
   const badgeCls=n=>n==='critico'?'red':n==='intermedio'?'amber':n==='holgado'?'blue':'gray';
@@ -4294,18 +4280,11 @@ function renderServiceTab(){
   const body=rows.map(r=>{
     const rest=r.restantes==null?'—':r.restantes<=0?'−'+fmtInt(Math.abs(r.restantes)):'+'+fmtInt(r.restantes);
     const restCls=r.restantes==null?'':r.restantes<=0?' red':' amber';
-    const rowCls=r.revisar?' svc-revisar':(r.nivel==='sin-datos'?' svc-dim':'');
-    const badgeC=r.revisar?'revisar':badgeCls(r.nivel);
-    // El badge nombra el ORIGEN de la inconsistencia (combustible / service / código),
-    // no solo "revisar". El detalle completo va en el tooltip de la fila.
-    const badgeT=r.revisar
-      ?(r.causa==='combustible'?'⚠ COMBUSTIBLE':r.causa==='codigo'?'⚠ CÓDIGO':'⚠ SERVICE')
-      :(r.label||'sin datos');
-    const tit=r.revisar?r.causaTxt:'Abrir detalle del equipo';
-    return html`<div class="svc-row${new RawHTML(rowCls)}" data-action="_irAEquipoDesdeKpi" data-arg="${r.codigo}" title="${tit}">
+    const rowCls=r.nivel==='sin-datos'?' svc-dim':'';
+    return html`<div class="svc-row${new RawHTML(rowCls)}" data-action="_irAEquipoDesdeKpi" data-arg="${r.codigo}" title="Abrir detalle del equipo">
       <div class="svc-cod">${r.codigo}</div>
-      <div class="svc-nom" title="${r.nombre}">${r.nombre||'—'}${r.revisar?html`<span class="svc-causa">↳ ${r.causaShort}</span>`:''}</div>
-      <div><span class="svc-badge ${new RawHTML(badgeC)}">${badgeT}</span></div>
+      <div class="svc-nom" title="${r.nombre}">${r.nombre||'—'}</div>
+      <div><span class="svc-badge ${new RawHTML(badgeCls(r.nivel))}">${r.label||'sin datos'}</span></div>
       <div class="svc-num">${fmtU(r.hrActual,r.unidad)}</div>
       <div class="svc-num">${fmtU(r.hrProximo,r.unidad)}</div>
       <div class="svc-num svc-rest2${new RawHTML(restCls)}">${rest}</div>
