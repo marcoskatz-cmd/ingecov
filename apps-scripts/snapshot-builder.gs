@@ -43,6 +43,7 @@ const SNAP_SRC = {
   services:     '14XiIAnYeobj5_3JQlR-ejH6HzCqGJ6QFuGmmwauaRJc', // SERVICES DE EQUIPOS (hojas REGISTROS + OPERATIVIDAD)
   combLivianos: '1DD8BVoF6jX-CcakbbVO6fNJKYF82qBIK1YwyVLQcDJ8', // ENTREGAS DE COMBUSTIBLE - TIBURCIO SANZ (livianos, con costo)
   combPesados:  '19eyY8MImPM_-Gyzj8QcqA_yR5KDrkuu-1faJUU48N1A', // ENTREGAS DE COMBUSTIBLE - LEANDRO CASARES (pesados, horómetro)
+  combCamionetas: '1GB_oiL40fEXHXzhmor3ztnnriiikX1xp3fG-F5Uuw5E', // ENTREGAS DE COMBUSTIBLE camionetas (código directo, sin costo, sin horómetro)
   equipos:      '1EwbNlmBMx3OIviplvHSJM3N4CZ3vVXgVxH208VugG3M', // LISTA DE EQUIPOS (maestro de códigos)
 };
 
@@ -262,7 +263,8 @@ function _buildRepuestos_(snap){
     // PROVEEDOR/COSTO, que son exclusivas de la hoja de entregas.
     // jul-2026: el archivo se reestructuró; la hoja pasó a llamarse 'REGISTRO
     // ENTREGAS' y EQUIPO/SECTOR, CÓDIGO, RAZÓN y RESPONSABLE llevan sufijo ' 1'
-    // (slots 1..4 por entrega, a la fecha solo se usa el 1).
+    // (slots 1..4 por entrega). Los 4 slots se leen: una entrega puede estar
+    // imputada a varios equipos y su costo se reparte en partes iguales.
     const t = _readTab_(SNAP_SRC.repuestos, 'ENTREGAS') || _readTab_(SNAP_SRC.repuestos, 'REGISTRO ENTREGAS') || _readTabByHeader_(SNAP_SRC.repuestos, ['PROVEEDOR','COSTO']);
     if(!t){
       let tabs='';
@@ -274,21 +276,52 @@ function _buildRepuestos_(snap){
     const iFec = _idx_(h, ['FECHA','FECHA ENTREGA']);
     const iEqu = _idx_(h, ['EQUIPO','EQUIPO/SECTOR','EQUIPO/SECTOR 1']);
     const iCod = _idx_(h, ['CÓDIGO','CODIGO','CÓDIGO 1']);
+    // Slots 2..4: una entrega puede imputarse hasta a 4 equipos. Emitimos UNA
+    // fila por equipo imputado (misma entrega, COSTO verbatim completo) y
+    // publicamos cuántos equipos comparten la entrega en 'EQUIPOS IMPUTADOS';
+    // el browser divide el costo por ese número al atribuirlo por equipo.
+    const SLOTS = [
+      { eq:iEqu, cod:iCod },
+      { eq:_idx_(h, ['EQUIPO/SECTOR 2']), cod:_idx_(h, ['CÓDIGO 2','CODIGO 2']) },
+      { eq:_idx_(h, ['EQUIPO/SECTOR 3']), cod:_idx_(h, ['CÓDIGO 3','CODIGO 3']) },
+      { eq:_idx_(h, ['EQUIPO/SECTOR 4']), cod:_idx_(h, ['CÓDIGO 4','CODIGO 4']) },
+    ];
     const iCos = _idx_(h, ['COSTO','PRECIO','TOTAL','IMPORTE','COSTO ENTREGA','PRECIO TOTAL','MONTO','COSTO TOTAL']);
     const iRaz = _idx_(h, ['DESTINO/RAZÓN','RAZÓN','RAZON','MOTIVO','DESTINO','RAZÓN 1']);
     const iRes = _idx_(h, ['RESPONSABLE','RESPONSABLE ENTREGA','RESPONSABLE 1']);
     const iIte = _idx_(h, ['DESCRIPCIÓN DE REPUESTOS','DESCRIPCION DE REPUESTOS','REPUESTOS','ITEMS DETALLE','DESCRIPCIÓN','DESCRIPCION']);
 
-    const out = [['N° ENTREGA','FECHA','EQUIPO','CÓDIGO','COSTO ENTREGA','RAZÓN ENTREGA','RESPONSABLE ENTREGA','ITEMS DETALLE']];
-    let n = 0;
+    const out = [['N° ENTREGA','FECHA','EQUIPO','CÓDIGO','COSTO ENTREGA','RAZÓN ENTREGA','RESPONSABLE ENTREGA','ITEMS DETALLE','EQUIPOS IMPUTADOS']];
+    let n = 0, nMulti = 0;
     for(const r of t.rows){
       const nro = _at_(r, iNro), fecha = _at_(r, iFec);
       if(!nro && !fecha) continue;
-      out.push([nro, fecha, _at_(r, iEqu), _at_(r, iCod), _at_(r, iCos), _at_(r, iRaz), _at_(r, iRes), _at_(r, iIte)]);
-      n++;
+      // Equipos realmente imputados: código no vacío y distinto de '-'
+      // (_snapNormCod('-') === ''), sin repetir el mismo equipo dos veces.
+      const imputados = [], vistos = {};
+      for(const s of SLOTS){
+        const cod = _at_(r, s.cod), key = _snapNormCod(cod);
+        if(!key || vistos[key]) continue;
+        vistos[key] = 1;
+        imputados.push({ eq:_at_(r, s.eq), cod:cod });
+      }
+      const costo = _at_(r, iCos), raz = _at_(r, iRaz), res = _at_(r, iRes), ite = _at_(r, iIte);
+      if(!imputados.length){
+        // Entrega sin equipo válido (código '-' o vacío): se mantiene tal cual,
+        // no se atribuye a nadie (el browser ya descarta código '-').
+        out.push([nro, fecha, _at_(r, iEqu), _at_(r, iCod), costo, raz, res, ite, '1']);
+        n++;
+        continue;
+      }
+      if(imputados.length > 1) nMulti++;
+      for(const im of imputados){
+        out.push([nro, fecha, im.eq, im.cod, costo, raz, res, ite, String(imputados.length)]);
+        n++;
+      }
     }
     _write_(snap, 'REP_LIVE', out, true);
-    const det = iCos < 0 ? 'OJO: no encontré columna de costo en ENTREGAS' : '';
+    const det = iCos < 0 ? 'OJO: no encontré columna de costo en ENTREGAS'
+                         : (nMulti ? ('entregas multi-equipo: ' + nMulti) : '');
     return { tab:'REP_LIVE', rows:n, status: iCos < 0 ? 'WARN' : 'OK', detalle:det };
   }catch(e){ return { tab:'REP_LIVE', rows:0, status:'ERROR', detalle:String(e && e.message || e) }; }
 }
@@ -342,7 +375,9 @@ function _buildPedidos_(snap){
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   COMBUSTIBLE ← ENTREGAS DE COMBUSTIBLE - LEANDRO CASARES (pesados, horómetro)
+   COMBUSTIBLE ← 2 fuentes apiladas al mismo stream (match por código):
+     · ENTREGAS DE COMBUSTIBLE - LEANDRO CASARES (pesados, horómetro)
+     · ENTREGAS DE COMBUSTIBLE camionetas (código directo, sin costo ni horómetro)
    procesarCombustible usa _pickCol con sinónimos cortos: CODIGO, FECHA,
    ESTADO, HOROMETRO ACTUAL, CANTIDAD, TIPO, LUGAR, OPERARIO, OBSERVACIONES.
 ═══════════════════════════════════════════════════════════════════════ */
@@ -368,8 +403,41 @@ function _buildCombustible_(snap){
       out.push([cod, _at_(r, iFec), _at_(r, iEst), _at_(r, iHr), _at_(r, iLit), _at_(r, iTip), _at_(r, iLug), _at_(r, iOpe), '']);
       n++;
     }
+    // ── Camionetas: 2ª fuente que apila al MISMO stream (match por código).
+    //    Sin costo y sin horómetro/odómetro usable → ESTADO vacío ⇒ el browser
+    //    guarda la carga con hr=null (no calcula consumo), pero suma litros/mes
+    //    e historial por equipo. Columnas de la fuente:
+    //    FECHA · REMITO INTERNO · TIPO COMBUSTIBLE · CANTIDAD · EQUIPO · CÓDIGO
+    //    · N° SERIE/PATENTE · ODÓMETRO · RESPONSABLE · OBRA PARTICULAR · OBRA GENERAL
+    let nCam = 0;
+    try{
+      const tc = _readTabByHeader_(SNAP_SRC.combCamionetas, ['REMITO INTERNO']);
+      if(tc){
+        const hc = tc.header;
+        const cCod = _idx_(hc, ['CÓDIGO','CODIGO','CÓDIGO INTERNO','CODIGO INTERNO']);
+        const cFec = _idx_(hc, ['FECHA']);
+        const cLit = _idx_(hc, ['CANTIDAD (L)','CANTIDAD','LITROS']);
+        const cTip = _idx_(hc, ['TIPO COMBUSTIBLE','TIPO DE COMBUSTIBLE','TIPO']);
+        const cObr = _idx_(hc, ['OBRA PARTICULAR','OBRA GENERAL','OBRA']);
+        const cRes = _idx_(hc, ['RESPONSABLE','OPERARIO','CHOFER']);
+        const cRem = _idx_(hc, ['REMITO INTERNO','REMITO']);
+        for(const r of tc.rows){
+          const cod = _at_(r, cCod);
+          if(!_snapNormCod(cod)) continue;   // "Bidón"/Obra sin código → se ignoran
+          // Solo auditoría de cargas: hs/km salen de la planilla de service, NO de acá.
+          // ESTADO vacío ⇒ el browser guarda con hr=null (no calcula consumo).
+          out.push([
+            cod, _at_(r, cFec), '', '',
+            _at_(r, cLit), _at_(r, cTip), _at_(r, cObr), _at_(r, cRes),
+            cRem >= 0 ? ('Remito ' + _at_(r, cRem)) : '',
+          ]);
+          nCam++;
+        }
+      }
+    }catch(eCam){ /* si la fuente de camionetas falla, no tiramos todo el snapshot */ }
+
     _write_(snap, 'COMBUSTIBLE', out, true);
-    return { tab:'COMBUSTIBLE', rows:n, status:'OK', detalle:'' };
+    return { tab:'COMBUSTIBLE', rows:n+nCam, status:'OK', detalle: nCam ? ('camionetas: '+nCam) : '' };
   }catch(e){ return { tab:'COMBUSTIBLE', rows:0, status:'ERROR', detalle:String(e && e.message || e) }; }
 }
 

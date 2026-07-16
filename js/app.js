@@ -708,6 +708,7 @@ function procesarPanelRepuestos(panelObj){
   if(!panelObj||!panelObj.length)return ctx;
 
   const MES_ACTUAL_YM=MES_ACTUAL?MES_ACTUAL.ym:null;
+  const _mesActualVistos={};   // dedupe de entregas multi-equipo en el dashboard
 
   for(const r of panelObj){
     const mes=_pickCol(r,['MES']);
@@ -721,6 +722,12 @@ function procesarPanelRepuestos(panelObj){
     const codN=normCod(codigoRaw);
     const costoStr=String(_pickCol(r,['COSTO ENTREGA','COSTO'])||'').trim();
     const costo=parseMoney(costoStr);
+    // Una entrega puede estar imputada a varios equipos: el builder emite una
+    // fila por equipo con el COSTO completo y publica cuántos la comparten.
+    // El costo de la entrega sigue siendo el total; lo que se reparte en partes
+    // iguales es lo que se ATRIBUYE a cada equipo.
+    const nEquipos=Math.max(1,parseInt(_pickCol(r,['EQUIPOS IMPUTADOS'])||'1',10)||1);
+    const costoEq=costo/nEquipos;
     const razon=String(_pickCol(r,['RAZÓN ENTREGA','RAZON ENTREGA','RAZON','MOTIVO'])||'').trim();
     const resp=String(_pickCol(r,['RESPONSABLE ENTREGA','RESPONSABLE'])||'').trim();
     const itemsStr=String(_pickCol(r,['ITEMS DETALLE','ITEMS','REPUESTOS ENTREGADOS','REPUESTOS'])||'').trim();
@@ -751,18 +758,19 @@ function procesarPanelRepuestos(panelObj){
     // 3) _costosPorMes[ym][codN]
     if(ym&&codN&&costo>0){
       (ctx.costosPorMes[ym]=ctx.costosPorMes[ym]||{});
-      ctx.costosPorMes[ym][codN]=(ctx.costosPorMes[ym][codN]||0)+costo;
+      ctx.costosPorMes[ym][codN]=(ctx.costosPorMes[ym][codN]||0)+costoEq;
       // 4) _repuestosHistorial[codN][ym]
       (ctx.repuestosHistorial[codN]=ctx.repuestosHistorial[codN]||{});
-      ctx.repuestosHistorial[codN][ym]=(ctx.repuestosHistorial[codN][ym]||0)+costo;
+      ctx.repuestosHistorial[codN][ym]=(ctx.repuestosHistorial[codN][ym]||0)+costoEq;
       // 4b) Solo correctivo SIN neumáticos (criterio del tab de costos:
       // RAZÓN manda, fallback por texto de items). Alimenta costos downtime.
       if(esCorrectivoCosto(razon,itemsStr)){
         (ctx.costosCorrPorMes[ym]=ctx.costosCorrPorMes[ym]||{});
-        ctx.costosCorrPorMes[ym][codN]=(ctx.costosCorrPorMes[ym][codN]||0)+costo;
+        ctx.costosCorrPorMes[ym][codN]=(ctx.costosCorrPorMes[ym][codN]||0)+costoEq;
         // Mismo predicado/monto que el total → el desglove reconcilia exacto.
         (ctx.entregasCorrPorEquipo[codN]=ctx.entregasCorrPorEquipo[codN]||[]).push({
-          nro:nro||'—', fecha:fecha||'—', ym, items:itemsStr||'—', razon:razon||'', costo:costo,
+          nro:nro||'—', fecha:fecha||'—', ym, items:itemsStr||'—', razon:razon||'',
+          costo:costoEq, nEquipos:nEquipos,
         });
       }
     }
@@ -770,16 +778,19 @@ function procesarPanelRepuestos(panelObj){
     if(codN&&codN!=='-'){
       (ctx.entregasPorEquipo[codN]=ctx.entregasPorEquipo[codN]||[]).push({
         nro:nro||'—', fecha:fecha||'—',
-        items:itemsStr||'—', costo:costo, razon:razon||'',
+        items:itemsStr||'—', costo:costoEq, razon:razon||'', nEquipos:nEquipos,
       });
     }
-    // 6) Entregas del mes actual (para el dashboard inicial)
-    if(MES_ACTUAL_YM&&ym===MES_ACTUAL_YM){
+    // 6) Entregas del mes actual (para el dashboard inicial). Una entrega
+    // imputada a varios equipos llega como N filas: la listamos UNA sola vez,
+    // con su costo total (no la parte de cada equipo).
+    if(MES_ACTUAL_YM&&ym===MES_ACTUAL_YM&&!(nro&&_mesActualVistos[nro])){
+      if(nro)_mesActualVistos[nro]=1;
       ctx.entregasMesActual.push({
         nro,fecha,equipo,codigo:codigoRaw,
         costo:costoStr,costoNum:costo,
         razon,responsable:resp,nroPedido,
-        items,
+        items,nEquipos,
       });
     }
   }
@@ -3828,7 +3839,7 @@ function _costoBreakdownHTML(codN, cfg, yms){
   const repItems = entregas.length
     ? entregas.map(e=>html`<div style="${new RawHTML(liRow)}">
         <span class="mono" style="color:var(--text3)">${e.fecha}</span>
-        <span>${e.items}${e.nro&&e.nro!=='—'?html` <span style="color:var(--text3)">· Nº ${e.nro}</span>`:''}</span>
+        <span>${e.items}${e.nro&&e.nro!=='—'?html` <span style="color:var(--text3)">· Nº ${e.nro}</span>`:''}${e.nEquipos>1?html` <span style="color:var(--text3)" title="Entrega imputada a ${e.nEquipos} equipos: se reparte en partes iguales">· 1/${e.nEquipos}</span>`:''}</span>
         <span class="mono" style="text-align:right;white-space:nowrap">${new RawHTML(fARS(e.costo))}</span>
       </div>`)
     : [html`<div style="${new RawHTML(liRow)};color:var(--text3)">Sin entregas correctivas en el período.</div>`];
