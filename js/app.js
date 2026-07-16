@@ -747,9 +747,11 @@ function procesarPanelRepuestos(panelObj){
       }
     }
 
-    // 1) _entregaCostos[nro]
+    // 1) _entregaCostos[nro] — costo TOTAL de la entrega (no la parte de cada
+    // equipo). Guardamos también entre cuántos equipos se reparte para que el
+    // modal pueda mostrar la parte que le toca a cada uno.
     if(nro){
-      ctx.entregaCostos[nro]={costo:costo,mes:label||''};
+      ctx.entregaCostos[nro]={costo:costo,mes:label||'',nEquipos:nEquipos};
     }
     // 2) _itemsPorEntrega[nro]
     if(nro&&items.length){
@@ -3101,10 +3103,14 @@ async function toggleEquipoDetail(codigo,cardEl){
   // Sección 2: Pedidos
   const PBADGE={entregado:'<span class="badge badge-green" style="font-size:9px">Completado</span>',pendiente:'<span class="badge badge-red" style="font-size:9px">Pendiente</span>',parcial:'<span class="badge badge-amber" style="font-size:9px">Parcial</span>',comprado:'<span class="badge badge-blue" style="font-size:9px">Comprado</span>',anulado:'<span class="badge badge-gray" style="font-size:9px">Anulado</span>'};
   const getBP=est=>PBADGE[est.toLowerCase()]||`<span class="badge badge-gray" style="font-size:9px">${est}</span>`;
+  // Costo que le corresponde a ESTE equipo: si la entrega está imputada a
+  // varios, el total se reparte en partes iguales. Devuelve {txt, nEquipos}.
   const getCE=nroEnt=>{
     if(!nroEnt||nroEnt==='—')return null;
     const e=(window._entregaCostos||{})[String(nroEnt).split(/[-,]/)[0].trim()];
-    return e?.costo>0?formatMoney(e.costo):null;
+    if(!(e?.costo>0))return null;
+    const n=Math.max(1,e.nEquipos||1);
+    return {txt:formatMoney(e.costo/n),nEquipos:n};
   };
 
   // N° ENTREGA ya vinculadas a un pedido entregado (evitar duplicar la fila en el listado)
@@ -3208,7 +3214,7 @@ async function toggleEquipoDetail(codigo,cardEl){
           <td class="mono" style="font-size:10px;color:var(--text3)">${p.nroEntrega}</td>
           <td class="mono" style="font-size:10px;color:var(--text3);white-space:nowrap">${formatFechaCorta(p.fechaEnt)}</td>
           <td style="text-align:center;white-space:nowrap">${renderDemora(p)}</td>
-          <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px;color:${costo?'var(--amber)':'var(--text3)'}">${costo||'—'}</td>
+          <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px;color:${costo?'var(--amber)':'var(--text3)'};white-space:nowrap">${costo?costo.txt:'—'}${costo&&costo.nEquipos>1?` <span style="color:var(--text3)" title="Entrega imputada a ${costo.nEquipos} equipos: el costo se reparte en partes iguales">1/${costo.nEquipos}</span>`:''}</td>
           <td>${getBP(p.estado)}</td>
         </tr>`;}).join('')}</tbody>
       </table></div>`
