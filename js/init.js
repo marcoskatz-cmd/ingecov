@@ -59,7 +59,7 @@ document.addEventListener('DOMContentLoaded', _tickClock);
    (no localStorage), así que dura mientras el usuario tenga la pestaña
    abierta. Al cerrar el browser / pestaña vuelve a pedir.
 ═══════════════════════════════════════════════════════ */
-const PANEL_PIN = '5289';
+const PANEL_PIN = '1960';
 const PIN_KEY = 'ingeco-pin-ok';
 
 (function pinGate(){
