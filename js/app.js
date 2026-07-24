@@ -751,7 +751,7 @@ function procesarPanelRepuestos(panelObj){
     // equipo). Guardamos también entre cuántos equipos se reparte para que el
     // modal pueda mostrar la parte que le toca a cada uno.
     if(nro){
-      ctx.entregaCostos[nro]={costo:costo,mes:label||'',nEquipos:nEquipos};
+      ctx.entregaCostos[nro]={costo:costo,mes:label||'',nEquipos:nEquipos,fecha:fecha||''};
     }
     // 2) _itemsPorEntrega[nro]
     if(nro&&items.length){
@@ -2603,7 +2603,7 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
   // Pedidos
   const todosLosPedidos=pendientesRaw
     .filter(r=>r[0]&&!isNaN(parseFloat(r[0]))&&r[2]&&r[5])
-    .map(r=>({nro:r[0],fecha:r[1],equipo:r[2],codigo:normCod(r[3]),codigoRaw:r[3]||'—',desc:r[4],estado:r[5]}));
+    .map(r=>({nro:r[0],fecha:r[1],equipo:r[2],codigo:normCod(r[3]),codigoRaw:r[3]||'—',desc:r[4],estado:r[5],orden:r[6]||'',nroEntrega:r[7]||''}));
   const pendActivos=todosLosPedidos.filter(p=>{const l=p.estado.toLowerCase();return l.includes('pendiente')||l.includes('parcial')||l.includes('comprado');}).length;
   window._pedidosAll=todosLosPedidos;
 
@@ -3100,15 +3100,14 @@ async function toggleEquipoDetail(codigo,cardEl){
           : ''
     }</div>`;
 
-  // Sección 2: Pedidos y entregas de repuestos.
-  // NOTA DE DATOS (jul-2026): pedidos (PED_PEND) y entregas con costo (REP_LIVE)
-  // son dos ledgers SEPARADOS sin clave de vínculo — la entrega NO registra el
-  // N° PEDIDO y la pestaña que los linkeaba (ENTREGADOS) está vacía y sin uso.
-  // Por eso NO se puede poner la fecha/costo de la entrega en el renglón del
-  // pedido. Mostramos dos tablas honestas: (A) pedidos con su ESTADO nativo
-  // (Pendiente / Entregado / Entregado parcialmente), una fila por pedido; y
-  // (B) entregas con costo. Si algún día la planilla de repuestos suma una
-  // columna N° PEDIDO, acá se pueden fusionar por esa clave.
+  // Sección 2: Pedidos de repuestos, con su entrega vinculada en el MISMO renglón.
+  // El vínculo pedido→entrega vive en la columna N° ENTREGA de la hoja PEDIDOS
+  // (back-ref: "1168", o "648-650"/"627,628" cuando la entrega fue parcial o
+  // múltiple). El builder ahora lo copia a PED_PEND (cols N° ORDEN + N° ENTREGA).
+  // Con el N° ENTREGA cruzamos a REP_LIVE (_entregaCostos) y traemos fecha y
+  // costo de la entrega a la fila del pedido. Lo no entregado queda Pendiente;
+  // las entregas parciales/múltiples se listan y su costo (la parte de ESTE
+  // equipo, total/nEquipos) se suma. N° OC = orden de compra.
   const escapeHTML=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   // Badge por ESTADO nativo del pedido. Match por substring (la fuente escribe
   // "Entregado parcialmente", "Pendiente", "Entregado", etc.). Parcial gana a
@@ -3122,29 +3121,75 @@ async function toggleEquipoDetail(codigo,cardEl){
     if(l.includes('pendiente')) return '<span class="badge badge-red"   style="font-size:9px">Pendiente</span>';
     return `<span class="badge badge-gray" style="font-size:9px">${escapeHTML(est||'—')}</span>`;
   };
+  // Expande el campo N° ENTREGA del pedido a lista de números: soporta listas
+  // ("627,628" / "627 628") y rangos cortos ("648-650" → 648,649,650).
+  const expandEntregas=campo=>{
+    const s=String(campo||'').trim();
+    if(!s||s==='-'||s==='—')return[];
+    const out=[];
+    for(const tok of s.split(/[,\s/]+/)){
+      const m=tok.match(/^(\d+)\s*-\s*(\d+)$/);
+      if(m){const a=+m[1],b=+m[2];if(b>=a&&b-a<40){for(let i=a;i<=b;i++)out.push(String(i));continue;}}
+      const t=tok.replace(/[^\d]/g,'');
+      if(t)out.push(t);
+    }
+    return out;
+  };
+  const _entCosto=n=>{const e=(window._entregaCostos||{})[String(n).trim()];if(!(e?.costo>0))return null;return e.costo/Math.max(1,e.nEquipos||1);};
+  const _entFecha=n=>{const e=(window._entregaCostos||{})[String(n).trim()];return e?.fecha||'';};
 
-  // (A) Pedidos de este equipo (PED_PEND → _pedidosAll). Una fila por pedido,
-  // con su ESTADO tal cual lo lleva la planilla. Sin fecha/costo de entrega
-  // porque ese dato no está vinculado (ver nota arriba).
-  const pedidosEquipo=[...pedidosActivos]
-    .map(p=>({nro:p.nro||'—',fecha:p.fecha||'—',desc:p.desc||'—',estado:p.estado||'—',_ts:toSortDate(p.fecha)}))
-    .sort((a,b)=>b._ts-a._ts);
+  // N° ENTREGA ya vinculadas a un pedido de este equipo (para no re-listarlas
+  // en la tabla secundaria de entregas sueltas).
+  const entregasVinculadas=new Set();
+
+  // (A) Pedidos de este equipo (PED_PEND → _pedidosAll), una fila por pedido,
+  // con su entrega cruzada. ESTADO tal cual lo lleva la planilla.
+  const pedidosEquipo=[...pedidosActivos].map(p=>{
+    const ents=expandEntregas(p.nroEntrega);
+    ents.forEach(n=>entregasVinculadas.add(n));
+    let costoSum=0,tieneCosto=false,fEnt='',fEntTs=-Infinity;
+    for(const n of ents){
+      const c=_entCosto(n); if(c!=null){costoSum+=c;tieneCosto=true;}
+      const f=_entFecha(n); if(f){const ts=toSortDate(f); if(ts>fEntTs){fEntTs=ts;fEnt=f;}}
+    }
+    return {
+      nro:p.nro||'—', orden:(p.orden&&p.orden!=='-')?p.orden:'', fecha:p.fecha||'—',
+      desc:p.desc||'—', estado:p.estado||'—',
+      entTxt:ents.join(', '), fEnt, costo:tieneCosto?costoSum:null,
+      _ts:toSortDate(p.fecha),
+    };
+  }).sort((a,b)=>b._ts-a._ts);
+
+  const demoraHTML=(fPed,fEnt)=>{
+    const d1=_parseDate(fPed),d2=_parseDate(fEnt);
+    if(!d1||!d2)return'<span style="color:var(--text3)">—</span>';
+    const dias=Math.round((d2-d1)/86400000);
+    if(dias<0)return'<span style="color:var(--text3)">—</span>';
+    let color='var(--text2)';
+    if(dias<=7)color='var(--green)';else if(dias<=21)color='var(--text2)';else if(dias<=45)color='var(--amber)';else color='var(--red)';
+    return`<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:${color};font-weight:500">${dias}d</span>`;
+  };
 
   const contPedidos=pedidosEquipo.length
     ?`<div class="table-wrap"><table class="eq-inner-table">
-        <thead><tr><th>N° Pedido</th><th>Fecha</th><th>Descripción</th><th>Estado</th></tr></thead>
+        <thead><tr><th>N° Pedido</th><th>N° OC</th><th>F. Pedido</th><th>Descripción</th><th>N° Entrega</th><th>F. Entrega</th><th style="text-align:center">Demora</th><th style="text-align:right">Costo</th><th>Estado</th></tr></thead>
         <tbody>${pedidosEquipo.map(p=>`<tr>
           <td class="mono" style="font-size:10px">${p.nro}</td>
+          <td class="mono" style="font-size:10px;color:var(--text3)">${p.orden?escapeHTML(p.orden):'—'}</td>
           <td class="mono" style="font-size:10px;color:var(--text3);white-space:nowrap">${formatFechaCorta(p.fecha)}</td>
           <td style="font-size:12px;color:var(--text2)">${escapeHTML(p.desc)}</td>
+          <td class="mono" style="font-size:10px;color:var(--text3)">${p.entTxt||'—'}</td>
+          <td class="mono" style="font-size:10px;color:var(--text3);white-space:nowrap">${p.fEnt?formatFechaCorta(p.fEnt):'—'}</td>
+          <td style="text-align:center;white-space:nowrap">${demoraHTML(p.fecha,p.fEnt)}</td>
+          <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px;color:${p.costo!=null?'var(--amber)':'var(--text3)'};white-space:nowrap">${p.costo!=null?formatMoney(p.costo):'—'}</td>
           <td>${badgeEstado(p.estado)}</td>
         </tr>`).join('')}</tbody>
       </table></div>`
     :`<div class="no-data">Sin pedidos de repuestos registrados para este equipo.</div>`;
 
-  // (B) Entregas de repuestos con costo (REP_LIVE → _entregasPorEquipo). Ledger
-  // separado: numeración propia (N° ENTREGA), sin puntero al N° PEDIDO. Costo
-  // repartido si la entrega está imputada a varios equipos.
+  // (B) Entregas de este equipo que NO quedaron vinculadas a ningún pedido
+  // (entrega cargada sin back-ref en la hoja PEDIDOS, o el pedido no está en la
+  // lista). Se muestran aparte para no perder el costo. Sección colapsada.
   const getCE=nroEnt=>{
     if(!nroEnt||nroEnt==='—')return null;
     const e=(window._entregaCostos||{})[String(nroEnt).split(/[-,]/)[0].trim()];
@@ -3152,8 +3197,6 @@ async function toggleEquipoDetail(codigo,cardEl){
     const n=Math.max(1,e.nEquipos||1);
     return {txt:formatMoney(e.costo/n),nEquipos:n};
   };
-  // Muestra los items detallados de la entrega (cantidad × descripción · proveedor)
-  // si existen en _itemsPorEntrega; si no, cae al texto plano de la fila.
   const renderItems=(nroEnt,fallback)=>{
     const map=window._itemsPorEntrega||{};
     const key=String(nroEnt||'').split(/[-,]/)[0].trim();
@@ -3172,6 +3215,7 @@ async function toggleEquipoDetail(codigo,cardEl){
   };
   const entregasEquipo=[...((window._entregasPorEquipo||{})[codN]||[])]
     .map(e=>({nro:e.nro||'—',fecha:e.fecha||'—',items:e.items||'—',_ts:toSortDate(e.fecha)}))
+    .filter(e=>!entregasVinculadas.has(String(e.nro).split(/[-,]/)[0].trim()))
     .sort((a,b)=>b._ts-a._ts);
 
   const contEntregas=entregasEquipo.length
@@ -3315,7 +3359,7 @@ async function toggleEquipoDetail(codigo,cardEl){
       (horHTML instanceof RawHTML ? horHTML.value : String(horHTML))+
       eqSection('servicios y reparaciones en taller',contServicio,true).value+
       eqSection(`pedidos de repuestos (${pedidosEquipo.length})`,contPedidos,true).value+
-      eqSection(`entregas de repuestos con costo (${entregasEquipo.length})`,contEntregas,false).value+
+      (entregasEquipo.length?eqSection(`entregas sin pedido vinculado (${entregasEquipo.length})`,contEntregas,false).value:'')+
       (hayCualquiera?eqSection('costos y horas de mantenimiento mes a mes',contGrafico,true).value:'')+
       eqSection(`cargas de combustible${comb?.cargas?.length?` (${comb.cargas.length})`:''}`,contCombustible,false).value+
       eqSection('fuentes de información',contFuentes,false).value
