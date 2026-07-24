@@ -356,16 +356,22 @@ function _buildPedidos_(snap){
     const iCod = _idx_(h, ['CÓDIGO','CODIGO','CÓDIGO 1']);
     const iDes = _idx_(h, ['DESCRIPCIÓN DE REPUESTOS','DESCRIPCION DE REPUESTOS','DESCRIPCIÓN','DESCRIPCION','REPUESTOS']);
     const iEst = _idx_(h, ['ESTADO']);
+    // N° ORDEN (orden de compra) y N° ENTREGA (back-ref del pedido a su/s
+    // entrega/s, ej. "1168" o "648-650"). Con N° ENTREGA el browser cruza a
+    // REP_LIVE para traer fecha y costo de la entrega al renglón del pedido.
+    // Cols 7 y 8 (posiciones 0-5 intactas: renderDashboard lee PED_PEND posicional).
+    const iOrd = _idx_(h, ['N° ORDEN','N ORDEN','NRO ORDEN','ORDEN','N° ORDEN DE COMPRA','N° OC','ORDEN DE COMPRA','N ORDEN DE COMPRA']);
+    const iEnt = _idx_(h, ['N° ENTREGA','N ENTREGA','NRO ENTREGA','ENTREGA','N° DE ENTREGA']);
     // Si el N° no está como header reconocible, usar la primera columna (la "L1122"
     // del archivo tiene los números de pedido como valores).
     const cNro = iNro >= 0 ? iNro : 0;
 
-    const out = [['N°','FECHA','EQUIPO','CÓDIGO','DESCRIPCIÓN','ESTADO']];
+    const out = [['N°','FECHA','EQUIPO','CÓDIGO','DESCRIPCIÓN','ESTADO','N° ORDEN','N° ENTREGA']];
     let n = 0;
     for(const r of t.rows){
       const nro = _at_(r, cNro), estado = _at_(r, iEst);
       if(!nro && !estado) continue;
-      out.push([nro, _at_(r, iFec), _at_(r, iEqu), _at_(r, iCod), _at_(r, iDes), estado]);
+      out.push([nro, _at_(r, iFec), _at_(r, iEqu), _at_(r, iCod), _at_(r, iDes), estado, _at_(r, iOrd), _at_(r, iEnt)]);
       n++;
     }
     _write_(snap, 'PED_PEND', out, false);
