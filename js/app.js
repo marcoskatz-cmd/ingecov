@@ -704,6 +704,7 @@ function procesarPanelRepuestos(panelObj){
     entregasPorEquipo:{},  // { codN: [{nro,fecha,items,costo}] }
     repuestosHistorial:{}, // { codN: { ym: costoTotal } }
     entregasMesActual:[],  // entregas del mes actual: {nro,fecha,equipo,codigo,costo,costoNum,razon,responsable,nroPedido,items}
+    entregasPorPedido:{},  // { nroPedido: [nroEntrega...] } — vínculo entrega→pedido (N° PEDIDO de REP_LIVE)
   };
   if(!panelObj||!panelObj.length)return ctx;
 
@@ -752,6 +753,14 @@ function procesarPanelRepuestos(panelObj){
     // modal pueda mostrar la parte que le toca a cada uno.
     if(nro){
       ctx.entregaCostos[nro]={costo:costo,mes:label||'',nEquipos:nEquipos,fecha:fecha||''};
+    }
+    // 1b) _entregasPorPedido[nroPedido] — vínculo entrega→pedido leído de la
+    // columna N° PEDIDO de REP_LIVE. Cubre las entregas que registran su pedido
+    // aunque el pedido no tenga el back-ref N° ENTREGA cargado. Dedup por nro.
+    if(nroPedido&&nro){
+      const k=String(nroPedido).trim();
+      const arr=(ctx.entregasPorPedido[k]=ctx.entregasPorPedido[k]||[]);
+      if(!arr.includes(nro))arr.push(nro);
     }
     // 2) _itemsPorEntrega[nro]
     if(nro&&items.length){
@@ -2251,6 +2260,7 @@ async function loadAll(){
     window._repuestosHistorial= ctx.repuestosHistorial;
     window._entregasPorEquipo = ctx.entregasPorEquipo;
     window._entregasCorrPorEquipo = ctx.entregasCorrPorEquipo;
+    window._entregasPorPedido = ctx.entregasPorPedido;
 
     // Procesar PANEL_TRABAJOS para telemetría de flota (horas por equipo, por mes).
     // Cacheamos el raw para que loadTrabajosRegistro (modal de equipo) no re-descargue.
@@ -3121,17 +3131,24 @@ async function toggleEquipoDetail(codigo,cardEl){
     if(l.includes('pendiente')) return '<span class="badge badge-red"   style="font-size:9px">Pendiente</span>';
     return `<span class="badge badge-gray" style="font-size:9px">${escapeHTML(est||'—')}</span>`;
   };
-  // Expande el campo N° ENTREGA del pedido a lista de números: soporta listas
-  // ("627,628" / "627 628") y rangos cortos ("648-650" → 648,649,650).
+  // Expande el campo N° ENTREGA del pedido a lista de números. Soporta:
+  //  · listas por coma/espacio/barra ("627,628" / "627 628")
+  //  · rango corto de DOS números ("648-650" → 648,649,650)
+  //  · lista con guiones de TRES o más ("988-990-991" → 988,990,991), que NO es
+  //    un rango — por eso el guion solo se interpreta como rango cuando el token
+  //    tiene exactamente 2 partes.
   const expandEntregas=campo=>{
     const s=String(campo||'').trim();
     if(!s||s==='-'||s==='—')return[];
     const out=[];
     for(const tok of s.split(/[,\s/]+/)){
-      const m=tok.match(/^(\d+)\s*-\s*(\d+)$/);
-      if(m){const a=+m[1],b=+m[2];if(b>=a&&b-a<40){for(let i=a;i<=b;i++)out.push(String(i));continue;}}
-      const t=tok.replace(/[^\d]/g,'');
-      if(t)out.push(t);
+      if(!tok)continue;
+      const parts=tok.split('-').filter(Boolean);
+      if(parts.length===2&&/^\d+$/.test(parts[0])&&/^\d+$/.test(parts[1])){
+        const a=+parts[0],b=+parts[1];
+        if(b>=a&&b-a<40){for(let i=a;i<=b;i++)out.push(String(i));continue;}
+      }
+      for(const pt of parts){const t=pt.replace(/[^\d]/g,'');if(t)out.push(t);}
     }
     return out;
   };
@@ -3144,8 +3161,14 @@ async function toggleEquipoDetail(codigo,cardEl){
 
   // (A) Pedidos de este equipo (PED_PEND → _pedidosAll), una fila por pedido,
   // con su entrega cruzada. ESTADO tal cual lo lleva la planilla.
+  const entregasDePedido=window._entregasPorPedido||{};
   const pedidosEquipo=[...pedidosActivos].map(p=>{
-    const ents=expandEntregas(p.nroEntrega);
+    // Unión de los dos sentidos del vínculo: (a) back-ref N° ENTREGA del pedido,
+    // (b) entregas que declararon este N° PEDIDO en REP_LIVE.
+    const ents=[...new Set([
+      ...expandEntregas(p.nroEntrega),
+      ...(entregasDePedido[String(p.nro).trim()]||[]),
+    ])].filter(n=>(window._entregaCostos||{})[n]);   // solo entregas reales (presentes en REP_LIVE); descarta artefactos de parseo
     ents.forEach(n=>entregasVinculadas.add(n));
     let costoSum=0,tieneCosto=false,fEnt='',fEntTs=-Infinity;
     for(const n of ents){

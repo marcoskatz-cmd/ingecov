@@ -290,8 +290,13 @@ function _buildRepuestos_(snap){
     const iRaz = _idx_(h, ['DESTINO/RAZÓN','RAZÓN','RAZON','MOTIVO','DESTINO','RAZÓN 1']);
     const iRes = _idx_(h, ['RESPONSABLE','RESPONSABLE ENTREGA','RESPONSABLE 1']);
     const iIte = _idx_(h, ['DESCRIPCIÓN DE REPUESTOS','DESCRIPCION DE REPUESTOS','REPUESTOS','ITEMS DETALLE','DESCRIPCIÓN','DESCRIPCION']);
+    // N° PEDIDO de la entrega: vínculo entrega→pedido (el otro sentido del que
+    // trae PED_PEND). Algunas entregas registran el pedido acá aunque el pedido
+    // no tenga el back-ref N° ENTREGA cargado → el browser matchea por ambos
+    // lados y así no quedan "entregas sin pedido" que en realidad sí lo tienen.
+    const iPed = _idx_(h, ['N° PEDIDO','N PEDIDO','NRO PEDIDO','PEDIDO','N° DE PEDIDO','N° PEDIDO ENTREGADO']);
 
-    const out = [['N° ENTREGA','FECHA','EQUIPO','CÓDIGO','COSTO ENTREGA','RAZÓN ENTREGA','RESPONSABLE ENTREGA','ITEMS DETALLE','EQUIPOS IMPUTADOS']];
+    const out = [['N° ENTREGA','FECHA','EQUIPO','CÓDIGO','COSTO ENTREGA','RAZÓN ENTREGA','RESPONSABLE ENTREGA','ITEMS DETALLE','EQUIPOS IMPUTADOS','N° PEDIDO']];
     let n = 0, nMulti = 0;
     for(const r of t.rows){
       const nro = _at_(r, iNro), fecha = _at_(r, iFec);
@@ -305,17 +310,17 @@ function _buildRepuestos_(snap){
         vistos[key] = 1;
         imputados.push({ eq:_at_(r, s.eq), cod:cod });
       }
-      const costo = _at_(r, iCos), raz = _at_(r, iRaz), res = _at_(r, iRes), ite = _at_(r, iIte);
+      const costo = _at_(r, iCos), raz = _at_(r, iRaz), res = _at_(r, iRes), ite = _at_(r, iIte), ped = _at_(r, iPed);
       if(!imputados.length){
         // Entrega sin equipo válido (código '-' o vacío): se mantiene tal cual,
         // no se atribuye a nadie (el browser ya descarta código '-').
-        out.push([nro, fecha, _at_(r, iEqu), _at_(r, iCod), costo, raz, res, ite, '1']);
+        out.push([nro, fecha, _at_(r, iEqu), _at_(r, iCod), costo, raz, res, ite, '1', ped]);
         n++;
         continue;
       }
       if(imputados.length > 1) nMulti++;
       for(const im of imputados){
-        out.push([nro, fecha, im.eq, im.cod, costo, raz, res, ite, String(imputados.length)]);
+        out.push([nro, fecha, im.eq, im.cod, costo, raz, res, ite, String(imputados.length), ped]);
         n++;
       }
     }
