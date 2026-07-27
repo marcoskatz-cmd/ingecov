@@ -295,8 +295,12 @@ function _buildRepuestos_(snap){
     // no tenga el back-ref N° ENTREGA cargado → el browser matchea por ambos
     // lados y así no quedan "entregas sin pedido" que en realidad sí lo tienen.
     const iPed = _idx_(h, ['N° PEDIDO','N PEDIDO','NRO PEDIDO','PEDIDO','N° DE PEDIDO','N° PEDIDO ENTREGADO']);
+    // TIPO ENTREGA: "Caja chica" u "Orden de compra". Las de caja chica nunca
+    // tienen (ni necesitan) un N° PEDIDO vinculado — el browser las excluye de
+    // la lista de "entregas sin pedido vinculado" para no marcarlas como falla.
+    const iTip = _idx_(h, ['TIPO ENTREGA']);
 
-    const out = [['N° ENTREGA','FECHA','EQUIPO','CÓDIGO','COSTO ENTREGA','RAZÓN ENTREGA','RESPONSABLE ENTREGA','ITEMS DETALLE','EQUIPOS IMPUTADOS','N° PEDIDO']];
+    const out = [['N° ENTREGA','FECHA','EQUIPO','CÓDIGO','COSTO ENTREGA','RAZÓN ENTREGA','RESPONSABLE ENTREGA','ITEMS DETALLE','EQUIPOS IMPUTADOS','N° PEDIDO','TIPO ENTREGA']];
     let n = 0, nMulti = 0;
     for(const r of t.rows){
       const nro = _at_(r, iNro), fecha = _at_(r, iFec);
@@ -310,17 +314,17 @@ function _buildRepuestos_(snap){
         vistos[key] = 1;
         imputados.push({ eq:_at_(r, s.eq), cod:cod });
       }
-      const costo = _at_(r, iCos), raz = _at_(r, iRaz), res = _at_(r, iRes), ite = _at_(r, iIte), ped = _at_(r, iPed);
+      const costo = _at_(r, iCos), raz = _at_(r, iRaz), res = _at_(r, iRes), ite = _at_(r, iIte), ped = _at_(r, iPed), tip = _at_(r, iTip);
       if(!imputados.length){
         // Entrega sin equipo válido (código '-' o vacío): se mantiene tal cual,
         // no se atribuye a nadie (el browser ya descarta código '-').
-        out.push([nro, fecha, _at_(r, iEqu), _at_(r, iCod), costo, raz, res, ite, '1', ped]);
+        out.push([nro, fecha, _at_(r, iEqu), _at_(r, iCod), costo, raz, res, ite, '1', ped, tip]);
         n++;
         continue;
       }
       if(imputados.length > 1) nMulti++;
       for(const im of imputados){
-        out.push([nro, fecha, im.eq, im.cod, costo, raz, res, ite, String(imputados.length), ped]);
+        out.push([nro, fecha, im.eq, im.cod, costo, raz, res, ite, String(imputados.length), ped, tip]);
         n++;
       }
     }

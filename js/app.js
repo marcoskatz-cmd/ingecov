@@ -730,6 +730,7 @@ function procesarPanelRepuestos(panelObj){
     const nEquipos=Math.max(1,parseInt(_pickCol(r,['EQUIPOS IMPUTADOS'])||'1',10)||1);
     const costoEq=costo/nEquipos;
     const razon=String(_pickCol(r,['RAZÓN ENTREGA','RAZON ENTREGA','RAZON','MOTIVO'])||'').trim();
+    const tipoEntrega=String(_pickCol(r,['TIPO ENTREGA'])||'').trim();
     const resp=String(_pickCol(r,['RESPONSABLE ENTREGA','RESPONSABLE'])||'').trim();
     const itemsStr=String(_pickCol(r,['ITEMS DETALLE','ITEMS','REPUESTOS ENTREGADOS','REPUESTOS'])||'').trim();
     const items=parseItemsDetalle(itemsStr);
@@ -790,6 +791,7 @@ function procesarPanelRepuestos(panelObj){
       (ctx.entregasPorEquipo[codN]=ctx.entregasPorEquipo[codN]||[]).push({
         nro:nro||'—', fecha:fecha||'—',
         items:itemsStr||'—', costo:costoEq, razon:razon||'', nEquipos:nEquipos,
+        tipo:tipoEntrega||'',
       });
     }
     // 6) Entregas del mes actual (para el dashboard inicial). Una entrega
@@ -3213,6 +3215,9 @@ async function toggleEquipoDetail(codigo,cardEl){
   // (B) Entregas de este equipo que NO quedaron vinculadas a ningún pedido
   // (entrega cargada sin back-ref en la hoja PEDIDOS, o el pedido no está en la
   // lista). Se muestran aparte para no perder el costo. Sección colapsada.
+  // Las de TIPO ENTREGA = Caja chica quedan afuera: esas nunca tienen (ni
+  // necesitan) un pedido formal vinculado, así que no son una falla de carga.
+  const esCajaChica=t=>/caja\s*chica/i.test(String(t||''));
   const getCE=nroEnt=>{
     if(!nroEnt||nroEnt==='—')return null;
     const e=(window._entregaCostos||{})[String(nroEnt).split(/[-,]/)[0].trim()];
@@ -3237,6 +3242,7 @@ async function toggleEquipoDetail(codigo,cardEl){
     return escapeHTML(fallback||'—');
   };
   const entregasEquipo=[...((window._entregasPorEquipo||{})[codN]||[])]
+    .filter(e=>!esCajaChica(e.tipo))
     .map(e=>({nro:e.nro||'—',fecha:e.fecha||'—',items:e.items||'—',_ts:toSortDate(e.fecha)}))
     .filter(e=>!entregasVinculadas.has(String(e.nro).split(/[-,]/)[0].trim()))
     .sort((a,b)=>b._ts-a._ts);
