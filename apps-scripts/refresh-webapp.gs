@@ -89,6 +89,26 @@ function doGet(e) {
       message: 'Token inválido' });
   }
 
+  // ── DEBUG (?ep=debug_sheet&key=…&id=<sheetId>) ───────────────────────
+  // Diagnóstico puntual: devuelve nombres de pestañas + header + primeras
+  // filas de un sheet, para inspeccionar estructura sin acceso directo desde
+  // el harness (el sheet puede no ser público). Mismo token que refresh.
+  if (params.ep === 'debug_sheet' && params.id) {
+    try {
+      var ss = SpreadsheetApp.openById(params.id);
+      var sheets = ss.getSheets().map(function (sh) {
+        var lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
+        var header = lastRow >= 1 && lastCol >= 1 ? sh.getRange(1, 1, 1, lastCol).getDisplayValues()[0] : [];
+        var sample = lastRow >= 2 && lastCol >= 1
+          ? sh.getRange(2, 1, Math.min(5, lastRow - 1), lastCol).getDisplayValues() : [];
+        return { name: sh.getName(), lastRow: lastRow, lastCol: lastCol, header: header, sample: sample };
+      });
+      return _refreshJson({ ok: true, sheets: sheets });
+    } catch (err) {
+      return _refreshJson({ ok: false, error: (err && err.message) || String(err) });
+    }
+  }
+
   var ran = [];
   var errors = [];
 
