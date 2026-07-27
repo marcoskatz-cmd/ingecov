@@ -45,6 +45,7 @@ const SNAP_SRC = {
   combPesados:  '19eyY8MImPM_-Gyzj8QcqA_yR5KDrkuu-1faJUU48N1A', // ENTREGAS DE COMBUSTIBLE - LEANDRO CASARES (pesados, horómetro)
   combCamionetas: '1GB_oiL40fEXHXzhmor3ztnnriiikX1xp3fG-F5Uuw5E', // ENTREGAS DE COMBUSTIBLE camionetas (código directo, sin costo, sin horómetro)
   equipos:      '1EwbNlmBMx3OIviplvHSJM3N4CZ3vVXgVxH208VugG3M', // LISTA DE EQUIPOS (maestro de códigos)
+  vtv:          '1-DSUu1HlBG2kXClsMkHiDwiKmtZdkGI853aS9Qyp6Gg', // VERIFICACIÓN TÉCNICA VEHICULAR (Marcos la va completando a mano, incompleta a propósito)
 };
 
 const SNAP_NAME     = 'INGECO Panel Snapshot';
@@ -136,6 +137,7 @@ function construirSnapshot(){
   rec(_buildCombustible_(snap));    // COMBUSTIBLE (pesados / Casares)
   rec(_buildCombLivianos_(snap));   // COMB_LIVIANOS (Sanz)
   rec(_buildService_(snap));        // SVC_PANELPROG + SERVICE_EQ (+ SVC_FREC/TRIM vacíos)
+  rec(_buildVTV_(snap));            // VTV (verificación técnica vehicular)
   _buildHistVacios_(snap, rec);     // REP_HIST / TRAB_HIST / TRAB_HIST58 (header solo)
 
   _escribirMeta_(snap, meta, errores);
@@ -707,11 +709,44 @@ function _resetTab_(snap, name){
   return sh;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   VTV ← hoja VTV de VERIFICACIÓN TÉCNICA VEHICULAR
+   Lista que Marcos carga a mano y va completando de a poco — a propósito
+   incompleta. Copiamos verbatim (código, patente, fecha de vencimiento);
+   el browser calcula los días restantes al vuelo así siempre está al día
+   sin depender de una columna de días recalculada en el sheet.
+═══════════════════════════════════════════════════════════════════════ */
+function _buildVTV_(snap){
+  try{
+    const t = _readTab_(SNAP_SRC.vtv, 'VTV') || _readTabByHeader_(SNAP_SRC.vtv, ['VENCIMIENTO VTV']);
+    if(!t){
+      _write_(snap, 'VTV', [['EQUIPO','CÓDIGO','PATENTE','VENCIMIENTO VTV']], true);
+      return { tab:'VTV', rows:0, status:'ERROR', detalle:'no encontré hoja VTV (ni columna VENCIMIENTO VTV)' };
+    }
+    const h = t.header;
+    const iEqu = _idx_(h, ['EQUIPO']);
+    const iCod = _idx_(h, ['CÓDIGO','CODIGO']);
+    const iPat = _idx_(h, ['N° SERIE/PATENTE','N SERIE PATENTE','PATENTE','N° SERIE','SERIE']);
+    const iVen = _idx_(h, ['VENCIMIENTO VTV','VENCIMIENTO']);
+
+    const out = [['EQUIPO','CÓDIGO','PATENTE','VENCIMIENTO VTV']];
+    let n = 0;
+    for(const r of t.rows){
+      const cod = _at_(r, iCod);
+      if(!_snapNormCod(cod)) continue; // fila sin código: lista incompleta, se salta sin error
+      out.push([_at_(r, iEqu), cod, _at_(r, iPat), _at_(r, iVen)]);
+      n++;
+    }
+    _write_(snap, 'VTV', out, true);
+    return { tab:'VTV', rows:n, status: iVen < 0 ? 'WARN' : 'OK', detalle: iVen < 0 ? 'OJO: no encontré columna VENCIMIENTO VTV' : '' };
+  }catch(e){ return { tab:'VTV', rows:0, status:'ERROR', detalle:String(e && e.message || e) }; }
+}
+
 function _limpiarTabsSobrantes_(snap){
   const validas = {};
   ['COD_V','COD_L','COD_P','COD_S','TRAB_LIVE','TRAB_HIST','TRAB_HIST58','REP_LIVE','REP_HIST',
    'PED_PEND','PED_ENTR','COMBUSTIBLE','COMB_LIVIANOS','SVC_FREC','SVC_TRIM1','SVC_TRIM2',
-   'SVC_PANELPROG','SERVICE_EQ','INDICADORES','META'].forEach(t => validas[t] = true);
+   'SVC_PANELPROG','SERVICE_EQ','VTV','INDICADORES','META'].forEach(t => validas[t] = true);
   for(const sh of snap.getSheets()){
     if(!validas[sh.getName()]){
       try{ snap.deleteSheet(sh); }catch(e){ /* nunca borrar la última pestaña */ }

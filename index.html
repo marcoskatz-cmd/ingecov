@@ -46,7 +46,7 @@
      equivalente a estar al final del <body>. Bump del query ?v= cuando se cambia
      app.js para forzar a clientes con HTTP cache a re-fetchear (el SW solo
      invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/app.js?v=55" defer></script>
+<script src="./js/app.js?v=56" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -1956,6 +1956,16 @@
       <button class="sv-modal-close" data-action="closeServiceCriticoModal" title="Cerrar (Esc)" aria-label="Cerrar">×</button>
     </div>
     <div class="sv-modal-list" id="svModalList"></div>
+  </div>
+</div>
+
+<div class="sv-modal-overlay" id="vtvModalOverlay" data-action="closeVtvCriticaModalIfBg" role="dialog" aria-modal="true" aria-labelledby="vtvModalTitle">
+  <div class="sv-modal">
+    <div class="sv-modal-head">
+      <div class="sv-modal-title" id="vtvModalTitle">VTV <b>crítica</b> · <span id="vtvModalCount">0</span> vehículos</div>
+      <button class="sv-modal-close" data-action="closeVtvCriticaModal" title="Cerrar (Esc)" aria-label="Cerrar">×</button>
+    </div>
+    <div class="sv-modal-list" id="vtvModalList"></div>
   </div>
 </div>
 

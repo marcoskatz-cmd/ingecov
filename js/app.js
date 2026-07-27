@@ -111,6 +111,9 @@ const SHEET_IDS = {
   // recargar el panel, el cambio impacta al instante (sin esperar el rebuild
   // de 30 min). Es un sheet chico (2 pestañas) → no aporta al rate limiting.
   costos:         '1tV59d02aVjs5NRAzdorVzeW2JdPxeJIpFR2Bm10o_LM',
+  // VTV: Marcos la carga a mano y la va completando de a poco (incompleta a
+  // propósito). Pestaña única 'VTV'.
+  vtv:            '1-DSUu1HlBG2kXClsMkHiDwiKmtZdkGI853aS9Qyp6Gg',
 };
 
 // Pestaña tabular plana (una fila = una carga). No requiere Apps Script consolidador.
@@ -217,6 +220,7 @@ const SNAP_REDIRECT={
   [`${SHEET_IDS.combustible}|${COMBUSTIBLE_SHEET}`]:'COMBUSTIBLE',
   [`${SHEET_IDS.combustibleLivianos}|${COMBUSTIBLE_LIVIANOS_SHEET}`]:'COMB_LIVIANOS',
   [`${SHEET_IDS.indicadores}|INDICADORES OPERACIONALES`]:'INDICADORES',
+  [`${SHEET_IDS.vtv}|VTV`]:'VTV',
 };
 // Devuelve el target redirigido al snapshot, o el original si no está mapeado.
 // Una lectura directa de una pestaña del snapshot (TRAB_HIST58, SERVICE_EQ — que
@@ -1440,6 +1444,33 @@ function procesarCombustible(rows){
 }
 
 /* ═══════════════════════════════════════════════════════
+   VTV — verificación técnica vehicular
+   Marcos carga la planilla a mano y la va completando de a poco (incompleta
+   a propósito). Copiamos EQUIPO/CÓDIGO/PATENTE/VENCIMIENTO verbatim del
+   snapshot; acá calculamos los días restantes al vuelo (negativo = vencida)
+   así el KPI siempre está al día sin depender de una fórmula en el sheet.
+   Sin fila para un equipo → no aparece, no se fabrica dato.
+═══════════════════════════════════════════════════════ */
+function procesarVTV(rows){
+  const porEquipo={};
+  const hoy=new Date();hoy.setHours(0,0,0,0);
+  for(const r of(rows||[])){
+    const codRaw=String(_pickCol(r,['CÓDIGO','CODIGO'])||'').trim();
+    const codN=normCod(codRaw);
+    if(!codN)continue;
+    const equipo=String(_pickCol(r,['EQUIPO'])||'').trim();
+    const patente=String(_pickCol(r,['PATENTE','N° SERIE/PATENTE'])||'').trim();
+    const vencStr=String(_pickCol(r,['VENCIMIENTO VTV','VENCIMIENTO'])||'').trim();
+    const venc=_parseDate(vencStr);
+    if(!venc)continue;
+    const dias=Math.round((venc-hoy)/86400000);
+    porEquipo[codN]={codN,codigo:codRaw||codN,equipo,patente,vencimiento:vencStr,dias};
+  }
+  return porEquipo;
+}
+const VTV_UMBRAL_DIAS=14; // "2 semanas o menos" — incluye ya vencidas (días negativos)
+
+/* ═══════════════════════════════════════════════════════
    COMBUSTIBLE LIVIANOS — Excel "Control General"
    Una fila = una carga. Columnas (0-indexadas):
      0 fecha · 1 factura · 2 remito · 3 tipo · 4 litros ·
@@ -2170,7 +2201,7 @@ async function loadAll(){
     // Carga primaria: TODO lo necesario para el primer render.
     // PANEL_REPUESTOS pasa a ser fuente única de entregas (reemplaza MESES_ENTREGAS).
     // PANEL_TRABAJOS se carga acá también para alimentar telemetría de flota (rankings + chart de horas).
-    const[pendientesRaw,entregadosRaw,codV,codL,codP,codS,panelRepuestosLiveObj,panelRepuestosHistObj,panelTrabajosLiveObj,panelTrabajosHistObj,serviceFrecRows,serviceTrimRows,trim1Rows,trim2Rows,panelProgramaObj,combustibleObj,combLivianosRows]=await Promise.all([
+    const[pendientesRaw,entregadosRaw,codV,codL,codP,codS,panelRepuestosLiveObj,panelRepuestosHistObj,panelTrabajosLiveObj,panelTrabajosHistObj,serviceFrecRows,serviceTrimRows,trim1Rows,trim2Rows,panelProgramaObj,combustibleObj,combLivianosRows,vtvRows]=await Promise.all([
       fetchGvizRaw(SHEET_IDS.pedidos,'PENDIENTES'),
       // ENTREGADOS tiene título y contadores en filas 1-10; headers reales en fila 11.
       // El range fuerza a gviz a usar la fila 11 como header (sin esto, los nombres se pierden).
@@ -2198,6 +2229,9 @@ async function loadAll(){
       fetchGvizObj(SHEET_IDS.combustible,COMBUSTIBLE_SHEET).catch(()=>[]),
       // Combustible de livianos (Excel "Control General"); se procesa abajo.
       fetchGvizRaw(SHEET_IDS.combustibleLivianos,COMBUSTIBLE_LIVIANOS_SHEET).catch(()=>[]),
+      // VTV: lista incompleta a propósito (Marcos la va completando). Sin fila
+      // para un equipo → no aparece en la KPI, no se fabrica dato.
+      fetchGvizObj(SHEET_IDS.vtv,'VTV').catch(()=>[]),
     ]);
     setLoadProgress(55);
 
@@ -2368,6 +2402,9 @@ async function loadAll(){
         trt.horasEspejoDe='ZRN-01';
       }
     }
+
+    // VTV: lista incompleta a propósito, Marcos la va completando.
+    window._vtvPorEquipo = procesarVTV(vtvRows);
 
     // Render dashboard con entregas del mes actual (calculadas desde PANEL_REPUESTOS)
     renderDashboard(pendientesRaw,ctx.entregasMesActual);
@@ -2712,6 +2749,29 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
     ? `${serviceAmber} intermedio · ${serviceGreen} holgado · ${Object.keys(sp).length-serviceConDatos} sin datos`
     : (Object.keys(sp).length>0 ? 'falta cargar rangos/frecuencia' : 'sin datos en PROGRAMA DE SERVICE');
 
+  // VTV crítica: vehículos con ≤VTV_UMBRAL_DIAS días para vencer, o ya vencidos
+  // (días negativos). Lista incompleta a propósito (Marcos la va completando) →
+  // el sub muestra cuántos equipos tienen VTV cargada sobre el total de la flota.
+  const vtvAll=Object.values(window._vtvPorEquipo||{});
+  const vtvCriticosArr=vtvAll.filter(v=>v.dias<=VTV_UMBRAL_DIAS).sort((a,b)=>a.dias-b.dias);
+  window._vtvCriticosList=vtvCriticosArr.map(v=>{
+    const info=(window._estadoEquipos||{})[v.codN]||{};
+    return{
+      codN:v.codN, codigo:v.codigo,
+      nombre:buildEquipoNombre(info.clasificacion,info.marca,info.modelo,info.equipo)||v.equipo||v.codigo,
+      patente:v.patente||info.patente||'',
+      vencimiento:v.vencimiento, dias:v.dias,
+    };
+  });
+  const vtvVencidas=vtvCriticosArr.filter(v=>v.dias<0).length;
+  const vtvPorVencer=vtvCriticosArr.length-vtvVencidas;
+  const vtvConDatos=vtvAll.length;
+  const vtvClass=vtvCriticosArr.length>0?'red':'green';
+  const _kpiVtvEmpty=!(vtvConDatos>0);
+  const vtvSub=vtvConDatos>0
+    ? `${vtvVencidas} vencida${vtvVencidas===1?'':'s'} · ${vtvPorVencer} por vencer · ${vtvConDatos}/${totalEquipos||'—'} con VTV cargada`
+    : 'sin datos de VTV cargados';
+
   // KPIs (8: operativos, pedidos activos, reparación, service crítico, costo mes,
   // horas taller, combustible livianos, combustible pesados)
   // Cualquier KPI cuyo valor numérico real sea 0 o no haya dato se renderiza con clase
@@ -2733,6 +2793,9 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
   const svKpiAttrs = serviceCritico>0
     ? html` data-action="openServiceCriticoModal" title="Ver lista de equipos críticos"`
     : '';
+  const vtvKpiAttrs = vtvCriticosArr.length>0
+    ? html` data-action="openVtvCriticaModal" title="Ver lista de VTV críticas"`
+    : '';
   setHTML(document.getElementById('kpiGrid'), html`
     <div class="kpi${totalEquipos?'':' kpi-empty'}"><div class="kpi-label">operativos</div><div class="kpi-val green">${fmtInt(operativosAbs)}<span style="font-size:18px;color:var(--text3);font-weight:400"> / ${totalEquipos?fmtInt(totalEquipos):'—'}</span></div><div class="kpi-sub">estado verde en CÓDIGOS</div><div class="kpi-accent-bar green"></div></div>
     <div class="kpi${pendActivos?'':' kpi-empty'}"><div class="kpi-label">pedidos activos</div><div class="kpi-val ${pendActivos>10?'red':'amber'}">${fmtInt(pendActivos)}</div><div class="kpi-sub">pendiente · parcial · comprado</div><div class="kpi-accent-bar ${pendActivos>10?'red':'amber'}"></div></div>
@@ -2742,6 +2805,7 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
     <div class="kpi${_kpiHorasEmpty?' kpi-empty':' kpi-clickable'}" id="kpiHorasCard" data-action="abrirDetalleKpi" data-arg="horas" title="Ver desglose por equipo"><div class="kpi-label">horas en taller</div><div class="kpi-val" id="kpiHorasVal">${horasTotalFlota>0?fmtInt(Math.round(horasTotalFlota))+' hr':'—'}</div><div class="kpi-sub${horasTotalFlota>0?' hr-split':''}" id="kpiHorasSub">${horasTotalFlota>0?new RawHTML(`<div class="hr-split-bar"><span class="corr" style="width:${_corrPct}%"></span><span class="prev" style="width:${_prevPct}%"></span></div><span class="hr-split-leg"><i class="corr"></i>${fmtInt(Math.round(_horasCorr))} hr correctivo · ${_corrPct}%</span><span class="hr-split-leg"><i class="prev"></i>${fmtInt(Math.round(_horasPrev))} hr preventivo · ${_prevPct}%</span>`):'acumuladas · flota'}</div><div class="kpi-accent-bar blue"></div></div>
     <div class="kpi${_gcEmpty?' kpi-empty':' kpi-clickable'}" id="kpiCombCard" data-action="abrirDetalleKpi" data-arg="combustible" title="Ver desglose por equipo"><div class="kpi-label">combustible livianos</div><div class="kpi-val amber" id="kpiCombVal">${_gcVal>0?formatMoney(_gcVal):'—'}</div><div class="kpi-sub" id="kpiCombSub">${_gcSub}</div><div class="kpi-accent-bar amber"></div></div>
     <div class="kpi kpi-empty" id="kpiCombPesCard"><div class="kpi-label">combustible pesados</div><div class="kpi-val" id="kpiCombPesVal">—</div><div class="kpi-sub" id="kpiCombPesSub">litros · equipos pesados</div><div class="kpi-accent-bar blue"></div></div>
+    <div class="kpi${_kpiVtvEmpty?' kpi-empty':''}${vtvCriticosArr.length>0?' kpi-clickable':''}"${vtvKpiAttrs}><div class="kpi-label">VTV crítica</div><div class="kpi-val ${vtvClass}">${fmtInt(vtvCriticosArr.length)}</div><div class="kpi-sub">${vtvSub}</div><div class="kpi-accent-bar ${vtvClass}"></div></div>
   `);
 
   // Cablear status bar superior — telemetría en vivo del estado de la flota
@@ -3381,11 +3445,33 @@ async function toggleEquipoDetail(codigo,cardEl){
       </table></div>`
     : `<div class="no-data">Sin cargas de combustible registradas para este equipo.</div>`;
 
+  // VTV: solo se muestra si Marcos ya cargó la fila de este equipo (lista
+  // incompleta a propósito). Mismo estilo compacto que el bloque de service.
+  const vtv=(window._vtvPorEquipo||{})[codN]||null;
+  let vtvHTML='';
+  if(vtv){
+    const vtvColor = vtv.dias<=0 ? 'var(--red)' : vtv.dias<=VTV_UMBRAL_DIAS ? 'var(--amber)' : 'var(--green)';
+    const vtvTxt = vtv.dias<=0 ? `vencida hace ${fmtInt(Math.abs(vtv.dias))} días` : `faltan ${fmtInt(vtv.dias)} días`;
+    vtvHTML=`
+    <div style="display:flex;background:var(--bg3);border:1px solid var(--border);border-left:3px solid ${vtvColor};margin-bottom:12px;overflow:hidden">
+      <div style="flex:1;padding:10px 14px;border-right:1px solid var(--border)">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">VTV — vencimiento</div>
+        <div style="font-size:15px;color:${vtvColor};font-family:'IBM Plex Mono',monospace;font-weight:500">${formatFechaCorta(vtv.vencimiento)||vtv.vencimiento}</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:${vtvColor};margin-top:2px">${vtvTxt}</div>
+      </div>
+      ${vtv.patente?`<div style="padding:10px 14px;min-width:120px">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Patente</div>
+        <div style="font-size:15px;color:var(--text2);font-family:'IBM Plex Mono',monospace;font-weight:500">${vtv.patente}</div>
+      </div>`:''}
+    </div>`;
+  }
+
   setHTML(document.getElementById('eqDetailBody'),
     new RawHTML(
       (kpisHTML instanceof RawHTML ? kpisHTML.value : String(kpisHTML))+
       (infoBar instanceof RawHTML ? infoBar.value : String(infoBar))+
       (horHTML instanceof RawHTML ? horHTML.value : String(horHTML))+
+      vtvHTML+
       eqSection('servicios y reparaciones en taller',contServicio,true).value+
       eqSection(`pedidos de repuestos (${pedidosEquipo.length})`,contPedidos,true).value+
       (entregasEquipo.length?eqSection(`entregas sin pedido vinculado (${entregasEquipo.length})`,contEntregas,false).value:'')+
@@ -4387,6 +4473,38 @@ function closeServiceCriticoModal(){
   overlay.classList.remove('open');
   document.body.style.overflow='';
 }
+function openVtvCriticaModal(){
+  const list=window._vtvCriticosList||[];
+  const wrap=document.getElementById('vtvModalList');
+  const count=document.getElementById('vtvModalCount');
+  const overlay=document.getElementById('vtvModalOverlay');
+  if(!wrap||!overlay)return;
+  count.textContent=fmtInt(list.length);
+  if(!list.length){
+    setHTML(wrap, html`<div style="padding:36px;text-align:center;color:var(--text3);font-size:13px">Sin vehículos con VTV crítica.</div>`);
+  }else{
+    setHTML(wrap, list.map(v=>{
+      const diasCls = v.dias>0 ? ' amber' : '';
+      const diasStr = v.dias<=0 ? `−${fmtInt(Math.abs(v.dias))}` : fmtInt(v.dias);
+      const diasLbl = v.dias<=0 ? 'vencida hace' : 'restantes';
+      return html`<div class="sv-row" data-action="_irAEquipoDesdeKpi" data-arg="${v.codigo}" title="Abrir detalle del equipo">
+        <div class="sv-cod">${v.codigo}</div>
+        <div class="sv-nom">${v.nombre||'—'}</div>
+        <div class="sv-hr"><small>patente</small>${v.patente||'—'}</div>
+        <div class="sv-hr"><small>vence</small>${formatFechaCorta(v.vencimiento)||'—'}</div>
+        <div class="sv-rest${diasCls}"><small>${diasLbl}</small>${diasStr}</div>
+      </div>`;
+    }));
+  }
+  overlay.classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closeVtvCriticaModal(){
+  const overlay=document.getElementById('vtvModalOverlay');
+  if(!overlay)return;
+  overlay.classList.remove('open');
+  document.body.style.overflow='';
+}
 /* Tab "service": TODOS los equipos con datos de service, ordenados por prioridad
    (tier de estado VENCIDO/CRÍTICO → INTERMEDIO → HOLGADO → sin-datos; dentro de
    cada tier, restantes ascendente = más pasado primero). Reusa operatividadEquipo
@@ -4455,6 +4573,7 @@ function renderServiceTab(){
 }
 function _irAEquipoDesdeKpi(codigo){
   closeServiceCriticoModal();
+  closeVtvCriticaModal();
   setTab('tabEquipos');
   const id='eqcard_'+String(codigo).replace(/[^a-z0-9]/gi,'_');
   const open=()=>{
@@ -4468,11 +4587,13 @@ function _irAEquipoDesdeKpi(codigo){
   };
   if(!open())setTimeout(open,80);
 }
-// Esc cierra el modal de service crítico, el de detalle de KPI o el de auditoría.
+// Esc cierra el modal de service crítico, VTV crítica, el de detalle de KPI o el de auditoría.
 document.addEventListener('keydown',e=>{
   if(e.key!=='Escape')return;
   const ovSv=document.getElementById('svModalOverlay');
   if(ovSv&&ovSv.classList.contains('open'))closeServiceCriticoModal();
+  const ovVtv=document.getElementById('vtvModalOverlay');
+  if(ovVtv&&ovVtv.classList.contains('open'))closeVtvCriticaModal();
   const ovKd=document.getElementById('kpiDetailOverlay');
   if(ovKd&&ovKd.classList.contains('open'))cerrarDetalleKpi();
   const ovAu=document.getElementById('audOverlay');
@@ -5202,6 +5323,9 @@ const ACTIONS = {
   renderPedidosPendientesGlobal: () => renderPedidosPendientesGlobal(),
   closeServiceCriticoModal:      () => closeServiceCriticoModal(),
   openServiceCriticoModal:       () => openServiceCriticoModal(),
+  closeVtvCriticaModal:          () => closeVtvCriticaModal(),
+  openVtvCriticaModal:           () => openVtvCriticaModal(),
+  closeVtvCriticaModalIfBg:      (_, t, e) => { if (e.target === t) closeVtvCriticaModal(); },
   setKpiMeses:                   (arg)   => setKpiMeses(arg),
   toggleKpiMes:                  (arg)   => toggleKpiMes(arg),
   toggleEqSec:                   (uid) => toggleEqSec(uid),
