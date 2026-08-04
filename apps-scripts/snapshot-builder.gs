@@ -139,6 +139,7 @@ function construirSnapshot(){
   rec(_buildService_(snap));        // SVC_PANELPROG + SERVICE_EQ (+ SVC_FREC/TRIM vacíos)
   rec(_buildVTV_(snap));            // VTV (verificación técnica vehicular)
   _buildHistVacios_(snap, rec);     // REP_HIST / TRAB_HIST / TRAB_HIST58 (header solo)
+  rec(_buildFaltantes_(snap));      // FALTANTES — va ÚLTIMO: lee las pestañas ya escritas
 
   _escribirMeta_(snap, meta, errores);
   _limpiarTabsSobrantes_(snap);
@@ -368,9 +369,10 @@ function _buildPedidos_(snap){
     const iDes = _idx_(h, ['DESCRIPCIÓN DE REPUESTOS','DESCRIPCION DE REPUESTOS','DESCRIPCIÓN','DESCRIPCION','REPUESTOS']);
     const iEst = _idx_(h, ['ESTADO']);
     // N° ORDEN (orden de compra) y N° ENTREGA (back-ref del pedido a su/s
-    // entrega/s, ej. "1168" o "648-650"). Con N° ENTREGA el browser cruza a
-    // REP_LIVE para traer fecha y costo de la entrega al renglón del pedido.
-    // Cols 7 y 8 (posiciones 0-5 intactas: renderDashboard lee PED_PEND posicional).
+    // entrega/s, ej. "1168" o "648-650" cuando fue parcial/multi). Con N° ENTREGA
+    // el browser cruza a REP_LIVE para traer fecha y costo de la entrega al
+    // renglón del pedido. Se agregan como cols 7 y 8 (posiciones 0-5 intactas
+    // porque renderDashboard lee PED_PEND posicional).
     const iOrd = _idx_(h, ['N° ORDEN','N ORDEN','NRO ORDEN','ORDEN','N° ORDEN DE COMPRA','N° OC','ORDEN DE COMPRA','N ORDEN DE COMPRA']);
     const iEnt = _idx_(h, ['N° ENTREGA','N ENTREGA','NRO ENTREGA','ENTREGA','N° DE ENTREGA']);
     // Si el N° no está como header reconocible, usar la primera columna (la "L1122"
@@ -406,10 +408,12 @@ function _buildCombustible_(snap){
     const iCod = _idx_(h, ['CÓDIGO INTERNO','CODIGO INTERNO','CÓDIGO','CODIGO']);
     const iFec = _idx_(h, ['FECHA']);
     const iEst = _idx_(h, ['ESTADO HORÓMETRO','ESTADO HOROMETRO','ESTADO']);
-    const iHr  = _idx_(h, ['HORÓMETRO ACTUAL','HOROMETRO ACTUAL']);
+    // Fuente actual: 'HORÓMETRO ACTUAL (HR)' → 'HOROMETROACTUALHR'.
+    const iHr  = _idx_(h, ['HOROMETRO ACTUAL HR','HORÓMETRO ACTUAL','HOROMETRO ACTUAL']);
     const iLit = _idx_(h, ['CANTIDAD (L)','CANTIDAD','LITROS']);
     const iTip = _idx_(h, ['TIPO COMBUSTIBLE','TIPO DE COMBUSTIBLE','TIPO']);
-    const iLug = _idx_(h, ['LUGAR ENTREGA','LUGAR']);
+    // Fuente actual: 'LUGAR ENTREGA/OBRA PARTICULAR'.
+    const iLug = _idx_(h, ['LUGAR ENTREGA OBRA PARTICULAR','LUGAR ENTREGA','LUGAR']);
     const iOpe = _idx_(h, ['OPERARIO']);
 
     const out = [['CODIGO','FECHA','ESTADO','HOROMETRO ACTUAL','CANTIDAD','TIPO','LUGAR','OPERARIO','OBSERVACIONES']];
@@ -454,7 +458,13 @@ function _buildCombustible_(snap){
     }catch(eCam){ /* si la fuente de camionetas falla, no tiramos todo el snapshot */ }
 
     _write_(snap, 'COMBUSTIBLE', out, true);
-    return { tab:'COMBUSTIBLE', rows:n+nCam, status:'OK', detalle: nCam ? ('camionetas: '+nCam) : '' };
+    const faltan = [];
+    if(iHr  < 0) faltan.push('HOROMETRO ACTUAL');
+    if(iCod < 0) faltan.push('CODIGO');
+    if(iLit < 0) faltan.push('CANTIDAD');
+    const detCam = nCam ? ('camionetas: '+nCam) : '';
+    return { tab:'COMBUSTIBLE', rows:n+nCam, status: faltan.length ? 'WARN' : 'OK',
+             detalle: (faltan.length ? ('OJO: sin match de columna → ' + faltan.join(', ') + (detCam?' · ':'')) : '') + detCam };
   }catch(e){ return { tab:'COMBUSTIBLE', rows:0, status:'ERROR', detalle:String(e && e.message || e) }; }
 }
 
@@ -475,7 +485,10 @@ function _buildCombLivianos_(snap){
     // Sin este sinónimo iPat quedaba -1 → patente vacía → el ranking del KPI
     // no matcheaba nada (el total sí, porque suma sin mirar patente).
     const iPat = _idx_(h, ['N SERIE PATENTE','N SERIE N PATENTE','N° PATENTE','PATENTE','DOMINIO']);
-    const iOdo = _idx_(h, ['HORÓMETRO/ODÓMETRO','ODÓMETRO (KM)','ODOMETRO','KM']);
+    // La fuente titula la columna 'HORÓMETRO/ODÓMETRO (HR/KM)'. _snapNormCod
+    // borra símbolos → 'HOROMETROODOMETROHRKM'; sin este sinónimo iOdo daba -1
+    // y TODAS las cargas de livianos salían sin km (litros sí, odómetro vacío).
+    const iOdo = _idx_(h, ['HOROMETRO ODOMETRO HR KM','HORÓMETRO/ODÓMETRO','ODÓMETRO (KM)','ODOMETRO','KM']);
     const iOpe = _idx_(h, ['OPERARIO','CHOFER']);
     const iObr = _idx_(h, ['OBRA PARTICULAR','OBRA GENERAL','OBRA','LUGAR','LUGAR ENTREGA']);
     const iTot = _idx_(h, ['PRECIO TOTAL','TOTAL','IMPORTE','COSTO']);
@@ -498,8 +511,13 @@ function _buildCombLivianos_(snap){
       n++;
     }
     _write_(snap, 'COMB_LIVIANOS', out, false);
-    const det = iTot < 0 ? 'OJO: no encontré columna TOTAL/precio' : '';
-    return { tab:'COMB_LIVIANOS', rows:n, status: iTot < 0 ? 'WARN' : 'OK', detalle:det };
+    const faltan = [];
+    if(iTot < 0) faltan.push('TOTAL/precio');
+    if(iOdo < 0) faltan.push('ODOMETRO');
+    if(iPat < 0) faltan.push('PATENTE');
+    if(iLit < 0) faltan.push('LITROS');
+    const det = faltan.length ? ('OJO: sin match de columna → ' + faltan.join(', ')) : '';
+    return { tab:'COMB_LIVIANOS', rows:n, status: faltan.length ? 'WARN' : 'OK', detalle:det };
   }catch(e){ return { tab:'COMB_LIVIANOS', rows:0, status:'ERROR', detalle:String(e && e.message || e) }; }
 }
 
@@ -746,7 +764,7 @@ function _limpiarTabsSobrantes_(snap){
   const validas = {};
   ['COD_V','COD_L','COD_P','COD_S','TRAB_LIVE','TRAB_HIST','TRAB_HIST58','REP_LIVE','REP_HIST',
    'PED_PEND','PED_ENTR','COMBUSTIBLE','COMB_LIVIANOS','SVC_FREC','SVC_TRIM1','SVC_TRIM2',
-   'SVC_PANELPROG','SERVICE_EQ','VTV','INDICADORES','META'].forEach(t => validas[t] = true);
+   'SVC_PANELPROG','SERVICE_EQ','VTV','FALTANTES','INDICADORES','META'].forEach(t => validas[t] = true);
   for(const sh of snap.getSheets()){
     if(!validas[sh.getName()]){
       try{ snap.deleteSheet(sh); }catch(e){ /* nunca borrar la última pestaña */ }
@@ -796,6 +814,205 @@ function _audNum_(v){
   if(!s || s==='-' || /^S\/H/i.test(s) || /\d{1,2}\/\d{1,2}\/\d{4}/.test(s)) return null;
   const m = s.replace(/\./g,'').replace(',','.').match(/-?\d+(\.\d+)?/);
   return m ? parseFloat(m[0]) : null;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   FALTANTES — "qué falta cargar" (PÚBLICO: lo ve el encargado)
+   A diferencia de _auditar_() —que detecta datos MAL cargados y es privada—
+   esta pestaña lista datos que FALTAN cargar. Es la lista de tareas del
+   encargado, no un informe de control.
+   Lee las pestañas YA escritas del snapshot (no las fuentes) para no volver
+   a abrir las planillas: más rápido y coherente con lo que muestra el panel.
+   Salida: FALTANTES [TIPO, CODIGO, EQUIPO, DETALLE, DIAS, PRIORIDAD].
+═══════════════════════════════════════════════════════════════════════ */
+
+// Clases de equipo que NO llevan horómetro/odómetro que alguien cargue: no
+// tiene sentido reclamarles ficha de service. Las plantas de asfalto tienen
+// horas pero hoy nadie las lleva; si algún día se cargan, sacarlas de acá.
+const CLASES_SIN_HOROMETRO = ['COMPRESOR','GENERADOR','MARTILLOHIDRAULICO','MARTILLO','CARRETON','BATEA','PLANTADEASFALTO'];
+const FALT_DIAS_HOROMETRO  = 30; // sin lectura nueva hace más de N días
+const FALT_DIAS_VTV        = 30; // VTV que vence dentro de N días (o vencida)
+
+function _faltDiasDesde_(d, hoy){ return Math.round((hoy.getTime() - d.getTime()) / 86400000); }
+
+function _buildFaltantes_(snap){
+  try{
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    const out = [['TIPO','CODIGO','EQUIPO','DETALLE','DIAS','PRIORIDAD']];
+    const add = (tipo, cod, eq, det, dias, pri) => out.push([tipo, cod, eq, det, dias===''?'':String(dias), pri]);
+
+    const leer = name => {
+      const sh = snap.getSheetByName(name);
+      if(!sh || sh.getLastRow() < 2) return { header:[], rows:[] };
+      const d = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getDisplayValues();
+      return { header:d[0], rows:d.slice(1) };
+    };
+
+    // ── Catálogo de equipos activos ────────────────────────────────────
+    const equipos = [];
+    for(const tab of ['COD_V','COD_L','COD_P','COD_S']){
+      const t = leer(tab);
+      const iC = _idx_(t.header,['CODIGO']), iN = _idx_(t.header,['EQUIPO']),
+            iE = _idx_(t.header,['ESTADO']), iP = _idx_(t.header,['PATENTE']),
+            iL = _idx_(t.header,['CLASIFICACION']);
+      for(const r of t.rows){
+        const cod = _at_(r, iC); if(!cod) continue;
+        const est = _at_(r, iE);
+        if(/baja/i.test(est)) continue;               // de baja: no se reclama nada
+        equipos.push({ cod:cod, key:_snapNormCod(cod), nom:_at_(r,iN)||cod,
+                       est:est, pat:_at_(r,iP), clase:_snapNormCod(_at_(r,iL)) });
+      }
+    }
+
+    // ── R1 · SIN_SERVICE ───────────────────────────────────────────────
+    const svc = leer('SVC_PANELPROG');
+    const svcSet = {}, svcUlt = {};
+    {
+      const iC = _idx_(svc.header,['CODIGO']), iF = _idx_(svc.header,['ULT FECHA']);
+      for(const r of svc.rows){
+        const k = _snapNormCod(_at_(r, iC)); if(!k) continue;
+        svcSet[k] = true;
+        const f = _audParseFecha_(_at_(r, iF)); if(f) svcUlt[k] = f;
+      }
+    }
+    for(const e of equipos){
+      if(svcSet[e.key]) continue;
+      if(CLASES_SIN_HOROMETRO.indexOf(e.clase) >= 0) continue;  // no lleva horómetro
+      add('SIN_SERVICE', e.cod, e.nom, 'No tiene ficha en la planilla de service', '', 'alta');
+    }
+
+    // ── R2/R3 · VTV faltante o por vencer ──────────────────────────────
+    const vtv = leer('VTV');
+    const vtvVenc = {};
+    {
+      const iC = _idx_(vtv.header,['CÓDIGO','CODIGO']), iV = _idx_(vtv.header,['VENCIMIENTO VTV','VENCIMIENTO']);
+      for(const r of vtv.rows){
+        const k = _snapNormCod(_at_(r, iC)); if(!k) continue;
+        vtvVenc[k] = _audParseFecha_(_at_(r, iV));
+      }
+    }
+    // VTV solo aplica a vehículos con dominio (patente de calle, no N° de serie).
+    const esDominio = p => /^[A-Z]{2}\d{3}[A-Z]{2}$|^[A-Z]{3}\d{3}$/.test(_snapNormCod(p));
+    for(const e of equipos){
+      if(!esDominio(e.pat)) continue;
+      const v = vtvVenc[e.key];
+      if(v === undefined){
+        add('SIN_VTV', e.cod, e.nom, 'Sin fecha de vencimiento de VTV cargada', '', 'media');
+      }else if(v){
+        const dias = -_faltDiasDesde_(v, hoy);   // + = faltan días, − = vencida
+        if(dias < 0)               add('VTV_VENCIDA',    e.cod, e.nom, 'VTV vencida el ' + Utilities.formatDate(v, Session.getScriptTimeZone(), 'dd/MM/yyyy'), dias, 'alta');
+        else if(dias <= FALT_DIAS_VTV) add('VTV_POR_VENCER', e.cod, e.nom, 'VTV vence el ' + Utilities.formatDate(v, Session.getScriptTimeZone(), 'dd/MM/yyyy'), dias, 'alta');
+      }
+    }
+
+    // ── R4/R5 · sobre las cargas de combustible ────────────────────────
+    // OJO: la "última lectura de horómetro" NO sale de SVC_PANELPROG — ahí
+    // ULT FECHA es la fecha del último SERVICE, que es otra cosa (un equipo
+    // puede tener el horómetro cargado ayer y el service hace 3 meses). La
+    // única fuente con fecha+lectura por evento es la carga de combustible.
+    const porPat = {};
+    for(const e of equipos) if(e.pat) porPat[_snapNormCod(e.pat)] = e;
+    const cortar = new Date(hoy.getTime() - 30 * 86400000);
+    const sinOdo = {};      // cargas del último mes sin lectura, por código
+    const ultLectura = {};  // fecha de la última carga CON lectura, por código
+    const marcar = (cod, fecha, tieneLectura) => {
+      if(tieneLectura){
+        if(!ultLectura[cod] || fecha > ultLectura[cod]) ultLectura[cod] = fecha;
+      }else if(fecha >= cortar){
+        sinOdo[cod] = (sinOdo[cod] || 0) + 1;
+      }
+    };
+    {
+      const cl = leer('COMB_LIVIANOS');
+      for(const r of cl.rows){
+        const f = _audParseFecha_(_at_(r, 0)); if(!f) continue;
+        const e = porPat[_snapNormCod(_at_(r, 5))]; if(!e) continue;
+        marcar(e.cod, f, !!_at_(r, 6).replace(/[^\d]/g, ''));
+      }
+      const cp = leer('COMBUSTIBLE');
+      for(const r of cp.rows){
+        const f = _audParseFecha_(_at_(r, 1)); if(!f) continue;
+        const cod = _at_(r, 0); if(!cod) continue;
+        marcar(cod, f, !!_at_(r, 3).replace(/[^\d]/g, ''));
+      }
+    }
+    // R4: tiene cargas con lectura alguna vez, pero la última es vieja.
+    for(const e of equipos){
+      if(CLASES_SIN_HOROMETRO.indexOf(e.clase) >= 0) continue;
+      const f = ultLectura[e.cod]; if(!f) continue;   // nunca tuvo → lo agarra R5
+      const dias = _faltDiasDesde_(f, hoy);
+      if(dias > FALT_DIAS_HOROMETRO)
+        add('HOROMETRO_VIEJO', e.cod, e.nom, 'Última lectura anotada: ' + Utilities.formatDate(f, Session.getScriptTimeZone(), 'dd/MM/yyyy'), dias, dias > 60 ? 'alta' : 'media');
+    }
+    for(const cod in sinOdo){
+      const e = equipos.filter(function(x){ return x.cod === cod; })[0];
+      if(!e || CLASES_SIN_HOROMETRO.indexOf(e.clase) >= 0) continue;
+      add('CARGA_SIN_ODOMETRO', cod, e.nom, sinOdo[cod] + ' carga(s) del último mes sin horómetro/odómetro anotado', sinOdo[cod], sinOdo[cod] >= 3 ? 'alta' : 'baja');
+    }
+
+    _write_(snap, 'FALTANTES', out, true);
+    const n = out.length - 1;
+    return { tab:'FALTANTES', rows:n, status:'OK', detalle:n + ' pendientes de carga' };
+  }catch(e){ return { tab:'FALTANTES', rows:0, status:'ERROR', detalle:String(e && e.message || e) }; }
+}
+
+/* ── Mail semanal de pendientes ────────────────────────────────────────
+   NO tiene trigger instalado a propósito: Marcos tiene que confirmar el
+   destinatario antes de que esto le empiece a llegar a alguien. Para
+   activarlo: setear la Script Property FALT_MAIL_TO (uno o más mails
+   separados por coma) y correr instalarTriggerMailSemanal() UNA vez.
+   Si no hay pendientes, NO manda nada: un mail que a veces no llega se
+   lee; uno que llega siempre se filtra.
+─────────────────────────────────────────────────────────────────────── */
+function enviarResumenSemanal(){
+  const to = PropertiesService.getScriptProperties().getProperty('FALT_MAIL_TO');
+  if(!to){ Logger.log('[mail] FALT_MAIL_TO no seteado — no envío nada'); return 'sin destinatario'; }
+
+  const snap = _getOrCreateSnapshotSS_();
+  const sh = snap.getSheetByName('FALTANTES');
+  if(!sh || sh.getLastRow() < 2){ Logger.log('[mail] sin pendientes'); return 'sin pendientes'; }
+  const rows = sh.getRange(2, 1, sh.getLastRow()-1, 6).getDisplayValues();
+  if(!rows.length) return 'sin pendientes';
+
+  const TITULO = {
+    SIN_SERVICE:'Equipos sin ficha de service',
+    SIN_VTV:'Vehículos sin VTV cargada',
+    VTV_VENCIDA:'VTV VENCIDA',
+    VTV_POR_VENCER:'VTV por vencer (30 días)',
+    HOROMETRO_VIEJO:'Horómetro sin actualizar',
+    CARGA_SIN_ODOMETRO:'Cargas de combustible sin odómetro',
+  };
+  const ORDEN = ['VTV_VENCIDA','VTV_POR_VENCER','SIN_SERVICE','HOROMETRO_VIEJO','SIN_VTV','CARGA_SIN_ODOMETRO'];
+  const grupos = {};
+  for(const r of rows){ (grupos[r[0]] = grupos[r[0]] || []).push(r); }
+
+  const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  let html = '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222">'
+           + '<p>Pendientes de carga del panel de mantenimiento — ' + rows.length + ' en total.</p>';
+  for(const tipo of ORDEN){
+    const g = grupos[tipo]; if(!g || !g.length) continue;
+    html += '<h3 style="margin:18px 0 6px;font-size:15px">' + esc(TITULO[tipo] || tipo) + ' (' + g.length + ')</h3>'
+          + '<table cellpadding="6" cellspacing="0" border="0" style="border-collapse:collapse;font-size:13px">';
+    for(const r of g){
+      html += '<tr style="border-bottom:1px solid #eee"><td style="font-family:monospace"><b>' + esc(r[1]) + '</b></td>'
+            + '<td>' + esc(r[2]) + '</td><td style="color:#555">' + esc(r[3]) + '</td></tr>';
+    }
+    html += '</table>';
+  }
+  html += '<p style="margin-top:22px;font-size:12px;color:#777">Panel: '
+        + 'https://marcoskatz-cmd.github.io/ingecov/ — este mail se genera solo, no hace falta responderlo.</p></div>';
+
+  MailApp.sendEmail({ to:to, subject:'Panel INGECO — ' + rows.length + ' pendientes de carga', htmlBody:html });
+  Logger.log('[mail] enviado a ' + to + ' (' + rows.length + ' pendientes)');
+  return 'enviado a ' + to;
+}
+
+function instalarTriggerMailSemanal(){
+  ScriptApp.getProjectTriggers().forEach(function(t){
+    if(t.getHandlerFunction() === 'enviarResumenSemanal') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('enviarResumenSemanal').timeBased().onWeekDay(ScriptApp.WeekDay.MONDAY).atHour(7).create();
+  return 'trigger semanal instalado (lunes 7 hs)';
 }
 
 function _auditar_(){
