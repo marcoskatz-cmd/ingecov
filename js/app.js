@@ -1426,14 +1426,15 @@ function procesarCombustible(rows){
         break;
       }
     }
-    // consumo: usamos litros entre primera y última lectura con hr funcional.
-    // Excluimos los litros de la PRIMERA carga (no sabemos qué hr tenía al empezar
-    // el período de medición), que es la práctica estándar.
+    // consumo: usamos litros entre primera y última lectura con hr funcional
+    // (ver _litrosEntreLecturas: entran TODAS las cargas del período, tengan o
+    // no lectura). Excluimos los litros de la PRIMERA carga (no sabemos qué hr
+    // tenía al empezar el período de medición), que es la práctica estándar.
     const conHr=eq.cargas.filter(c=>c.hr!=null);
     if(conHr.length>=2){
       const hrPrimera=conHr[0].hr, hrUltima=conHr[conHr.length-1].hr;
       const delta=hrUltima-hrPrimera;
-      const litrosPeriodo=conHr.slice(1).reduce((s,c)=>s+c.litros,0);
+      const litrosPeriodo=_litrosEntreLecturas(eq.cargas);
       if(delta>0 && litrosPeriodo>0){
         // L/hr para horómetro; L/100km para odómetro
         eq.promedio = eq.unidad==='km' ? (litrosPeriodo/delta*100) : (litrosPeriodo/delta);
@@ -1469,6 +1470,24 @@ function procesarVTV(rows){
   return porEquipo;
 }
 const VTV_UMBRAL_DIAS=14; // "2 semanas o menos" — incluye ya vencidas (días negativos)
+
+/* Litros consumidos entre la primera y la última lectura de horómetro/odómetro.
+   Cuenta TODAS las cargas del período (con lectura o sin ella): el equipo quemó
+   ese combustible igual, y el delta de hr/km ya cubre todo el intervalo. Antes se
+   sumaban solo los litros de las cargas CON lectura → con la mitad de las cargas
+   sin odómetro el consumo salía casi a la mitad (CMT-03 daba 1,6 L/100km).
+   Se excluyen los litros de la primera carga con lectura (práctica estándar: no
+   sabemos con cuánto tanque arrancó el período) y los posteriores a la última. */
+function _litrosEntreLecturas(cargasOrdenadas){
+  let i0=-1,i1=-1;
+  for(let i=0;i<cargasOrdenadas.length;i++){
+    if(cargasOrdenadas[i].hr!=null){ if(i0<0)i0=i; i1=i; }
+  }
+  if(i0<0||i1<=i0)return 0;
+  let s=0;
+  for(let i=i0+1;i<=i1;i++)s+=cargasOrdenadas[i].litros||0;
+  return s;
+}
 
 /* ═══════════════════════════════════════════════════════
    COMBUSTIBLE LIVIANOS — Excel "Control General"
@@ -1528,7 +1547,7 @@ function procesarCombustibleLivianos(rawRows,patenteToCarN){
     const conHr=e.cargas.filter(c=>c.hr!=null);
     if(conHr.length>=2){
       const delta=conHr[conHr.length-1].hr-conHr[0].hr;
-      const litrosPeriodo=conHr.slice(1).reduce((s,c)=>s+c.litros,0);
+      const litrosPeriodo=_litrosEntreLecturas(e.cargas);
       if(delta>0&&litrosPeriodo>0)e.promedio=litrosPeriodo/delta*100; // L/100km
     }
   }
