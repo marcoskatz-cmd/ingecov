@@ -964,7 +964,7 @@ function _buildFaltantes_(snap){
    Si no hay pendientes, NO manda nada: un mail que a veces no llega se
    lee; uno que llega siempre se filtra.
 ─────────────────────────────────────────────────────────────────────── */
-function enviarResumenSemanal(){
+function enviarResumenSemanal(dryRun){
   const to = PropertiesService.getScriptProperties().getProperty('FALT_MAIL_TO');
   if(!to){ Logger.log('[mail] FALT_MAIL_TO no seteado — no envío nada'); return 'sin destinatario'; }
 
@@ -1002,7 +1002,12 @@ function enviarResumenSemanal(){
   html += '<p style="margin-top:22px;font-size:12px;color:#777">Panel: '
         + 'https://marcoskatz-cmd.github.io/ingecov/ — este mail se genera solo, no hace falta responderlo.</p></div>';
 
-  MailApp.sendEmail({ to:to, subject:'Panel INGECO — ' + rows.length + ' pendientes de carga', htmlBody:html });
+  const asunto = 'Panel INGECO — ' + rows.length + ' pendientes de carga';
+  // dryRun: arma el mail y lo devuelve SIN enviarlo. Sirve para verificar el
+  // contenido sin mandarle un correo suelto a nadie.
+  if(dryRun) return { dryRun:true, to:to, subject:asunto, pendientes:rows.length, html:html };
+
+  MailApp.sendEmail({ to:to, subject:asunto, htmlBody:html });
   Logger.log('[mail] enviado a ' + to + ' (' + rows.length + ' pendientes)');
   return 'enviado a ' + to;
 }

@@ -89,10 +89,16 @@ function doGet(e) {
       message: 'Token inválido' });
   }
 
+  // (?ep=mailsetup y ?ep=mailpreview eran temporales para activar y verificar
+  // el resumen semanal el 2026-08-04; ya cumplieron y se eliminaron. El
+  // destinatario vive en la Script Property FALT_MAIL_TO y el trigger está
+  // instalado. Para cambiar destinatarios: editar la property en el editor.)
+
   // ── DEBUG (?ep=debug_sheet&key=…&id=<sheetId>) ───────────────────────
   // Diagnóstico puntual: devuelve nombres de pestañas + header + primeras
   // filas de un sheet, para inspeccionar estructura sin acceso directo desde
-  // el harness (el sheet puede no ser público). Mismo token que refresh.
+  // el harness (el sheet puede no ser público). Temporal, mismo token que
+  // refresh.
   if (params.ep === 'debug_sheet' && params.id) {
     try {
       var ss = SpreadsheetApp.openById(params.id);
