@@ -1478,6 +1478,21 @@ const VTV_UMBRAL_DIAS=14; // "2 semanas o menos" — incluye ya vencidas (días 
    sin odómetro el consumo salía casi a la mitad (CMT-03 daba 1,6 L/100km).
    Se excluyen los litros de la primera carga con lectura (práctica estándar: no
    sabemos con cuánto tanque arrancó el período) y los posteriores a la última. */
+/* Recalcula última lectura + consumo promedio de un equipo a partir de sus
+   cargas (ya ordenadas por fecha). Se usa al fusionar las dos fuentes de
+   combustible de una misma camioneta. Unidad 'km' → L/100km; 'hr' → L/hr. */
+function _recalcConsumo(e){
+  e.ultimaHr=null; e.ultimaFecha=null; e.ultimaFechaSort=null; e.promedio=null;
+  for(let i=e.cargas.length-1;i>=0;i--){
+    if(e.cargas[i].hr!=null){e.ultimaHr=e.cargas[i].hr;e.ultimaFecha=e.cargas[i].fecha;e.ultimaFechaSort=e.cargas[i].fechaSort;break;}
+  }
+  const conHr=e.cargas.filter(c=>c.hr!=null);
+  if(conHr.length<2)return;
+  const delta=conHr[conHr.length-1].hr-conHr[0].hr;
+  const litros=_litrosEntreLecturas(e.cargas);
+  if(delta>0&&litros>0)e.promedio=(e.unidad==='km')?(litros/delta*100):(litros/delta);
+}
+
 function _litrosEntreLecturas(cargasOrdenadas){
   let i0=-1,i1=-1;
   for(let i=0;i<cargasOrdenadas.length;i++){
@@ -2394,13 +2409,17 @@ async function loadAll(){
         const e=liv.porEquipo[codN];
         const ex=window._combustiblePorEquipo[codN];
         if(!ex){ window._combustiblePorEquipo[codN]=e; continue; }
-        // Colisión (raro): fusionar cargas y recomputar última lectura.
+        // Colisión: NO es rara — 11 camionetas están en las DOS fuentes (la
+        // planilla de camionetas entra a COMBUSTIBLE con lectura nula, y la de
+        // Sanz trae el odómetro). Hay que fusionar cargas Y RECALCULAR el
+        // consumo: antes solo se recomputaba la última lectura, así que el
+        // promedio quedaba el de `ex` (null, porque esas filas no traen km) y
+        // el consumo se mostraba "—" justo en las camionetas mejor cargadas.
         ex.cargas=(ex.cargas||[]).concat(e.cargas).sort((a,b)=>a.fechaSort-b.fechaSort);
         ex.totalLitros=(ex.totalLitros||0)+e.totalLitros;
         ex.totalCosto=(ex.totalCosto||0)+e.totalCosto;
-        for(let i=ex.cargas.length-1;i>=0;i--){
-          if(ex.cargas[i].hr!=null){ex.ultimaHr=ex.cargas[i].hr;ex.ultimaFecha=ex.cargas[i].fecha;ex.ultimaFechaSort=ex.cargas[i].fechaSort;break;}
-        }
+        ex.unidad=e.unidad||ex.unidad;   // livianos manda: son km
+        _recalcConsumo(ex);
       }
     }
 
