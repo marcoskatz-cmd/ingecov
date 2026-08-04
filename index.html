@@ -46,7 +46,7 @@
      equivalente a estar al final del <body>. Bump del query ?v= cuando se cambia
      app.js para forzar a clientes con HTTP cache a re-fetchear (el SW solo
      invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/app.js?v=59" defer></script>
+<script src="./js/app.js?v=60" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -1770,6 +1770,7 @@
       <button class="tab-btn" data-action="setTab" data-arg="tabCostos">costos downtime<span class="tab-badge" id="costosBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabService">service<span class="tab-badge" id="serviceBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabReemplazo">conservar vs reemplazar<span class="tab-badge" id="reemplazoBadge">—</span></button>
+      <button class="tab-btn" data-action="setTab" data-arg="tabFaltantes">pendientes de carga<span class="tab-badge" id="faltantesBadge">—</span></button>
     </div>
 
     <!-- Telemetría de flota (gráficos + rankings) -->
@@ -1930,6 +1931,17 @@
 
     <div class="tab-panel" id="tabReemplazo">
       <div class="rep-console" id="repRoot">cargando…</div>
+    </div>
+
+    <div class="tab-panel" id="tabFaltantes">
+      <div class="section-content">
+        <div class="telemetria-card">
+          <div class="combo-header">
+            <div class="telemetria-card-title">pendientes de carga — qué falta anotar en las planillas</div>
+          </div>
+          <div id="faltantesWrap" style="margin-top:10px">cargando…</div>
+        </div>
+      </div>
     </div>
 
   </div>

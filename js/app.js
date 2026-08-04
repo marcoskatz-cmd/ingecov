@@ -2107,7 +2107,7 @@ async function loadAll(){
     // Carga primaria: TODO lo necesario para el primer render.
     // PANEL_REPUESTOS pasa a ser fuente única de entregas (reemplaza MESES_ENTREGAS).
     // PANEL_TRABAJOS se carga acá también para alimentar telemetría de flota (rankings + chart de horas).
-    const[pendientesRaw,entregadosRaw,codV,codL,codP,codS,panelRepuestosLiveObj,panelRepuestosHistObj,panelTrabajosLiveObj,panelTrabajosHistObj,serviceFrecRows,serviceTrimRows,trim1Rows,trim2Rows,panelProgramaObj,combustibleObj,combLivianosRows,vtvRows]=await Promise.all([
+    const[pendientesRaw,entregadosRaw,codV,codL,codP,codS,panelRepuestosLiveObj,panelRepuestosHistObj,panelTrabajosLiveObj,panelTrabajosHistObj,serviceFrecRows,serviceTrimRows,trim1Rows,trim2Rows,panelProgramaObj,combustibleObj,combLivianosRows,vtvRows,faltantesRows]=await Promise.all([
       fetchGvizRaw(SHEET_IDS.pedidos,'PENDIENTES'),
       // ENTREGADOS tiene título y contadores en filas 1-10; headers reales en fila 11.
       // El range fuerza a gviz a usar la fila 11 como header (sin esto, los nombres se pierden).
@@ -2138,6 +2138,9 @@ async function loadAll(){
       // VTV: lista incompleta a propósito (Marcos la va completando). Sin fila
       // para un equipo → no aparece en la KPI, no se fabrica dato.
       fetchGvizObj(SHEET_IDS.vtv,'VTV').catch(()=>[]),
+      // FALTANTES: pendientes de CARGA (qué falta anotar), no de control. La
+      // arma el builder leyendo las demás pestañas del snapshot.
+      fetchGvizObj(SNAPSHOT_ID,'FALTANTES').catch(()=>[]),
     ]);
     setLoadProgress(55);
 
@@ -2315,6 +2318,17 @@ async function loadAll(){
 
     // VTV: lista incompleta a propósito, Marcos la va completando.
     window._vtvPorEquipo = procesarVTV(vtvRows);
+
+    // Pendientes de carga (pestaña FALTANTES del snapshot).
+    window._faltantes = (faltantesRows||[]).map(r=>({
+      tipo:String(r['TIPO']||'').trim(),
+      codigo:String(r['CODIGO']||'').trim(),
+      equipo:String(r['EQUIPO']||'').trim(),
+      detalle:String(r['DETALLE']||'').trim(),
+      dias:String(r['DIAS']||'').trim(),
+      prioridad:String(r['PRIORIDAD']||'').trim(),
+    })).filter(f=>f.tipo&&f.codigo);
+    renderFaltantes();
 
     // Render dashboard con entregas del mes actual (calculadas desde PANEL_REPUESTOS)
     renderDashboard(pendientesRaw,ctx.entregasMesActual);
@@ -4398,6 +4412,58 @@ function closeVtvCriticaModal(){
    (tier de estado VENCIDO/CRÍTICO → INTERMEDIO → HOLGADO → sin-datos; dentro de
    cada tier, restantes ascendente = más pasado primero). Reusa operatividadEquipo
    (misma lógica del modal crítico). Solo lee del snapshot ya procesado — sin builder. */
+/* ═══════════════════════════════════════════════════════
+   TAB "PENDIENTES DE CARGA"
+   Lista lo que FALTA anotar en las planillas (pestaña FALTANTES del
+   snapshot, armada por el builder). Es visible sin PIN: es la lista de
+   tareas del encargado, no la auditoría de control (esa sigue privada).
+═══════════════════════════════════════════════════════ */
+const FALT_TIPOS=[
+  {k:'VTV_VENCIDA',       t:'VTV vencida',                       d:'Circular así es multa y el seguro puede no responder.', c:'var(--red)'},
+  {k:'VTV_POR_VENCER',    t:'VTV por vencer (30 días)',          d:'Sacar turno antes de que venza.',                      c:'var(--amber)'},
+  {k:'SIN_SERVICE',       t:'Equipos sin ficha de service',      d:'Sin ficha el panel no sabe horas ni próximo service.',  c:'var(--amber)'},
+  {k:'HOROMETRO_VIEJO',   t:'Horómetro sin actualizar',          d:'Hace más de 30 días que no se anota una lectura.',      c:'var(--amber)'},
+  {k:'SIN_VTV',           t:'Vehículos sin VTV cargada',         d:'Falta cargar la fecha de vencimiento en la planilla.',  c:'var(--text2)'},
+  {k:'CARGA_SIN_ODOMETRO',t:'Cargas sin horómetro/odómetro',     d:'Sin la lectura no se puede calcular el consumo.',        c:'var(--text2)'},
+];
+
+function renderFaltantes(){
+  const wrap=document.getElementById('faltantesWrap');
+  const badge=document.getElementById('faltantesBadge');
+  if(!wrap)return;
+  const items=window._faltantes||[];
+  if(badge)badge.textContent=items.length?String(items.length):'0';
+  if(!items.length){
+    setHTML(wrap,html`<div class="no-data">No hay pendientes de carga. Todo al día.</div>`);
+    return;
+  }
+  const porTipo={};
+  for(const f of items)(porTipo[f.tipo]=porTipo[f.tipo]||[]).push(f);
+  const bloques=FALT_TIPOS.map(def=>{
+    const g=porTipo[def.k];
+    if(!g||!g.length)return '';
+    // Más días = más urgente en vencidas (días negativos primero).
+    g.sort((a,b)=>(parseInt(a.dias,10)||0)-(parseInt(b.dias,10)||0));
+    // esc() ya sabe aplanar arrays de RawHTML: no usar .join('') acá (daría
+    // "[object Object]", porque html`` devuelve RawHTML y no string).
+    const filas=g.map(f=>html`<tr>
+        <td class="mono" style="font-size:11px;white-space:nowrap"><a style="color:var(--accent);cursor:pointer;text-decoration:none" data-action="scrollToEquipo" data-arg="${f.codigo}" title="Ver detalle del equipo">${f.codigo}</a></td>
+        <td style="font-size:12px;color:var(--text2)">${f.equipo}</td>
+        <td style="font-size:12px;color:var(--text3)">${f.detalle}</td>
+      </tr>`);
+    return html`<div style="margin-bottom:22px">
+        <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:2px">
+          <span style="width:9px;height:9px;background:${def.c};display:inline-block;border-radius:50%"></span>
+          <span style="font-size:13px;color:var(--text);font-weight:600">${def.t}</span>
+          <span class="mono" style="font-size:11px;color:var(--text3)">${g.length}</span>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin:0 0 8px 18px">${def.d}</div>
+        <div class="table-wrap"><table class="eq-inner-table"><tbody>${filas}</tbody></table></div>
+      </div>`;
+  }).filter(Boolean);
+  setHTML(wrap,html`${bloques}`);
+}
+
 function renderServiceTab(){
   const wrap=document.getElementById('svcTablaWrap');
   const badge=document.getElementById('serviceBadge');
