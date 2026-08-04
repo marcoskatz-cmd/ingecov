@@ -280,9 +280,8 @@ async function loadAll(){
     renderKpiRangeBar();
     _actualizarKpisDeRango();
 
-    // Telemetría de flota y pedidos pendientes global — agregados que cruzan todo
+    // Telemetría de flota — agregados que cruzan toda la flota
     renderTelemetriaFlota();
-    renderPedidosPendientesGlobal();
 
     const _hsl=document.getElementById('hsLast');
     if(_hsl)_hsl.textContent=fmtHora();

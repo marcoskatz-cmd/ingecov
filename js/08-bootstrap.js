@@ -37,7 +37,6 @@ const ACTIONS = {
   setFiltroInactivo:             (key, t) => setFiltroInactivo(key, t),
   setFiltroUbicacion:            (key, t) => setFiltroUbicacion(key, t),
   closeEquipoDetail:             () => closeEquipoDetail(),
-  renderPedidosPendientesGlobal: () => renderPedidosPendientesGlobal(),
   closeServiceCriticoModal:      () => closeServiceCriticoModal(),
   openServiceCriticoModal:       () => openServiceCriticoModal(),
   closeVtvCriticaModal:          () => closeVtvCriticaModal(),

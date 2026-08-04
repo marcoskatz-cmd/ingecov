@@ -48,14 +48,14 @@
      arranca el PIN gate. No reordenar ni pasar a type=module sin revisar
      ACTIONS. Bump del ?v= al cambiar cualquiera de ellos, para clientes con
      HTTP cache (el SW solo invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/01-core.js?v=61" defer></script>
-<script src="./js/02-datos.js?v=61" defer></script>
-<script src="./js/03-ui.js?v=61" defer></script>
-<script src="./js/04-carga.js?v=61" defer></script>
-<script src="./js/05-render.js?v=61" defer></script>
-<script src="./js/06-tabs.js?v=61" defer></script>
-<script src="./js/07-auditoria.js?v=61" defer></script>
-<script src="./js/08-bootstrap.js?v=61" defer></script>
+<script src="./js/01-core.js?v=62" defer></script>
+<script src="./js/02-datos.js?v=62" defer></script>
+<script src="./js/03-ui.js?v=62" defer></script>
+<script src="./js/04-carga.js?v=62" defer></script>
+<script src="./js/05-render.js?v=62" defer></script>
+<script src="./js/06-tabs.js?v=62" defer></script>
+<script src="./js/07-auditoria.js?v=62" defer></script>
+<script src="./js/08-bootstrap.js?v=62" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -1190,31 +1190,6 @@
   }
 
   /* ═══════════════════════════════════════════════════════════════
-     PEDIDOS PENDIENTES
-  ═══════════════════════════════════════════════════════════════ */
-  .pend-controls{
-    display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;
-  }
-  .pend-controls select, .pend-controls input{
-    background:var(--bg2);border:1px solid var(--border);
-    color:var(--text);font-family:'IBM Plex Sans','Inter',sans-serif;font-size:13px;
-    padding:9px 13px;outline:none;border-radius:0;
-    transition:border-color var(--t-fast) var(--ease);
-  }
-  .pend-controls select:focus, .pend-controls input:focus{
-    border-color:var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-tint);
-  }
-  .pend-controls input{min-width:260px;flex:1;}
-
-  .pend-summary{
-    font-family:'JetBrains Mono',monospace;font-size:10.5px;
-    color:var(--text3);letter-spacing:.12em;
-    margin-bottom:10px;text-transform:uppercase;font-weight:600;
-  }
-  .pend-summary .count{color:var(--amber);font-weight:700;}
-
-  /* ═══════════════════════════════════════════════════════════════
      LISTA DE EQUIPOS
   ═══════════════════════════════════════════════════════════════ */
   .equipo-list-wrap{border:1px solid var(--border);background:var(--bg2);overflow:hidden;}
@@ -1527,15 +1502,6 @@
     .eq-inner-table th{padding:9px 9px;font-size:9px;}
     .eq-inner-table td{padding:10px 9px;font-size:11.5px;}
 
-    /* PEDIDOS PENDIENTES — controles apilados, full width */
-    .pend-controls{gap:6px;}
-    .pend-controls select,
-    .pend-controls input{
-      flex:1 1 100%;min-width:0;
-      font-size:15px;padding:10px 12px;height:44px;
-    }
-    .pend-summary{font-size:10px;}
-
     /* MODAL SERVICE CRÍTICO */
     .sv-modal{max-height:88vh;width:96%;}
     .sv-row{
@@ -1775,11 +1741,10 @@
     <div class="tab-bar" id="tabBar">
       <button class="tab-btn active" data-action="setTab" data-arg="tabTelemetria">telemetría de flota<span class="tab-badge" id="telemetriaBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabEquipos">equipos<span class="tab-badge" id="equipoCount">—</span></button>
-      <button class="tab-btn" data-action="setTab" data-arg="tabPedidos">pedidos pendientes<span class="tab-badge" id="pedidosPendBadge">—</span></button>
-      <button class="tab-btn" data-action="setTab" data-arg="tabCostos">costos downtime<span class="tab-badge" id="costosBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabService">service<span class="tab-badge" id="serviceBadge">—</span></button>
-      <button class="tab-btn" data-action="setTab" data-arg="tabReemplazo">conservar vs reemplazar<span class="tab-badge" id="reemplazoBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabFaltantes">pendientes de carga<span class="tab-badge" id="faltantesBadge">—</span></button>
+      <button class="tab-btn" data-action="setTab" data-arg="tabCostos">costos downtime<span class="tab-badge" id="costosBadge">—</span></button>
+      <button class="tab-btn" data-action="setTab" data-arg="tabReemplazo">conservar vs reemplazar<span class="tab-badge" id="reemplazoBadge">—</span></button>
     </div>
 
     <!-- Telemetría de flota (gráficos + rankings) -->
@@ -1887,26 +1852,9 @@
       </div>
     </div>
 
-    <!-- Pedidos pendientes global -->
-    <div class="tab-panel" id="tabPedidos">
-      <div class="section-content" id="secPedidosPend">
-        <div class="pend-controls">
-          <select id="pendFiltroEq" data-action="renderPedidosPendientesGlobal" data-event="change">
-            <option value="">Todos los equipos</option>
-          </select>
-          <select id="pendFiltroEst" data-action="renderPedidosPendientesGlobal" data-event="change">
-            <option value="">Todos los estados</option>
-            <option value="pendiente">Pendiente</option>
-            <option value="parcial">Parcial</option>
-            <option value="comprado">Comprado</option>
-          </select>
-          <input type="text" id="pendBuscador" placeholder="Buscar en descripción..."
-            data-action="renderPedidosPendientesGlobal" data-event="input" autocomplete="off">
-        </div>
-        <div class="pend-summary" id="pendSummary">—</div>
-        <div id="pedidosPendBody"></div>
-      </div>
-    </div>
+    <!-- El tab "pedidos pendientes" se eliminó el 2026-08-04 a pedido de
+         Marcos. Los pedidos de cada equipo siguen en su modal de detalle
+         (sección "pedidos de repuestos"), que lee el mismo _pedidosAll. -->
 
     <!-- Costos de downtime correctivo: costo mensual operativo POR EQUIPO
          (repuestos + mano de obra + costo de oportunidad, USD/mes).
