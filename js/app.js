@@ -1682,134 +1682,6 @@ const _cssVar=(name,fallback='#888')=>{
   const v=getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return v||fallback;
 };
-let _eqComboChart=null;
-// Mantenemos los nombres antiguos por compatibilidad pero apuntan al combo
-let _eqChart=null;let _horasChart=null;
-
-// Combo chart por equipo: barras de costo $ (eje izq) + línea de horas (eje der).
-// Mismo diseño que el chart de flota para coherencia visual.
-function renderEquipoCombo(chartId, codigo, horasPorMes){
-  if(typeof Chart==='undefined')return;
-  const el=document.getElementById(chartId);if(!el)return;
-  if(_eqComboChart){_eqComboChart.destroy();_eqComboChart=null;}
-
-  const AMBER =_cssVar('--amber','#ffa030');
-  const ACCENT=_cssVar('--accent','#3a5fc8');
-  const CORP  =_cssVar('--corp','#5d80e8');
-  const TEXT2 =_cssVar('--text2','#aab3c8');
-  const GRID  =_cssVar('--chart-grid','#1a2030');
-  const TOOLTIP_BG=_cssVar('--chart-tooltip-bg','#0d1019');
-  const TOOLTIP_FG=_cssVar('--chart-tooltip-fg','#f1f4fb');
-  const nomMes=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-
-  // Costos: usar _repuestosHistorial (preferido) o caer a _costosPorMes con meses fijos
-  const codN=normCod(codigo);
-  const hist=(window._repuestosHistorial||{})[codN];
-  let costosByYm={};
-  if(hist&&Object.keys(hist).length>0){
-    costosByYm=hist;
-  }else{
-    const pm=window._costosPorMes||{};
-    for(const m of MESES_ENTREGAS){
-      const v=(pm[m.ym]||{})[codN]||0;
-      if(v>0)costosByYm[m.ym]=v;
-    }
-  }
-  // Horas: el caller pasa horasPorMes ya construido
-  const horasByYm=horasPorMes||{};
-
-  // Union de meses presentes en cualquier serie, ordenados (filtrando YMs inválidos)
-  const _anioAct=new Date().getFullYear();
-  const ymsAll=[...new Set([...Object.keys(costosByYm),...Object.keys(horasByYm)])]
-    .filter(ym=>/^\d{4}-\d{2}$/.test(ym)&&+ym.slice(0,4)>=2020&&+ym.slice(0,4)<=_anioAct+1)
-    .sort();
-  if(!ymsAll.length)return;
-
-  const labels=ymsAll.map(ym=>{const[y,mm]=ym.split('-');return`${nomMes[+mm-1]}'${y.slice(2)}`;});
-  const dataCosto=ymsAll.map(ym=>Math.round(costosByYm[ym]||0));
-  const dataHoras=ymsAll.map(ym=>Math.round((horasByYm[ym]||0)*10)/10);
-
-  _eqComboChart=new Chart(el,{
-    type:'bar',
-    data:{
-      labels,
-      datasets:[
-        {
-          type:'bar',
-          label:'Costo en repuestos',
-          data:dataCosto,
-          backgroundColor:AMBER+'cc',
-          borderColor:AMBER,
-          borderWidth:1,
-          maxBarThickness:36,
-          yAxisID:'yCosto',
-          order:2,
-        },
-        {
-          type:'line',
-          label:'Horas en taller',
-          data:dataHoras,
-          borderColor:CORP,
-          backgroundColor:CORP+'20',
-          borderWidth:2.5,
-          pointBackgroundColor:CORP,
-          pointBorderColor:'#fff',
-          pointBorderWidth:1.5,
-          pointRadius:4,
-          pointHoverRadius:6,
-          fill:false,
-          tension:0.35,
-          yAxisID:'yHoras',
-          order:1,
-        }
-      ]
-    },
-    options:{
-      responsive:true,
-      maintainAspectRatio:false,
-      interaction:{mode:'index',intersect:false},
-      plugins:{
-        legend:{display:false},
-        tooltip:{
-          backgroundColor:TOOLTIP_BG,titleColor:TOOLTIP_FG,bodyColor:TOOLTIP_FG,
-          padding:10,borderColor:GRID,borderWidth:1,
-          titleFont:{family:'JetBrains Mono',size:10,weight:'600'},
-          bodyFont:{family:'Inter',size:11},
-          bodySpacing:5,
-          callbacks:{
-            label:c=>{
-              if(c.dataset.label==='Costo en repuestos')
-                return c.raw>0?'  ▣ '+formatMoney(c.raw)+' en repuestos':'  ▣ sin gasto';
-              if(c.dataset.label==='Horas en taller')
-                return c.raw>0?'  ─ '+c.raw.toFixed(1)+' hr en taller':'  ─ sin horas';
-              return c.raw;
-            }
-          }
-        }
-      },
-      scales:{
-        x:{
-          ticks:{color:TEXT2,font:{size:10,family:'JetBrains Mono',weight:'500'},maxRotation:30},
-          grid:{display:false},border:{color:GRID}
-        },
-        yCosto:{
-          type:'linear',position:'left',beginAtZero:true,
-          title:{display:true,text:'$',color:AMBER,font:{size:9,family:'JetBrains Mono',weight:'600'},padding:{bottom:6}},
-          ticks:{color:AMBER,font:{size:9,family:'JetBrains Mono'},maxTicksLimit:5,
-            callback:v=>v>=1e6?'$'+(v/1e6).toFixed(1)+'M':v>=1e3?'$'+(v/1e3).toFixed(0)+'K':'$'+v},
-          grid:{color:GRID,drawTicks:false},border:{display:false}
-        },
-        yHoras:{
-          type:'linear',position:'right',beginAtZero:true,
-          title:{display:true,text:'hr',color:ACCENT,font:{size:9,family:'JetBrains Mono',weight:'600'},padding:{bottom:6}},
-          ticks:{color:ACCENT,font:{size:9,family:'JetBrains Mono'},maxTicksLimit:5,callback:v=>v+' h'},
-          grid:{display:false},border:{display:false}
-        }
-      }
-    }
-  });
-}
-
 /* ═══════════════════════════════════════════════════════
    UI — SECCIONES, FILTROS, VISTAS
 ═══════════════════════════════════════════════════════ */
@@ -3142,9 +3014,8 @@ async function toggleEquipoDetail(codigo,cardEl){
     filasServicio.push({ref:`Nº ${sr.planilla}`,fecha:sr.fecha,tipo:'service',
       desc:`Service — Personal: ${sr.personal}`,lugar:sr.mes,tiempo:'—',_ts:toSortDate(sr.fecha)});
   }
-  // Acumulador de horas totales y por mes (para el gráfico) + split correctivo/preventivo
+  // Acumulador de horas totales + split correctivo/preventivo
   let totalHoras=0, horasPrevEq=0, horasCorrEq=0;
-  const horasPorMes={};
   for(const r of trabajosRows){
     const desc=r.desc;
     if(!desc)continue;
@@ -3160,8 +3031,6 @@ async function toggleEquipoDetail(codigo,cardEl){
     if(isFinite(tNum)&&tNum>0){
       totalHoras+=tNum;
       if(tipoTrabajo==='preventivo')horasPrevEq+=tNum; else horasCorrEq+=tNum;
-      const d=_parseDate(fecha);
-      if(d){const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;horasPorMes[ym]=(horasPorMes[ym]||0)+tNum;}
     }
     filasServicio.push({ref:'—',fecha,tipo:tipoTrabajo,
       desc:desc.length>200?desc.slice(0,197)+'…':desc,
@@ -3361,25 +3230,12 @@ async function toggleEquipoDetail(codigo,cardEl){
       </table></div>`
     :`<div class="no-data">Sin entregas de repuestos con costo para este equipo.</div>`;
 
-  // Sección 3: Gráfico combinado (costo en repuestos + horas en taller, mes a mes)
-  const hasChart=costoTotal2026>0||!!(window._repuestosHistorial||{})[codN];
-  const hasHoras=Object.keys(horasPorMes).length>0;
-  const chartUid=`eqchart_${codigo.replace(/[^a-z0-9]/gi,'_')}`;
-  const hayCualquiera=hasChart||hasHoras;
-  const contGrafico=hayCualquiera
-    ?`<div class="table-wrap" style="padding:14px 18px 18px">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:10px">
-          <div style="font-size:11px;color:var(--text2)">Costo en repuestos vs horas en taller por mes</div>
-          <div style="display:flex;gap:14px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text2);letter-spacing:.04em">
-            <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:10px;height:10px;background:var(--amber);display:inline-block;box-shadow:0 0 5px rgba(255,160,48,.5)"></span>costo $</span>
-            <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:16px;height:2.5px;background:var(--accent);display:inline-block;box-shadow:0 0 5px var(--accent)"></span>horas hr</span>
-          </div>
-        </div>
-        <div style="position:relative;height:200px"><canvas id="${chartUid}">—</canvas></div>
-      </div>`
-    :`<div class="no-data">Sin datos suficientes para graficar.</div>`;
+  // (La sección "costos y horas de mantenimiento mes a mes" se eliminó el
+  // 2026-08-04 a pedido de Marcos: no aportaba — con pocos meses cargados el
+  // gráfico combinado era ilegible. El costo mensual por equipo vive en el tab
+  // "costos downtime", que sí se usa.)
 
-  // Sección 4: Fuentes
+  // Sección 3: Fuentes
   // rel="noopener noreferrer": evita que la pestaña destino acceda a window.opener
   // (tabnabbing) y omite el header Referer hacia docs.google.com.
   const _lnk=(id,txt,title)=>`<a href="https://docs.google.com/spreadsheets/d/${id}/edit" target="_blank" rel="noopener noreferrer"${title?` title="${title}"`:''} style="color:var(--blue);text-decoration:none">${txt} ↗</a>`;
@@ -3513,18 +3369,13 @@ async function toggleEquipoDetail(codigo,cardEl){
       eqSection('servicios y reparaciones en taller',contServicio,true).value+
       eqSection(`pedidos de repuestos (${pedidosEquipo.length})`,contPedidos,true).value+
       (entregasEquipo.length?eqSection(`entregas sin pedido vinculado (${entregasEquipo.length})`,contEntregas,false).value:'')+
-      (hayCualquiera?eqSection('costos y horas de mantenimiento mes a mes',contGrafico,true).value:'')+
       eqSection(`cargas de combustible${comb?.cargas?.length?` (${comb.cargas.length})`:''}`,contCombustible,false).value+
       eqSection('fuentes de información',contFuentes,false).value
     ));
 
-  if(hayCualquiera&&typeof Chart!=='undefined')setTimeout(()=>renderEquipoCombo(chartUid,codigo,horasPorMes),100);
 }
 
 function closeEquipoDetail(){
-  if(_eqComboChart){_eqComboChart.destroy();_eqComboChart=null;}
-  if(_eqChart){_eqChart.destroy();_eqChart=null;}
-  if(_horasChart){_horasChart.destroy();_horasChart=null;}
   const panel=document.getElementById('equipoDetailPanel');
   panel.classList.remove('open');
   // Devolver el panel a su home estable: si quedó dentro del grid, al próximo
