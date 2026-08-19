@@ -753,16 +753,18 @@ function renderTrabajosPendientes(){
     const diasCls=dias!=null&&dias>30?' style="color:var(--red)"':dias!=null&&dias>14?' style="color:var(--amber)"':'';
     return html`<tr>
       <td class="mono" style="font-size:11px;white-space:nowrap"><a style="color:var(--accent);cursor:pointer;text-decoration:none" data-action="scrollToEquipo" data-arg="${t.codigo}" title="Ver detalle del equipo">${t.codigo}</a></td>
-      <td style="font-size:11px;white-space:nowrap"><span class="badge ${t.resuelto?'badge-gray':'badge-amber'}">${t.estado||(t.resuelto?'Resuelto':'Pendiente')}</span></td>
       <td class="mono" style="font-size:10.5px;color:var(--text3);white-space:nowrap">${formatFechaCorta(t.fecha)}</td>
       <td${new RawHTML(diasCls)} class="mono" style="font-size:11px;text-align:right;white-space:nowrap">${dias!=null?fmtInt(dias)+' d':'—'}</td>
       <td style="font-size:12px;color:var(--text2)">${t.descripcion||'—'}${t.resuelto&&t.descripcionResolucion?html`<div style="font-size:11px;color:var(--text3);margin-top:2px">↳ ${t.descripcionResolucion}</div>`:''}</td>
       <td style="font-size:11px;color:var(--text3)">${t.responsable||'—'}</td>
     </tr>`;
   };
+  // Sin columna Estado: cada tabla ya vive dentro de un bloque homogéneo
+  // (Pendientes / resueltos), la etiqueta por fila sería redundante acá.
+  // Solo hace falta en el detalle de equipo, donde las dos listas se mezclan.
   const tabla=(rows,vacio)=>rows.length
     ? html`<div class="table-wrap"><table class="eq-inner-table">
-        <thead><tr><th>Código</th><th>Estado</th><th>Fecha</th><th style="text-align:right">Antigüedad</th><th>Descripción</th><th>Responsable</th></tr></thead>
+        <thead><tr><th>Código</th><th>Fecha</th><th style="text-align:right">Antigüedad</th><th>Descripción</th><th>Responsable</th></tr></thead>
         <tbody>${rows.map(fila)}</tbody>
       </table></div>`
     : html`<div class="no-data">${vacio}</div>`;
