@@ -723,7 +723,7 @@ async function toggleEquipoDetail(codigo,cardEl){
         <thead><tr><th>Fecha</th><th>Estado</th><th>Descripción</th><th>Responsable</th></tr></thead>
         <tbody>${trabPendEq.map(t=>`<tr>
           <td class="mono" style="font-size:10.5px;color:var(--text3);white-space:nowrap">${formatFechaCorta(t.fecha)}</td>
-          <td style="font-size:11px"><span class="badge ${t.resuelto?'badge-gray':'badge-amber'}">${t.resuelto?'Resuelto':'Pendiente'}</span></td>
+          <td style="font-size:11px"><span class="badge ${t.resuelto?'badge-gray':'badge-amber'}">${t.estado||(t.resuelto?'Resuelto':'Pendiente')}</span></td>
           <td style="font-size:12px;color:var(--text2)">${t.descripcion||'—'}${t.resuelto&&t.descripcionResolucion?`<div style="font-size:11px;color:var(--text3);margin-top:2px">↳ ${t.descripcionResolucion}</div>`:''}</td>
           <td style="font-size:11px;color:var(--text3)">${t.responsable||'—'}</td>
         </tr>`).join('')}</tbody>
