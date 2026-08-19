@@ -750,11 +750,10 @@ function renderTrabajosPendientes(){
   const fila=t=>{
     const d=_parseDate(t.fecha);
     const dias=d?Math.round((hoy-d)/86400000):null;
-    const diasCls=dias!=null&&dias>30?' style="color:var(--red)"':dias!=null&&dias>14?' style="color:var(--amber)"':'';
     return html`<tr>
       <td class="mono" style="font-size:11px;white-space:nowrap"><a style="color:var(--accent);cursor:pointer;text-decoration:none" data-action="scrollToEquipo" data-arg="${t.codigo}" title="Ver detalle del equipo">${t.codigo}</a></td>
       <td class="mono" style="font-size:10.5px;color:var(--text3);white-space:nowrap">${formatFechaCorta(t.fecha)}</td>
-      <td${new RawHTML(diasCls)} class="mono" style="font-size:11px;text-align:right;white-space:nowrap">${dias!=null?fmtInt(dias)+' d':'—'}</td>
+      <td class="mono" style="font-size:11px;text-align:right;white-space:nowrap;color:var(--text2)">${dias!=null?fmtInt(dias)+' d':'—'}</td>
       <td style="font-size:12px;color:var(--text2)">${t.descripcion||'—'}${t.resuelto&&t.descripcionResolucion?html`<div style="font-size:11px;color:var(--text3);margin-top:2px">↳ ${t.descripcionResolucion}</div>`:''}</td>
       <td style="font-size:11px;color:var(--text3)">${t.responsable||'—'}</td>
     </tr>`;
