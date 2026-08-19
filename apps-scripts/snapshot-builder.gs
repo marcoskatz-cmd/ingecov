@@ -407,9 +407,10 @@ function _buildCombustible_(snap){
     const h = t.header;
     const iCod = _idx_(h, ['CÓDIGO INTERNO','CODIGO INTERNO','CÓDIGO','CODIGO']);
     const iFec = _idx_(h, ['FECHA']);
-    const iEst = _idx_(h, ['ESTADO HORÓMETRO','ESTADO HOROMETRO','ESTADO']);
-    // Fuente actual: 'HORÓMETRO ACTUAL (HR)' → 'HOROMETROACTUALHR'.
-    const iHr  = _idx_(h, ['HOROMETRO ACTUAL HR','HORÓMETRO ACTUAL','HOROMETRO ACTUAL']);
+    // Fuente actual (ago-2026): 'ESTADO HORÓMETRO/ODÓMETRO' (agregaron "/ODÓMETRO").
+    const iEst = _idx_(h, ['ESTADO HORÓMETRO/ODÓMETRO','ESTADO HORÓMETRO','ESTADO HOROMETRO','ESTADO']);
+    // Fuente actual (ago-2026): 'HORÓMETRO/ODÓMETRO ACTUAL (HR/KM)' (antes 'HORÓMETRO ACTUAL (HR)').
+    const iHr  = _idx_(h, ['HORÓMETRO/ODÓMETRO ACTUAL (HR/KM)','HOROMETRO ACTUAL HR','HORÓMETRO ACTUAL','HOROMETRO ACTUAL']);
     const iLit = _idx_(h, ['CANTIDAD (L)','CANTIDAD','LITROS']);
     const iTip = _idx_(h, ['TIPO COMBUSTIBLE','TIPO DE COMBUSTIBLE','TIPO']);
     // Fuente actual: 'LUGAR ENTREGA/OBRA PARTICULAR'.
@@ -460,6 +461,7 @@ function _buildCombustible_(snap){
     _write_(snap, 'COMBUSTIBLE', out, true);
     const faltan = [];
     if(iHr  < 0) faltan.push('HOROMETRO ACTUAL');
+    if(iEst < 0) faltan.push('ESTADO');
     if(iCod < 0) faltan.push('CODIGO');
     if(iLit < 0) faltan.push('CANTIDAD');
     const detCam = nCam ? ('camionetas: '+nCam) : '';
