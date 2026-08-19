@@ -60,6 +60,9 @@ const ACTIONS = {
   cerrarAuditoriaIfBg:           (_, t, e) => { if (e.target === t) cerrarAuditoria(); },
   audSubmitPin:                  () => audSubmitPin(),
   toggleInactivosSec:            () => toggleInactivosSec(),
+  onConsultaBuscar:               (_, t) => onConsultaBuscar(t.value),
+  limpiarConsulta:                () => limpiarConsulta(),
+  seleccionarConsultaEquipo:      (codigo) => seleccionarConsultaEquipo(codigo),
 };
 
 function _dispatchAction(e) {

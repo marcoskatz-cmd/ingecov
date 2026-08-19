@@ -869,3 +869,134 @@ document.addEventListener('keydown',e=>{
   const ovAu=document.getElementById('audOverlay');
   if(ovAu&&ovAu.classList.contains('open'))cerrarAuditoria();
 });
+
+/* ═══════════════════════════════════════════════════════
+   TAB "CONSULTAR EQUIPO"
+   Buscador + checklist de taller para UN equipo: trabajos pendientes
+   abiertos, estado de service, VTV y últimos trabajos realizados.
+   Pensada para el mecánico que recibe el equipo en el taller — no
+   toca el modal de detalle de equipo existente (js/05-render.js),
+   es una vista de solo lectura separada que reusa los mismos datos
+   ya calculados en loadAll (window._trabajosPendientesPorEquipo,
+   window._servicePanel vía operatividadEquipo, window._vtvPorEquipo).
+   Los "últimos trabajos realizados" son la única parte async: usan
+   loadTrabajosRegistro() (02-datos.js), que cachea el fetch en
+   window._panelTrabajosRaw tras la primera consulta.
+═══════════════════════════════════════════════════════ */
+let _consultaEquipoSel=null; // codN mostrado actualmente (evita pisar resultados si el usuario buscó de nuevo mientras cargaba)
+
+function onConsultaBuscar(val){
+  const clearBtn=document.getElementById('consultaClear');
+  if(clearBtn)clearBtn.classList.toggle('visible',!!val);
+  const wrap=document.getElementById('consultaResultados');
+  if(!wrap)return;
+  const qText=(val||'').trim();
+  if(!qText){ wrap.style.display='none'; wrap.textContent=''; return; }
+  const q=normCod(qText), qLower=qText.toLowerCase();
+  const matches=(window._equiposOrdenados||[])
+    .filter(e=>normCod(e.codigo).includes(q)||(e.nombre||'').toLowerCase().includes(qLower))
+    .slice(0,20);
+  setHTML(wrap, matches.length
+    ? html`${matches.map(e=>html`<div class="consulta-result" data-action="seleccionarConsultaEquipo" data-arg="${e.codigo}">
+        <span class="mono" style="font-weight:600;color:var(--accent);min-width:72px;display:inline-block">${e.codigo}</span>
+        <span style="color:var(--text2);font-size:12px">${e.nombre}</span>
+      </div>`)}`
+    : html`<div class="no-data" style="padding:14px">Sin resultados.</div>`);
+  wrap.style.display='block';
+}
+
+function limpiarConsulta(){
+  _consultaEquipoSel=null;
+  const buscador=document.getElementById('consultaBuscador');
+  if(buscador)buscador.value='';
+  const clearBtn=document.getElementById('consultaClear');
+  if(clearBtn)clearBtn.classList.remove('visible');
+  const resultados=document.getElementById('consultaResultados');
+  if(resultados){resultados.style.display='none';resultados.textContent='';}
+  const checklist=document.getElementById('consultaChecklist');
+  if(checklist){checklist.style.display='none';checklist.textContent='';}
+}
+
+async function seleccionarConsultaEquipo(codigo){
+  const codN=normCod(codigo);
+  _consultaEquipoSel=codN;
+  const buscador=document.getElementById('consultaBuscador');
+  if(buscador)buscador.value=codigo;
+  const resultados=document.getElementById('consultaResultados');
+  if(resultados){resultados.style.display='none';resultados.textContent='';}
+
+  const info=(window._equiposOrdenados||[]).find(e=>normCod(e.codigo)===codN);
+  const pendAbiertos=((window._trabajosPendientesPorEquipo||{})[codN]||[]).filter(t=>!t.resuelto);
+  const op=operatividadEquipo(codN);
+  const vtv=(window._vtvPorEquipo||{})[codN]||null;
+
+  const wrap=document.getElementById('consultaChecklist');
+  if(!wrap)return;
+  wrap.style.display='block';
+  setHTML(wrap, _consultaChecklistHTML(codigo, info, pendAbiertos, op, vtv, null));
+
+  try{
+    const rows=await loadTrabajosRegistro(codigo);
+    if(_consultaEquipoSel!==codN)return; // el usuario ya buscó otra cosa mientras cargaba
+    const ultimos=rows.filter(r=>r.desc).sort((a,b)=>toSortDate(b.fecha)-toSortDate(a.fecha)).slice(0,3);
+    const cont=document.getElementById('consultaUltimosWrap');
+    if(cont)setHTML(cont, _consultaUltimosHTML(ultimos));
+  }catch(_){
+    if(_consultaEquipoSel!==codN)return;
+    const cont=document.getElementById('consultaUltimosWrap');
+    if(cont)setHTML(cont, html`<div class="no-data">No se pudo cargar el historial.</div>`);
+  }
+}
+
+function _consultaUltimosHTML(ultimos){
+  if(ultimos==null)return html`<div class="no-data">cargando…</div>`;
+  if(!ultimos.length)return html`<div class="no-data">Sin trabajos registrados.</div>`;
+  return html`<div class="table-wrap"><table class="eq-inner-table">
+      <thead><tr><th>Fecha</th><th>Descripción</th></tr></thead>
+      <tbody>${ultimos.map(r=>html`<tr>
+        <td class="mono" style="font-size:10.5px;color:var(--text3);white-space:nowrap">${formatFechaCorta(r.fecha)}</td>
+        <td style="font-size:12px;color:var(--text2)">${r.desc||'—'}</td>
+      </tr>`)}</tbody>
+    </table></div>`;
+}
+
+function _consultaChecklistHTML(codigo, info, pendAbiertos, op, vtv, ultimos){
+  const nombre=info?.nombre||codigo;
+  const svcOk = op.nivel==='holgado'||op.nivel==='intermedio';
+  const vtvOk = !vtv || vtv.dias>VTV_UMBRAL_DIAS;
+  const todoOk = !pendAbiertos.length && svcOk && vtvOk;
+
+  const filaPend = pendAbiertos.length
+    ? html`<div class="table-wrap"><table class="eq-inner-table">
+        <thead><tr><th>Fecha</th><th>Descripción</th><th>Responsable</th></tr></thead>
+        <tbody>${pendAbiertos.map(t=>html`<tr>
+          <td class="mono" style="font-size:10.5px;color:var(--text3);white-space:nowrap">${formatFechaCorta(t.fecha)}</td>
+          <td style="font-size:12px;color:var(--text2)">${t.descripcion||'—'}</td>
+          <td style="font-size:11px;color:var(--text3)">${t.responsable||'—'}</td>
+        </tr>`)}</tbody>
+      </table></div>`
+    : html`<div class="no-data">Sin trabajos pendientes.</div>`;
+
+  const svcTxt = op.nivel==='sin-datos' ? 'Sin datos de service'
+    : `${op.label}${op.restantes!=null?(op.restantes>=0?` · faltan ${fmtInt(op.restantes)}`:` · vencido hace ${fmtInt(Math.abs(op.restantes))}`):''}`;
+
+  const vtvTxt = !vtv ? 'Sin VTV cargada'
+    : vtv.dias<=0 ? `Vencida hace ${fmtInt(Math.abs(vtv.dias))} días`
+    : vtv.dias<=VTV_UMBRAL_DIAS ? `Vence en ${fmtInt(vtv.dias)} días`
+    : `Al día (vence ${formatFechaCorta(vtv.vencimiento)})`;
+  const vtvColor = !vtv ? 'var(--text3)' : vtv.dias<=0 ? 'var(--red)' : vtv.dias<=VTV_UMBRAL_DIAS ? 'var(--amber)' : 'var(--green)';
+
+  return html`
+    <div style="font-size:16px;font-weight:600;color:var(--text)">${nombre}</div>
+    <div class="mono" style="font-size:11px;color:var(--text3);margin-bottom:14px">${codigo}</div>
+    ${todoOk?html`<div style="background:var(--green-bg);border:1px solid var(--green-tint);color:var(--green);padding:10px 14px;font-size:13px">✓ Sin pendientes · service al día · VTV al día</div>`:''}
+    <div class="consulta-label">⚠ trabajos pendientes${pendAbiertos.length?` (${pendAbiertos.length})`:''}</div>
+    ${filaPend}
+    <div class="consulta-label">🔧 service</div>
+    <div style="border-left:3px solid ${op.color};background:var(--bg3);padding:10px 14px;font-size:13px;color:${op.color};font-weight:500">${svcTxt}</div>
+    <div class="consulta-label">📋 VTV</div>
+    <div style="border-left:3px solid ${vtvColor};background:var(--bg3);padding:10px 14px;font-size:13px;color:${vtvColor};font-weight:500">${vtvTxt}</div>
+    <div class="consulta-label">🕓 últimos trabajos realizados</div>
+    <div id="consultaUltimosWrap">${_consultaUltimosHTML(ultimos)}</div>
+  `;
+}

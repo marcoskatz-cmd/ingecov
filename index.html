@@ -48,14 +48,14 @@
      arranca el PIN gate. No reordenar ni pasar a type=module sin revisar
      ACTIONS. Bump del ?v= al cambiar cualquiera de ellos, para clientes con
      HTTP cache (el SW solo invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/01-core.js?v=66" defer></script>
-<script src="./js/02-datos.js?v=66" defer></script>
-<script src="./js/03-ui.js?v=66" defer></script>
-<script src="./js/04-carga.js?v=66" defer></script>
-<script src="./js/05-render.js?v=66" defer></script>
-<script src="./js/06-tabs.js?v=66" defer></script>
-<script src="./js/07-auditoria.js?v=66" defer></script>
-<script src="./js/08-bootstrap.js?v=66" defer></script>
+<script src="./js/01-core.js?v=67" defer></script>
+<script src="./js/02-datos.js?v=67" defer></script>
+<script src="./js/03-ui.js?v=67" defer></script>
+<script src="./js/04-carga.js?v=67" defer></script>
+<script src="./js/05-render.js?v=67" defer></script>
+<script src="./js/06-tabs.js?v=67" defer></script>
+<script src="./js/07-auditoria.js?v=67" defer></script>
+<script src="./js/08-bootstrap.js?v=67" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -915,6 +915,22 @@
   }
   .search-clear:hover{color:var(--accent);}
   .search-clear.visible{display:block;}
+  .consulta-results{
+    max-width:420px;background:var(--bg2);border:1px solid var(--border);border-top:none;
+    max-height:280px;overflow-y:auto;
+  }
+  .consulta-result{
+    padding:9px 14px;cursor:pointer;display:flex;align-items:center;gap:10px;
+    border-bottom:1px solid var(--divider);transition:background var(--t-fast) var(--ease);
+  }
+  .consulta-result:last-child{border-bottom:none;}
+  .consulta-result:hover{background:var(--bg3);}
+  .consulta-label{
+    font-family:'IBM Plex Sans',sans-serif;font-size:11px;text-transform:uppercase;
+    letter-spacing:.12em;color:var(--text2);font-weight:600;
+    display:flex;align-items:center;gap:8px;margin:18px 0 8px;
+  }
+  .consulta-label:first-of-type{margin-top:0;}
   .view-btn{
     background:var(--bg2);border:1px solid var(--border);color:var(--text3);
     padding:10px 14px;font-family:'JetBrains Mono',monospace;font-size:14px;
@@ -1741,6 +1757,7 @@
     <div class="tab-bar" id="tabBar">
       <button class="tab-btn active" data-action="setTab" data-arg="tabTelemetria">telemetría de flota<span class="tab-badge" id="telemetriaBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabEquipos">equipos<span class="tab-badge" id="equipoCount">—</span></button>
+      <button class="tab-btn" data-action="setTab" data-arg="tabConsulta">consultar equipo</button>
       <button class="tab-btn" data-action="setTab" data-arg="tabService">service<span class="tab-badge" id="serviceBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabTrabPend">trabajos pendientes<span class="tab-badge" id="trabPendBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabFaltantes">pendientes de carga<span class="tab-badge" id="faltantesBadge">—</span></button>
@@ -1898,6 +1915,26 @@
             <div class="telemetria-card-title">pendientes de carga — qué falta anotar en las planillas</div>
           </div>
           <div id="faltantesWrap" style="margin-top:10px">cargando…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Consultar equipo: buscador + checklist de taller (service, pendientes,
+         VTV, últimos trabajos). Vista de solo lectura, separada del modal de
+         detalle de equipo — no lo toca ni depende de él. -->
+    <div class="tab-panel" id="tabConsulta">
+      <div class="section-content">
+        <div class="telemetria-card">
+          <div class="combo-header">
+            <div class="telemetria-card-title">consultar equipo — para cuando entra al taller</div>
+          </div>
+          <div class="search-wrap" style="margin-top:10px;max-width:420px">
+            <input type="text" id="consultaBuscador" placeholder="Buscar por código o nombre..."
+              data-action="onConsultaBuscar" data-event="input" autocomplete="off">
+            <button class="search-clear" id="consultaClear" data-action="limpiarConsulta" title="Limpiar">×</button>
+          </div>
+          <div id="consultaResultados" class="consulta-results" style="display:none"></div>
+          <div id="consultaChecklist" style="margin-top:16px;display:none"></div>
         </div>
       </div>
     </div>
