@@ -715,6 +715,21 @@ async function toggleEquipoDetail(codigo,cardEl){
     return marker+_lnk(m.id,m.mes,aplica?`Service de ${m.mes} (este equipo)`:`Planilla mensual de service — ${m.mes}`);
   }).join(' · ');
 
+  // Trabajos pendientes de taller para este equipo (pestaña TRAB_PEND).
+  const trabPendEq = (window._trabajosPendientesPorEquipo||{})[codN]||[];
+  const trabPendAbiertos = trabPendEq.filter(t=>!t.resuelto);
+  const contTrabPend = trabPendEq.length
+    ? `<div class="table-wrap"><table class="eq-inner-table">
+        <thead><tr><th>Fecha</th><th>Estado</th><th>Descripción</th><th>Responsable</th></tr></thead>
+        <tbody>${trabPendEq.map(t=>`<tr>
+          <td class="mono" style="font-size:10.5px;color:var(--text3);white-space:nowrap">${formatFechaCorta(t.fecha)}</td>
+          <td style="font-size:11px"><span class="badge ${t.resuelto?'badge-gray':'badge-amber'}">${t.resuelto?'Resuelto':'Pendiente'}</span></td>
+          <td style="font-size:12px;color:var(--text2)">${t.descripcion||'—'}${t.resuelto&&t.descripcionResolucion?`<div style="font-size:11px;color:var(--text3);margin-top:2px">↳ ${t.descripcionResolucion}</div>`:''}</td>
+          <td style="font-size:11px;color:var(--text3)">${t.responsable||'—'}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>`
+    : `<div class="no-data">Sin trabajos pendientes cargados para este equipo.</div>`;
+
   const contFuentes=`
     <div style="display:grid;gap:1px;background:var(--border);border:1px solid var(--border)">
       <div style="background:var(--bg3);padding:11px 14px;font-size:11px;color:var(--text2);line-height:1.7">
@@ -818,6 +833,7 @@ async function toggleEquipoDetail(codigo,cardEl){
       (horHTML instanceof RawHTML ? horHTML.value : String(horHTML))+
       vtvHTML+
       eqSection('servicios y reparaciones en taller',contServicio,true).value+
+      (trabPendEq.length?eqSection(`trabajos pendientes (${trabPendAbiertos.length})`,contTrabPend,!!trabPendAbiertos.length).value:'')+
       eqSection(`pedidos de repuestos (${pedidosEquipo.length})`,contPedidos,true).value+
       (entregasEquipo.length?eqSection(`entregas sin pedido vinculado (${entregasEquipo.length})`,contEntregas,false).value:'')+
       eqSection(`cargas de combustible${comb?.cargas?.length?` (${comb.cargas.length})`:''}`,contCombustible,false).value+

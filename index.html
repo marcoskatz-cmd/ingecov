@@ -48,14 +48,14 @@
      arranca el PIN gate. No reordenar ni pasar a type=module sin revisar
      ACTIONS. Bump del ?v= al cambiar cualquiera de ellos, para clientes con
      HTTP cache (el SW solo invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/01-core.js?v=62" defer></script>
-<script src="./js/02-datos.js?v=62" defer></script>
-<script src="./js/03-ui.js?v=62" defer></script>
-<script src="./js/04-carga.js?v=62" defer></script>
-<script src="./js/05-render.js?v=62" defer></script>
-<script src="./js/06-tabs.js?v=62" defer></script>
-<script src="./js/07-auditoria.js?v=62" defer></script>
-<script src="./js/08-bootstrap.js?v=62" defer></script>
+<script src="./js/01-core.js?v=63" defer></script>
+<script src="./js/02-datos.js?v=63" defer></script>
+<script src="./js/03-ui.js?v=63" defer></script>
+<script src="./js/04-carga.js?v=63" defer></script>
+<script src="./js/05-render.js?v=63" defer></script>
+<script src="./js/06-tabs.js?v=63" defer></script>
+<script src="./js/07-auditoria.js?v=63" defer></script>
+<script src="./js/08-bootstrap.js?v=63" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -1742,6 +1742,7 @@
       <button class="tab-btn active" data-action="setTab" data-arg="tabTelemetria">telemetría de flota<span class="tab-badge" id="telemetriaBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabEquipos">equipos<span class="tab-badge" id="equipoCount">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabService">service<span class="tab-badge" id="serviceBadge">—</span></button>
+      <button class="tab-btn" data-action="setTab" data-arg="tabTrabPend">trabajos pendientes<span class="tab-badge" id="trabPendBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabFaltantes">pendientes de carga<span class="tab-badge" id="faltantesBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabCostos">costos downtime<span class="tab-badge" id="costosBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabReemplazo">conservar vs reemplazar<span class="tab-badge" id="reemplazoBadge">—</span></button>
@@ -1897,6 +1898,17 @@
             <div class="telemetria-card-title">pendientes de carga — qué falta anotar en las planillas</div>
           </div>
           <div id="faltantesWrap" style="margin-top:10px">cargando…</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tabTrabPend">
+      <div class="section-content">
+        <div class="telemetria-card">
+          <div class="combo-header">
+            <div class="telemetria-card-title">trabajos pendientes — tareas de taller sin resolver</div>
+          </div>
+          <div id="trabPendWrap" style="margin-top:10px">cargando…</div>
         </div>
       </div>
     </div>

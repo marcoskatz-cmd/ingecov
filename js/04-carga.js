@@ -35,7 +35,7 @@ async function loadAll(){
     // Carga primaria: TODO lo necesario para el primer render.
     // PANEL_REPUESTOS pasa a ser fuente única de entregas (reemplaza MESES_ENTREGAS).
     // PANEL_TRABAJOS se carga acá también para alimentar telemetría de flota (rankings + chart de horas).
-    const[pendientesRaw,entregadosRaw,codV,codL,codP,codS,panelRepuestosLiveObj,panelRepuestosHistObj,panelTrabajosLiveObj,panelTrabajosHistObj,serviceFrecRows,serviceTrimRows,trim1Rows,trim2Rows,panelProgramaObj,combustibleObj,combLivianosRows,vtvRows,faltantesRows]=await Promise.all([
+    const[pendientesRaw,entregadosRaw,codV,codL,codP,codS,panelRepuestosLiveObj,panelRepuestosHistObj,panelTrabajosLiveObj,panelTrabajosHistObj,serviceFrecRows,serviceTrimRows,trim1Rows,trim2Rows,panelProgramaObj,combustibleObj,combLivianosRows,vtvRows,faltantesRows,trabPendRows]=await Promise.all([
       fetchGvizRaw(SHEET_IDS.pedidos,'PENDIENTES'),
       // ENTREGADOS tiene título y contadores en filas 1-10; headers reales en fila 11.
       // El range fuerza a gviz a usar la fila 11 como header (sin esto, los nombres se pierden).
@@ -69,6 +69,9 @@ async function loadAll(){
       // FALTANTES: pendientes de CARGA (qué falta anotar), no de control. La
       // arma el builder leyendo las demás pestañas del snapshot.
       fetchGvizObj(SNAPSHOT_ID,'FALTANTES').catch(()=>[]),
+      // TRABAJOS PENDIENTES: tareas de taller detectadas y todavía sin resolver
+      // (hoja nueva ago-2026, misma planilla que TRABAJOS REALIZADOS).
+      fetchGvizObj(SNAPSHOT_ID,'TRAB_PEND').catch(()=>[]),
     ]);
     setLoadProgress(55);
 
@@ -257,6 +260,35 @@ async function loadAll(){
       prioridad:String(r['PRIORIDAD']||'').trim(),
     })).filter(f=>f.tipo&&f.codigo);
     renderFaltantes();
+
+    // Trabajos pendientes de taller (pestaña TRAB_PEND del snapshot). Se
+    // agrupan por equipo para el detalle Y se guardan planos para el tab
+    // global. ESTADO por defecto es "Pendiente"; cualquier otra cosa cuenta
+    // como resuelto (ej. "Resuelto", o vacío con FECHA_RESOLUCION cargada).
+    {
+      const lista=(trabPendRows||[]).map(r=>{
+        const codigo=String(r['CODIGO']||'').trim();
+        const estadoRaw=String(r['ESTADO']||'').trim();
+        const fechaRes=String(r['FECHA_RESOLUCION']||'').trim();
+        const resuelto=fechaRes!=='' || /resuel/i.test(estadoRaw);
+        return {
+          codigo, codN:normCod(codigo),
+          equipo:String(r['EQUIPO']||'').trim(),
+          fecha:String(r['FECHA']||'').trim(),
+          descripcion:String(r['DESCRIPCION']||'').trim(),
+          responsable:String(r['RESPONSABLE']||'').trim(),
+          estado:estadoRaw||(resuelto?'Resuelto':'Pendiente'),
+          fechaResolucion:fechaRes,
+          descripcionResolucion:String(r['DESCRIPCION_RESOLUCION']||'').trim(),
+          resuelto,
+        };
+      }).filter(t=>t.codN);
+      lista.sort((a,b)=>(_parseDate(a.fecha)?.getTime()||0)-(_parseDate(b.fecha)?.getTime()||0));
+      window._trabajosPendientes=lista;
+      window._trabajosPendientesPorEquipo={};
+      for(const t of lista)(window._trabajosPendientesPorEquipo[t.codN]=window._trabajosPendientesPorEquipo[t.codN]||[]).push(t);
+      renderTrabajosPendientes();
+    }
 
     // Render dashboard con entregas del mes actual (calculadas desde PANEL_REPUESTOS)
     renderDashboard(pendientesRaw,ctx.entregasMesActual);

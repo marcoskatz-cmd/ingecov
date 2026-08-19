@@ -727,6 +727,56 @@ function renderFaltantes(){
   setHTML(wrap,html`${bloques}`);
 }
 
+/* ═══════════════════════════════════════════════════════
+   TAB "TRABAJOS PENDIENTES"
+   Lista de tareas de taller detectadas y aún sin resolver (pestaña TRAB_PEND
+   del snapshot, hoja nueva que Marcos agregó ago-2026 junto a TRABAJOS
+   REALIZADOS). El badge cuenta solo las abiertas; las resueltas quedan
+   colapsadas debajo, no se ocultan (quedan como historial corto).
+═══════════════════════════════════════════════════════ */
+function renderTrabajosPendientes(){
+  const wrap=document.getElementById('trabPendWrap');
+  const badge=document.getElementById('trabPendBadge');
+  if(!wrap)return;
+  const items=window._trabajosPendientes||[];
+  const abiertos=items.filter(t=>!t.resuelto);
+  const resueltos=items.filter(t=>t.resuelto);
+  if(badge)badge.textContent=String(abiertos.length);
+  if(!items.length){
+    setHTML(wrap,html`<div class="no-data">No hay trabajos pendientes cargados.</div>`);
+    return;
+  }
+  const hoy=new Date();
+  const fila=t=>{
+    const d=_parseDate(t.fecha);
+    const dias=d?Math.round((hoy-d)/86400000):null;
+    const diasCls=dias!=null&&dias>30?' style="color:var(--red)"':dias!=null&&dias>14?' style="color:var(--amber)"':'';
+    return html`<tr>
+      <td class="mono" style="font-size:11px;white-space:nowrap"><a style="color:var(--accent);cursor:pointer;text-decoration:none" data-action="scrollToEquipo" data-arg="${t.codigo}" title="Ver detalle del equipo">${t.codigo}</a></td>
+      <td class="mono" style="font-size:10.5px;color:var(--text3);white-space:nowrap">${formatFechaCorta(t.fecha)}</td>
+      <td${new RawHTML(diasCls)} class="mono" style="font-size:11px;text-align:right;white-space:nowrap">${dias!=null?fmtInt(dias)+' d':'—'}</td>
+      <td style="font-size:12px;color:var(--text2)">${t.descripcion||'—'}</td>
+      <td style="font-size:11px;color:var(--text3)">${t.responsable||'—'}</td>
+    </tr>`;
+  };
+  const tabla=(rows,vacio)=>rows.length
+    ? html`<div class="table-wrap"><table class="eq-inner-table">
+        <thead><tr><th>Código</th><th>Fecha</th><th style="text-align:right">Antigüedad</th><th>Descripción</th><th>Responsable</th></tr></thead>
+        <tbody>${rows.map(fila)}</tbody>
+      </table></div>`
+    : html`<div class="no-data">${vacio}</div>`;
+  const bloqueAbiertos=html`<div style="margin-bottom:22px">
+      <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:8px">
+        <span style="width:9px;height:9px;background:var(--amber);display:inline-block;border-radius:50%"></span>
+        <span style="font-size:13px;color:var(--text);font-weight:600">Pendientes</span>
+        <span class="mono" style="font-size:11px;color:var(--text3)">${abiertos.length}</span>
+      </div>
+      ${tabla(abiertos,'Sin trabajos pendientes abiertos.')}
+    </div>`;
+  const bloqueResueltos=eqSection(`resueltos recientes (${resueltos.length})`,tabla(resueltos,'—'),false);
+  setHTML(wrap,html`${bloqueAbiertos}${resueltos.length?bloqueResueltos:''}`);
+}
+
 function renderServiceTab(){
   const wrap=document.getElementById('svcTablaWrap');
   const badge=document.getElementById('serviceBadge');

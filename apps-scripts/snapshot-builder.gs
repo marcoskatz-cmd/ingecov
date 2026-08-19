@@ -132,6 +132,7 @@ function construirSnapshot(){
 
   rec(_buildCodigos_(snap));        // COD_V / COD_L / COD_P / COD_S
   rec(_buildTrabajos_(snap));       // TRAB_LIVE
+  rec(_buildTrabajosPendientes_(snap)); // TRAB_PEND
   rec(_buildRepuestos_(snap));      // REP_LIVE
   rec(_buildPedidos_(snap));        // PED_PEND (+ PED_ENTR vacío)
   rec(_buildCombustible_(snap));    // COMBUSTIBLE (pesados / Casares)
@@ -226,7 +227,8 @@ function _buildCodigos_(snap){
 ═══════════════════════════════════════════════════════════════════════ */
 function _buildTrabajos_(snap){
   try{
-    const t = _readTab_(SNAP_SRC.trabajos, 'TRABAJOS') || _readTab_(SNAP_SRC.trabajos, 'TRABAJOS REALIZADOS EN EQUIPOS') || _readTab_(SNAP_SRC.trabajos, 'Hoja 1');
+    // ago-2026: la pestaña se retituló 'TRABAJOS REALIZADOS' (antes 'TRABAJOS').
+    const t = _readTab_(SNAP_SRC.trabajos, 'TRABAJOS REALIZADOS') || _readTab_(SNAP_SRC.trabajos, 'TRABAJOS') || _readTab_(SNAP_SRC.trabajos, 'TRABAJOS REALIZADOS EN EQUIPOS') || _readTab_(SNAP_SRC.trabajos, 'Hoja 1');
     if(!t) return { tab:'TRAB_LIVE', rows:0, status:'ERROR', detalle:'no pude leer TRABAJOS' };
     const h = t.header;
     const iCod = _idx_(h, ['CÓDIGO','CODIGO']);
@@ -251,6 +253,46 @@ function _buildTrabajos_(snap){
     var _miss = [['iLug',iLug],['iPer',iPer],['iDes',iDes],['iTie',iTie],['iPar',iPar],['iRaz',iRaz]].filter(function(x){return x[1]<0;}).map(function(x){return x[0];});
     return { tab:'TRAB_LIVE', rows:n, status:'OK', detalle: _miss.length ? ('⚠ cols sin match: '+_miss.join(',')+' | HDR fuente: '+h.join(' ¦ ')) : '' };
   }catch(e){ return { tab:'TRAB_LIVE', rows:0, status:'ERROR', detalle:String(e && e.message || e) }; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TRAB_PEND ← hoja TRABAJOS PENDIENTES (mismo archivo que TRABAJOS REALIZADOS)
+   Trabajos detectados que quedan pendientes de resolver (agregada ago-2026).
+   No son reparaciones ya hechas (esas van en TRABAJOS REALIZADOS) — es una
+   lista de tareas con ESTADO Pendiente/Resuelto. Copia verbatim, sin lógica
+   de KPI acá.
+═══════════════════════════════════════════════════════════════════════ */
+function _buildTrabajosPendientes_(snap){
+  try{
+    const t = _readTab_(SNAP_SRC.trabajos, 'TRABAJOS PENDIENTES');
+    if(!t) return { tab:'TRAB_PEND', rows:0, status:'ERROR', detalle:'no pude leer TRABAJOS PENDIENTES' };
+    const h = t.header;
+    const iCod = _idx_(h, ['CÓDIGO','CODIGO']);
+    const iEqu = _idx_(h, ['EQUIPO']);
+    const iFec = _idx_(h, ['FECHA']);
+    const iDes = _idx_(h, ['DESCRIPCIÓN','DESCRIPCION']);
+    const iRes = _idx_(h, ['ORIGEN/RESPONSABLE','ORIGEN RESPONSABLE','RESPONSABLE','ORIGEN']);
+    const iEst = _idx_(h, ['ESTADO']);
+    const iFRe = _idx_(h, ['FECHA RESOLUCIÓN','FECHA RESOLUCION']);
+    const iDRe = _idx_(h, ['DESCRIPCIÓN RESOLUCIÓN','DESCRIPCION RESOLUCION']);
+    const iId  = _idx_(h, ['ID']);
+
+    const out = [['CODIGO','EQUIPO','FECHA','DESCRIPCION','RESPONSABLE','ESTADO','FECHA_RESOLUCION','DESCRIPCION_RESOLUCION','ID']];
+    let n = 0;
+    for(const r of t.rows){
+      const cod = _at_(r, iCod);
+      if(!_snapNormCod(cod)) continue;
+      out.push([cod, _at_(r, iEqu), _at_(r, iFec), _at_(r, iDes), _at_(r, iRes), _at_(r, iEst), _at_(r, iFRe), _at_(r, iDRe), _at_(r, iId)]);
+      n++;
+    }
+    _write_(snap, 'TRAB_PEND', out, true);
+    const faltan = [];
+    if(iCod < 0) faltan.push('CODIGO');
+    if(iDes < 0) faltan.push('DESCRIPCION');
+    if(iEst < 0) faltan.push('ESTADO');
+    return { tab:'TRAB_PEND', rows:n, status: faltan.length ? 'WARN' : 'OK',
+             detalle: faltan.length ? ('OJO: sin match de columna → ' + faltan.join(', ')) : '' };
+  }catch(e){ return { tab:'TRAB_PEND', rows:0, status:'ERROR', detalle:String(e && e.message || e) }; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -764,7 +806,7 @@ function _buildVTV_(snap){
 
 function _limpiarTabsSobrantes_(snap){
   const validas = {};
-  ['COD_V','COD_L','COD_P','COD_S','TRAB_LIVE','TRAB_HIST','TRAB_HIST58','REP_LIVE','REP_HIST',
+  ['COD_V','COD_L','COD_P','COD_S','TRAB_LIVE','TRAB_PEND','TRAB_HIST','TRAB_HIST58','REP_LIVE','REP_HIST',
    'PED_PEND','PED_ENTR','COMBUSTIBLE','COMB_LIVIANOS','SVC_FREC','SVC_TRIM1','SVC_TRIM2',
    'SVC_PANELPROG','SERVICE_EQ','VTV','FALTANTES','INDICADORES','META'].forEach(t => validas[t] = true);
   for(const sh of snap.getSheets()){
