@@ -351,6 +351,18 @@ async function toggleEquipoDetail(codigo,cardEl){
     ? `${fmtInt(comb.totalLitros)} L en ${comb.cargas.length} cargas`
     : 'sin cargas registradas';
 
+  // Gasto de combustible del MES EN CURSO (antes mostraba comb.totalCosto,
+  // el acumulado histórico completo — engañoso al lado de un KPI "entregas
+  // <mes>"). Mes real del reloj, no MES_ACTUAL (ese queda pisado en mayo
+  // desde que se dejaron de sumar archivos a MESES_ENTREGAS).
+  const _hoyYm=(()=>{const h=new Date();return h.getFullYear()+'-'+String(h.getMonth()+1).padStart(2,'0');})();
+  const _cargasMes=(comb?.cargas||[]).filter(c=>{
+    const d=_parseDate(c.fecha);
+    return d&&(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'))===_hoyYm;
+  });
+  const _gastoCombMes=_cargasMes.reduce((s,c)=>s+(c.costo||0),0);
+  const _gastoCombMesSub=_cargasMes.length?`${fmtInt(_cargasMes.length)} cargas · ${ymLabel(_hoyYm)}`:'sin cargas este mes';
+
   // KPIs
   const kpisHTML=`
     <div class="eq-kpis">
@@ -358,7 +370,7 @@ async function toggleEquipoDetail(codigo,cardEl){
       <div class="eq-kpi"><div class="eq-kpi-val">${entMes.length}</div><div class="eq-kpi-label">entregas ${MES_ACTUAL.label}</div></div>
       <div class="eq-kpi"><div class="eq-kpi-val">${totalPedidos}</div><div class="eq-kpi-label">pedidos 2026</div></div>
       <div class="eq-kpi" title="${_consumoSub}"><div class="eq-kpi-val">${_consumoTxt}</div><div class="eq-kpi-label">consumo promedio</div></div>
-      <div class="eq-kpi" title="${_consumoSub}"><div class="eq-kpi-val amber">${comb?.totalCosto>0?formatMoney(comb.totalCosto):'—'}</div><div class="eq-kpi-label">gasto combustible</div></div>
+      <div class="eq-kpi" title="${_gastoCombMesSub}"><div class="eq-kpi-val amber">${_gastoCombMes>0?formatMoney(_gastoCombMes):'—'}</div><div class="eq-kpi-label">gasto combustible ${ymLabel(_hoyYm)}</div></div>
     </div>`;
 
   // Estado operativo
