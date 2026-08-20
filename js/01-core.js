@@ -164,19 +164,18 @@ const SERVICE_TRIM_SHEET=(new Date().getMonth()<3)?'1° TRIMESTRE':'2° TRIMESTR
 const PREFIJOS_KM=new Set(['CMT','CMN']);
 
 /* ═══════════════════════════════════════════════════════
-   MESES DE ENTREGAS
-   Para agregar Mayo: pegá el ID del sheet en la línea correspondiente.
-   El último elemento es el "mes actual" del panel.
+   MES ACTUAL
+   Antes venía del último elemento de MESES_ENTREGAS (lista de archivos
+   mensuales de entregas que había que ir pegando a mano) — se dejó de
+   actualizar en mayo y quedó pisado ahí (PANEL_REPUESTOS es la fuente
+   única de entregas desde jul-2026, MESES_ENTREGAS quedó muerto). Ahora
+   es el mes real del reloj: se recalcula solo en cada carga del panel.
 ═══════════════════════════════════════════════════════ */
-const MESES_ENTREGAS = [
-  { id:'1Qp0Lzt5h0UtMceYk-kxe4xEYqy0K_oOgL4G_TokDtVE', label:'Ene 2026', ym:'2026-01' },
-  { id:'1bG4TK5t_Vj9hs3aKPSKtqbx8ig6uh6dRAi4WG_f_Bok', label:'Feb 2026', ym:'2026-02' },
-  { id:'15drskwdnwCcM0EBeT6lIUmEj0MnWiJN9Clv6VL4vQ-M', label:'Mar 2026', ym:'2026-03' },
-  { id:'1fBQseXfhxPgZ5Bm7dLQHucGFwLH4SWRZ3Us5jtWtCh0', label:'Abr 2026', ym:'2026-04' },
-  { id:'1qyTQ3hmtQ3qwAwNVcOLBWwnywGbOmWAUiIrlGRDB4qU', label:'May 2026', ym:'2026-05' },
-].filter(m => !m.id.startsWith('PEGAR'));
-
-const MES_ACTUAL = MESES_ENTREGAS[MESES_ENTREGAS.length - 1];
+const MES_ACTUAL = (()=>{
+  const M=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  const h=new Date();
+  return { label:`${M[h.getMonth()]} ${h.getFullYear()}`, ym:`${h.getFullYear()}-${String(h.getMonth()+1).padStart(2,'0')}` };
+})();
 
 // SERVICE_MESES (planillas mensuales de service enero-abril 2026) se eliminó
 // 2026-08-19: quedó huérfano al sacar los links legacy de "fuentes de

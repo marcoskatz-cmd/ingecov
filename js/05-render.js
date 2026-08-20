@@ -261,9 +261,13 @@ async function toggleEquipoDetail(codigo,cardEl){
   const nombre=buildEquipoNombre(clasif,marca,modelo,descripcion||codigo);
   const patente=(window._horometros||{})[normCod(codigo)]?.patente||info0?.patente||null;
 
+  // Suma TODOS los meses 2026 con datos para este equipo (antes recorría la
+  // lista fija MESES_ENTREGAS, que se dejó de actualizar en mayo y sub-contaba
+  // jun/jul/ago — window._costosPorMes es la fuente viva, con todos los meses).
   const costosPorMes=window._costosPorMes||{};
-  const costoMeses=MESES_ENTREGAS.map(m=>({label:m.label,ym:m.ym,val:(costosPorMes[m.ym]||{})[codN]||0,id:m.id}));
-  const costoTotal2026=costoMeses.reduce((s,m)=>s+m.val,0);
+  const costoTotal2026=Object.keys(costosPorMes)
+    .filter(ym=>ym.startsWith('2026-'))
+    .reduce((s,ym)=>s+((costosPorMes[ym]||{})[codN]||0),0);
 
   // Subtítulo: la clasif ya está en el título principal, así que solo mostramos
   // tags complementarios (patente y descripción del catálogo cuando agrega info).
