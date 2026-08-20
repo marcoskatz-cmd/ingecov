@@ -332,7 +332,6 @@ async function toggleEquipoDetail(codigo,cardEl){
     fechaEnt:  ['FECHA ENTREGA','FECHA DE ENTREGA','F ENTREGA','F. ENTREGA'],
   };
 
-  const mesConService=SERVICE_MESES.find(m=>[...m.equipos].some(c=>normCod(c)===normCod(codigo)));
   const pedidosHist=(window._pedidosEntregados||[]).filter(p=>normCod(pickCol(p,COLS_PED.codigo))===codN);
   const pedidosActivos=(window._pedidosAll||[]).filter(p=>p.codigo===codN);
   const totalPedidos=pedidosHist.length+pedidosActivos.length;
@@ -691,30 +690,6 @@ async function toggleEquipoDetail(codigo,cardEl){
   // (tabnabbing) y omite el header Referer hacia docs.google.com.
   const _lnk=(id,txt,title)=>`<a href="https://docs.google.com/spreadsheets/d/${id}/edit" target="_blank" rel="noopener noreferrer"${title?` title="${title}"`:''} style="color:var(--blue);text-decoration:none">${txt} ↗</a>`;
 
-  // Pestaña de CÓDIGOS según la categoría del equipo (4 tabs: viales, liviano, pesado, soporte)
-  const _catTab={
-    viales:'VIALES, ASFALTO Y TRITURACIÓN',
-    liviano:'TRANSPORTE LIVIANO',
-    pesado:'TRANSPORTE PESADO',
-    soporte:'SOPORTE',
-  }[info?.categoria]||'';
-
-  // Entregas: TODOS los meses, con indicación de cuáles tienen movimiento del equipo (•)
-  const _ymsConCosto=new Set(costoMeses.filter(m=>m.val>0).map(m=>m.ym));
-  const linksEntTodos=MESES_ENTREGAS.map(m=>{
-    const tieneMov=_ymsConCosto.has(m.ym);
-    const marker=tieneMov?'<span style="color:var(--amber)" title="Este equipo tiene entregas registradas en este mes">●</span> ':'';
-    return marker+_lnk(m.id,m.label,tieneMov?`Entregas ${m.label} (con movimiento de este equipo)`:`Entregas ${m.label}`);
-  }).join(' · ');
-
-  // Planillas de service: todas las que existen (4 meses), destacando la que aplica a este equipo
-  const _idServiceEq=mesConService?.id;
-  const linksService=SERVICE_MESES.map(m=>{
-    const aplica=m.id===_idServiceEq;
-    const marker=aplica?'<span style="color:var(--amber)" title="Service registrado para este equipo en este mes">●</span> ':'';
-    return marker+_lnk(m.id,m.mes,aplica?`Service de ${m.mes} (este equipo)`:`Planilla mensual de service — ${m.mes}`);
-  }).join(' · ');
-
   // Trabajos pendientes de taller para este equipo (pestaña TRAB_PEND).
   const trabPendEq = (window._trabajosPendientesPorEquipo||{})[codN]||[];
   const trabPendAbiertos = trabPendEq.filter(t=>!t.resuelto);
@@ -730,47 +705,26 @@ async function toggleEquipoDetail(codigo,cardEl){
       </table></div>`
     : `<div class="no-data">Sin trabajos pendientes cargados para este equipo.</div>`;
 
+  // Filas de la sección "fuentes de información": apuntan a FUENTES_REALES
+  // (01-core.js), que son los archivos que HOY lee el builder del snapshot
+  // (SNAP_SRC en apps-scripts/snapshot-builder.gs) — no SHEET_IDS, que quedó
+  // como llave legacy de redirección y en su mayoría ya no son los archivos
+  // reales (ver comentario junto a FUENTES_REALES).
+  const _row=(label,content)=>`<div style="background:var(--bg3);padding:11px 14px;font-size:11px;color:var(--text2);line-height:1.7">
+      <span style="display:inline-block;min-width:140px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.12em;font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace">${label}</span>
+      ${content}
+    </div>`;
+
   const contFuentes=`
     <div style="display:grid;gap:1px;background:var(--border);border:1px solid var(--border)">
-      <div style="background:var(--bg3);padding:11px 14px;font-size:11px;color:var(--text2);line-height:1.7">
-        <span style="display:inline-block;min-width:140px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.12em;font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace">Catálogo</span>
-        ${_lnk(SHEET_IDS.codigos,_catTab?`Códigos de equipos — ${_catTab}`:'Códigos de equipos','Hoja maestra de equipos: estado, ubicación, marca/modelo, tenencia, operario')}
-      </div>
-      <div style="background:var(--bg3);padding:11px 14px;font-size:11px;color:var(--text2);line-height:1.7">
-        <span style="display:inline-block;min-width:140px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.12em;font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace">Trabajos en taller</span>
-        ${_lnk(SHEET_IDS.trabajos_reg,'PANEL_TRABAJOS (consolidado)','Apps Script consolida todas las planillas mensuales de TRABAJOS REALIZADOS en esta pestaña')}
-      </div>
-      <div style="background:var(--bg3);padding:11px 14px;font-size:11px;color:var(--text2);line-height:1.7">
-        <span style="display:inline-block;min-width:140px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.12em;font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace">Service · programa</span>
-        ${_lnk(SHEET_IDS.service,'PANEL_PROGRAMA (consolidado)','Estado de service por equipo: último, próximo estimado, rangos crítico/intermedio/holgado')}
-      </div>
-      <div style="background:var(--bg3);padding:11px 14px;font-size:11px;color:var(--text2);line-height:1.7">
-        <span style="display:inline-block;min-width:140px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.12em;font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace">Service · planillas</span>
-        ${linksService||'—'}
-      </div>
-      <div style="background:var(--bg3);padding:11px 14px;font-size:11px;color:var(--text2);line-height:1.7">
-        <span style="display:inline-block;min-width:140px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.12em;font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace">Repuestos · histórico</span>
-        ${_lnk(SHEET_IDS.repuestos_hist,'PANEL_REPUESTOS (consolidado)','Apps Script consolida todas las planillas mensuales de ENTREGAS DE REPUESTOS en esta pestaña')}
-      </div>
-      <div style="background:var(--bg3);padding:11px 14px;font-size:11px;color:var(--text2);line-height:1.7">
-        <span style="display:inline-block;min-width:140px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.12em;font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace">Entregas · por mes</span>
-        ${linksEntTodos||'—'}
-      </div>
-      <div style="background:var(--bg3);padding:11px 14px;font-size:11px;color:var(--text2);line-height:1.7">
-        <span style="display:inline-block;min-width:140px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.12em;font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace">Pedidos</span>
-        ${_lnk(SHEET_IDS.pedidos,'Pedidos de Repuestos 2026','Planilla con pestañas PENDIENTES y ENTREGADOS')}
-      </div>
-      <div style="background:var(--bg3);padding:11px 14px;font-size:11px;color:var(--text2);line-height:1.7">
-        <span style="display:inline-block;min-width:140px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.12em;font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace">Indicadores</span>
-        ${_lnk(SHEET_IDS.indicadores,'Indicadores operacionales','Disponibilidad global, MTBF y otros KPIs operativos por período')}
-      </div>
-      <div style="background:var(--bg3);padding:11px 14px;font-size:11px;color:var(--text2);line-height:1.7">
-        <span style="display:inline-block;min-width:140px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.12em;font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace">Combustible</span>
-        ${_lnk(SHEET_IDS.combustible,'Entrega de combustible (planilla)','Pestaña ENTREGA DE COMBUSTIBLE — una fila por carga, con horómetro/odómetro, litros y tipo')}
-      </div>
-      <div style="background:var(--bg2);padding:9px 14px;font-size:10px;color:var(--text3);font-family:'JetBrains Mono',monospace;letter-spacing:.04em">
-        <span style="color:var(--amber)">●</span> = movimiento de este equipo en esa fuente
-      </div>
+      ${_row('Catálogo',_lnk(FUENTES_REALES.equipos,'Lista de equipos (maestro)','Hoja maestra de equipos: estado, ubicación, marca/modelo, tenencia, operario'))}
+      ${_row('Trabajos en taller',_lnk(FUENTES_REALES.trabajos,'Trabajos realizados y pendientes','Pestañas TRABAJOS REALIZADOS y TRABAJOS PENDIENTES'))}
+      ${_row('Service',_lnk(FUENTES_REALES.service,'Services de equipos','Pestañas REGISTROS y RESUMEN: último/próximo service, estado por equipo'))}
+      ${_row('Pedidos y repuestos',_lnk(FUENTES_REALES.repuestos,'Pedidos y entregas de repuestos','Pestañas PEDIDOS y ENTREGAS'))}
+      ${_row('Combustible · pesados',_lnk(FUENTES_REALES.combPesados,'Entrega de combustible (Casares)','Equipos pesados, con lectura de horómetro/odómetro'))}
+      ${_row('Combustible · livianos',_lnk(FUENTES_REALES.combLivianos,'Entrega de combustible (Sanz)','Vehículos livianos, con costo'))}
+      ${_row('Combustible · camionetas',_lnk(FUENTES_REALES.combCamionetas,'Entrega de combustible camionetas','Solo auditoría de cargas — sin horómetro ni costo'))}
+      ${_row('VTV',_lnk(FUENTES_REALES.vtv,'Verificación técnica vehicular','Marcos la carga a mano, incompleta a propósito'))}
     </div>`;
 
   // Sección: historial de cargas de combustible (más reciente arriba)

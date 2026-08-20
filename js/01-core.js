@@ -124,6 +124,25 @@ const SHEET_IDS = {
   vtv:            '1-DSUu1HlBG2kXClsMkHiDwiKmtZdkGI853aS9Qyp6Gg',
 };
 
+// FUENTES_REALES — a dónde apuntan de VERDAD los "abrir planilla" del modal de
+// equipo (sección "fuentes de información"). Los IDs de arriba (SHEET_IDS)
+// son en su mayoría claves de redirección legacy: quedaron pisadas por
+// reestructuras de terceros y el builder del snapshot (apps-scripts/
+// snapshot-builder.gs, const SNAP_SRC) hace rato lee de otros archivos, pero
+// SHEET_IDS sigue funcionando como llave opaca para SNAP_REDIRECT (nunca se
+// fetchea esa URL real). Estos SÍ son los archivos vigentes — deben coincidir
+// 1:1 con SNAP_SRC del builder; si el builder cambia de fuente, actualizar acá.
+const FUENTES_REALES = {
+  equipos:        '1EwbNlmBMx3OIviplvHSJM3N4CZ3vVXgVxH208VugG3M', // LISTA DE EQUIPOS (maestro de códigos)
+  trabajos:       '1muXaJvsdAH0q3bXZj3yiDanxT3aCfUL5EhY_ORgvx7o', // TRABAJOS REALIZADOS EN EQUIPOS (pestañas TRABAJOS REALIZADOS + TRABAJOS PENDIENTES)
+  repuestos:      '1JpXjGTJwlvMuEI-rFTd4KeKvzd708-yuSLAhIRuCFC0', // PEDIDOS Y ENTREGAS DE REPUESTOS (pestañas PEDIDOS + ENTREGAS)
+  service:        '14XiIAnYeobj5_3JQlR-ejH6HzCqGJ6QFuGmmwauaRJc', // SERVICES DE EQUIPOS (pestañas REGISTROS + RESUMEN)
+  combPesados:    '19eyY8MImPM_-Gyzj8QcqA_yR5KDrkuu-1faJUU48N1A', // ENTREGA DE COMBUSTIBLE — Leandro Casares (pesados, horómetro)
+  combLivianos:   '1DD8BVoF6jX-CcakbbVO6fNJKYF82qBIK1YwyVLQcDJ8', // ENTREGA DE COMBUSTIBLE — Tiburcio Sanz (livianos, con costo)
+  combCamionetas: '1GB_oiL40fEXHXzhmor3ztnnriiikX1xp3fG-F5Uuw5E', // ENTREGA DE COMBUSTIBLE camionetas (código directo, sin costo ni horómetro)
+  vtv:            '1-DSUu1HlBG2kXClsMkHiDwiKmtZdkGI853aS9Qyp6Gg', // VTV — igual a SHEET_IDS.vtv, esta fuente nunca cambió
+};
+
 // Pestaña tabular plana (una fila = una carga). No requiere Apps Script consolidador.
 const COMBUSTIBLE_SHEET='ENTREGA DE COMBUSTIBLE';
 
@@ -159,19 +178,10 @@ const MESES_ENTREGAS = [
 
 const MES_ACTUAL = MESES_ENTREGAS[MESES_ENTREGAS.length - 1];
 
-/* ═══════════════════════════════════════════════════════
-   SHEETS DE SERVICE
-═══════════════════════════════════════════════════════ */
-const SERVICE_MESES = [
-  { id:'1AK902grpUm6l0VflNsJy0Y7_4X770SL0tMfO7aBLNiw', mes:'Abril 2026',
-    equipos:new Set(['CMT-01','CMT-03','CMT-21','CMT-22','CMT-23','CMT-25','MNV-02','MNV-03','RTP-05','RTP-07','RTP-08','RTP-09','EXC-01'])},
-  { id:'1mzt3Fhvwr8J4Mhrz-uIfX4OPBG5-zqweQ7pn0B_s-Vc', mes:'Marzo 2026',
-    equipos:new Set(['CF-03','CF-04','CMT-03','EXC-01','RDL-02','RN-02','RTP-05','RTP-09'])},
-  { id:'1N062h_xp9TOWsuZuIX_QNMvXRfB2Tpyf7EwtBmqGImw', mes:'Febrero 2026',
-    equipos:new Set(['CF-05','CMT-21','EXC-07','TPD-01'])},
-  { id:'1chZDHgtkjb-Jcs18lgoHrH-KOInzbVgLu5Ew6ThdcE4', mes:'Enero 2026',
-    equipos:new Set(['CF-02','CMN-03','CMN-22','CMT-20','MNV-02','RTP-08'])},
-];
+// SERVICE_MESES (planillas mensuales de service enero-abril 2026) se eliminó
+// 2026-08-19: quedó huérfano al sacar los links legacy de "fuentes de
+// información" (el service hoy sale de FUENTES_REALES.service, un único
+// archivo vivo con pestañas REGISTROS+RESUMEN, no de archivos mensuales).
 
 /* ═══════════════════════════════════════════════════════
    EQUIPOS QUE APARECER COMBINADOS EN LOS SHEETS
