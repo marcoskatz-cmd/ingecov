@@ -48,14 +48,14 @@
      arranca el PIN gate. No reordenar ni pasar a type=module sin revisar
      ACTIONS. Bump del ?v= al cambiar cualquiera de ellos, para clientes con
      HTTP cache (el SW solo invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/01-core.js?v=68" defer></script>
-<script src="./js/02-datos.js?v=68" defer></script>
-<script src="./js/03-ui.js?v=68" defer></script>
-<script src="./js/04-carga.js?v=68" defer></script>
-<script src="./js/05-render.js?v=68" defer></script>
-<script src="./js/06-tabs.js?v=68" defer></script>
-<script src="./js/07-auditoria.js?v=68" defer></script>
-<script src="./js/08-bootstrap.js?v=68" defer></script>
+<script src="./js/01-core.js?v=69" defer></script>
+<script src="./js/02-datos.js?v=69" defer></script>
+<script src="./js/03-ui.js?v=69" defer></script>
+<script src="./js/04-carga.js?v=69" defer></script>
+<script src="./js/05-render.js?v=69" defer></script>
+<script src="./js/06-tabs.js?v=69" defer></script>
+<script src="./js/07-auditoria.js?v=69" defer></script>
+<script src="./js/08-bootstrap.js?v=69" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -1856,7 +1856,7 @@
         <!-- Equipos inactivos (en desuso / no operativos / sin estado): sección
              desplegable al pie del tab de equipos, minimizada por default. -->
         <div class="eq-sub-label" data-action="toggleInactivosSec" style="margin-top:22px;cursor:pointer" title="Mostrar/ocultar equipos inactivos">
-          <span class="eq-chev" id="inactChev">▸</span>equipos inactivos <span class="tab-badge" id="inactivosBadge">—</span>
+          equipos inactivos <span class="tab-badge" id="inactivosBadge">—</span><span class="eq-chev" id="inactChev">▸</span>
         </div>
         <div id="inactivosSec" style="display:none">
           <div class="filter-bar" id="filterBarInact">

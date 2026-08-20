@@ -48,7 +48,7 @@ function eqSection(title,content,open=true){
   // Los envolvemos en RawHTML si son strings que la app construyó, para no doble-escapar.
   const titleH = title instanceof RawHTML ? title : new RawHTML(String(title));
   const contH  = content instanceof RawHTML ? content : new RawHTML(String(content));
-  return html`<div><div class="eq-sub-label" data-action="toggleEqSec" data-arg="${uid}"><span class="eq-chev" id="echev_${uid}">${open?'▾':'▸'}</span>${titleH}</div>
+  return html`<div><div class="eq-sub-label" data-action="toggleEqSec" data-arg="${uid}">${titleH}<span class="eq-chev" id="echev_${uid}">${open?'▾':'▸'}</span></div>
   <div id="eqsec_${uid}" class="eq-sec-body" ${open?new RawHTML(''):new RawHTML('style="display:none"')}>${contH}</div></div>`;
 }
 
