@@ -245,6 +245,31 @@ window.addEventListener('resize',()=>{
   }
 });
 
+// Historial de service de UN equipo, leído del snapshot (SERVICE_EQ, una fila
+// por planilla-equipo-mes). Cacheado en window._serviceEqRows por precargarHorometros()
+// o por la primera consulta; fallback al fetch directo. Usado por el modal de
+// detalle de equipo y por el tab "consultar equipo" (js/06-tabs.js).
+async function fetchServiceHistorial(codigo){
+  let rows=window._serviceEqRows;
+  if(!rows){ try{ rows=await fetchGvizObj(SNAPSHOT_ID,'SERVICE_EQ'); window._serviceEqRows=rows; }catch(_){ rows=[]; } }
+  const _sp=s=>String(s||'').toUpperCase().replace(/\s+/g,'');
+  const out=[];
+  for(const r of rows){
+    if(String(r['CODN']||'').trim()!==normCod(codigo))continue;
+    if(_sp(r['KVCOD'])!==_sp(codigo))continue;
+    out.push({
+      planilla:String(r['PLANILLA']||'').trim()||'—',
+      fecha:String(r['FECHA']||'').trim()||'—',
+      personal:String(r['PERSONAL']||'').trim()||'—',
+      horActual:r['ACTUAL']||null,
+      horProximo:r['PROXIMO']||null,
+      serie:r['SERIE']||null,
+      mes:r['MES']||'',sheetId:r['SHEET_ID']||'',
+    });
+  }
+  return out.sort((a,b)=>toSortDate(b.fecha)-toSortDate(a.fecha));
+}
+
 async function toggleEquipoDetail(codigo,cardEl){
   const panel=document.getElementById('equipoDetailPanel');
   if(_activeEqCard===cardEl&&panel.classList.contains('open')){closeEquipoDetail();return;}
@@ -286,28 +311,7 @@ async function toggleEquipoDetail(codigo,cardEl){
   _secCounter=0;
 
   const[serviceRows,trabajosRows]=await Promise.all([
-    (async()=>{
-      // Service por equipo: leido del snapshot (SERVICE_EQ, una fila por planilla-equipo-mes).
-      // Cacheado por precargarHorometros() en window._serviceEqRows; fallback al snapshot directo.
-      let rows=window._serviceEqRows;
-      if(!rows){ try{ rows=await fetchGvizObj(SNAPSHOT_ID,'SERVICE_EQ'); window._serviceEqRows=rows; }catch(_){ rows=[]; } }
-      const _sp=s=>String(s||'').toUpperCase().replace(/\s+/g,'');
-      const out=[];
-      for(const r of rows){
-        if(String(r['CODN']||'').trim()!==normCod(codigo))continue;
-        if(_sp(r['KVCOD'])!==_sp(codigo))continue;
-        out.push({
-          planilla:String(r['PLANILLA']||'').trim()||'\u2014',
-          fecha:String(r['FECHA']||'').trim()||'\u2014',
-          personal:String(r['PERSONAL']||'').trim()||'\u2014',
-          horActual:r['ACTUAL']||null,
-          horProximo:r['PROXIMO']||null,
-          serie:r['SERIE']||null,
-          mes:r['MES']||'',sheetId:r['SHEET_ID']||'',
-        });
-      }
-      return out.sort((a,b)=>toSortDate(b.fecha)-toSortDate(a.fecha));
-    })(),
+    fetchServiceHistorial(codigo),
     loadTrabajosRegistro(codigo),
   ]);
 

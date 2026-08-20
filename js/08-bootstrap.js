@@ -66,6 +66,7 @@ const ACTIONS = {
   onConsultaBuscar:               (_, t) => onConsultaBuscar(t.value),
   limpiarConsulta:                () => limpiarConsulta(),
   seleccionarConsultaEquipo:      (codigo) => seleccionarConsultaEquipo(codigo),
+  consultaTimelineVerMas:         () => consultaTimelineVerMas(),
 };
 
 function _dispatchAction(e) {

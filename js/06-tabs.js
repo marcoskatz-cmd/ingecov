@@ -907,18 +907,132 @@ document.addEventListener('keydown',e=>{
 
 /* ═══════════════════════════════════════════════════════
    TAB "CONSULTAR EQUIPO"
-   Buscador + checklist de taller para UN equipo: trabajos pendientes
-   abiertos, estado de service, VTV y últimos trabajos realizados.
-   Pensada para el mecánico que recibe el equipo en el taller — no
-   toca el modal de detalle de equipo existente (js/05-render.js),
-   es una vista de solo lectura separada que reusa los mismos datos
-   ya calculados en loadAll (window._trabajosPendientesPorEquipo,
-   window._servicePanel vía operatividadEquipo, window._vtvPorEquipo).
-   Los "últimos trabajos realizados" son la única parte async: usan
-   loadTrabajosRegistro() (02-datos.js), que cachea el fetch en
-   window._panelTrabajosRaw tras la primera consulta.
+   Buscador + ficha de taller para UN equipo: trabajos pendientes
+   abiertos, estado de service (+ historial), VTV, y el historial
+   COMPLETO de mantenimiento (trabajos + repuestos entregados,
+   fusionados en una sola línea de tiempo, sin costos — eso vive en
+   el modal de detalle de equipo). Pensada para el mecánico que
+   recibe el equipo en el taller — no toca el modal de detalle de
+   equipo existente (js/05-render.js), es una vista de solo lectura
+   separada que reusa los mismos datos ya calculados en loadAll
+   (window._trabajosPendientesPorEquipo, window._servicePanel vía
+   operatividadEquipo, window._vtvPorEquipo, window._entregasPorEquipo).
+   Trabajos y el historial de service son async: usan
+   loadTrabajosRegistro() y fetchServiceHistorial() (05-render.js),
+   ambas cacheadas tras la primera consulta.
+
+   "Recurrencia": heurística simple sobre una lista fija de
+   componentes críticos — si una misma palabra clave aparece en ≥2
+   trabajos dentro de los últimos 12 meses, se marca como problema
+   recurrente. Sin costos, sin plata: es información de diagnóstico,
+   no administrativa.
 ═══════════════════════════════════════════════════════ */
 let _consultaEquipoSel=null; // codN mostrado actualmente (evita pisar resultados si el usuario buscó de nuevo mientras cargaba)
+let _consultaRecurrenciasActuales=[]; // recurrencias del equipo mostrado, usadas para los badges del timeline
+let _consultaTimelineFull=[]; // eventos completos (trabajos+repuestos) del equipo mostrado
+let _consultaTimelineShown=0;
+const CONSULTA_TIMELINE_CHUNK=40;
+const CONSULTA_RECIENTES_KEY='ingecov-consulta-recientes';
+const CONSULTA_RECIENTES_MAX=5;
+
+const CONSULTA_RECURRENTE_KW=[
+  ['motor','Motor'],['fren','Frenos'],['hidraulic','Hidráulico'],['transmis','Transmisión'],
+  ['embrague','Embrague'],['bateria','Batería'],['correa','Correa'],['radiador','Radiador'],
+  ['turbo','Turbo'],['inyec','Inyección'],['neumat','Neumáticos'],['suspens','Suspensión'],
+  ['arranque','Arranque'],['alternador','Alternador'],['bomba','Bomba'],['aceite','Aceite'],
+  ['rodamient','Rodamientos'],['manguera','Mangueras'],
+];
+
+function _consultaNormKw(s){
+  return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+}
+
+// Detecta componentes que se repiten en ≥2 trabajos dentro de los últimos 12 meses.
+function _detectarRecurrencias(trabajosRows){
+  const limite=new Date(); limite.setMonth(limite.getMonth()-12);
+  const porStem={};
+  for(const r of (trabajosRows||[])){
+    if(!r.desc)continue;
+    const d=_parseDate(r.fecha);
+    if(d&&d<limite)continue;
+    const descN=_consultaNormKw(r.desc);
+    for(const [stem,label] of CONSULTA_RECURRENTE_KW){
+      if(new RegExp('\\b'+stem+'\\w*').test(descN)){
+        (porStem[stem]=porStem[stem]||{stem,label,rows:[]}).rows.push(r);
+      }
+    }
+  }
+  return Object.values(porStem)
+    .filter(g=>g.rows.length>=2)
+    .map(g=>({stem:g.stem,label:g.label,count:g.rows.length,
+      ultima:g.rows.slice().sort((a,b)=>toSortDate(b.fecha)-toSortDate(a.fecha))[0].fecha}))
+    .sort((a,b)=>b.count-a.count);
+}
+
+function _consultaMatchRecurrencias(desc,recurrencias){
+  if(!desc||!recurrencias||!recurrencias.length)return[];
+  const descN=_consultaNormKw(desc);
+  return recurrencias.filter(r=>new RegExp('\\b'+r.stem+'\\w*').test(descN));
+}
+
+// Repuestos entregados a un equipo (sin costo — eso vive en el modal de detalle).
+// Reusa window._entregasPorEquipo (PANEL_REPUESTOS) e window._itemsPorEntrega,
+// mismas fuentes que toggleEquipoDetail (js/05-render.js), excluyendo caja chica.
+function _consultaRepuestosEquipo(codN){
+  const esCajaChica=t=>/caja\s*chica/i.test(String(t||''));
+  const itemsMap=window._itemsPorEntrega||{};
+  const descTxt=(nroEnt,fallback)=>{
+    const key=String(nroEnt||'').split(/[-,]/)[0].trim();
+    const items=key?itemsMap[key]:null;
+    if(items&&items.length){
+      return items.map(it=>{
+        const cant=it.cantidad&&it.cantidad!=='-'&&it.cantidad!=='—'?`${it.cantidad}× `:'';
+        return `${cant}${it.descripcion||''}`.trim();
+      }).filter(Boolean).join(', ')||(fallback||'—');
+    }
+    return fallback||'—';
+  };
+  return ((window._entregasPorEquipo||{})[codN]||[])
+    .filter(e=>!esCajaChica(e.tipo))
+    .map(e=>({fecha:e.fecha||'—', desc:descTxt(e.nro,e.items)}));
+}
+
+// Fusiona trabajos + repuestos entregados en una sola línea de tiempo, orden desc.
+function _consultaTimelineEventos(trabajosRows,repuestosRows){
+  const eventos=[
+    ...(trabajosRows||[]).filter(r=>r.desc).map(r=>({tipo:'trabajo',fecha:r.fecha,desc:r.desc})),
+    ...(repuestosRows||[]).filter(r=>r.desc&&r.desc!=='—').map(r=>({tipo:'repuesto',fecha:r.fecha,desc:r.desc})),
+  ];
+  return eventos.sort((a,b)=>toSortDate(b.fecha)-toSortDate(a.fecha));
+}
+
+// ── Recientes: últimos equipos consultados (localStorage), para no re-tipear
+// el mismo código varias veces en un turno de taller.
+function _consultaRecientesGet(){
+  try{ const v=JSON.parse(localStorage.getItem(CONSULTA_RECIENTES_KEY)||'[]'); return Array.isArray(v)?v:[]; }
+  catch(_){ return[]; }
+}
+function _consultaRecientesPush(codigo){
+  try{
+    let list=_consultaRecientesGet().filter(c=>normCod(c)!==normCod(codigo));
+    list.unshift(codigo);
+    localStorage.setItem(CONSULTA_RECIENTES_KEY, JSON.stringify(list.slice(0,CONSULTA_RECIENTES_MAX)));
+  }catch(_){}
+}
+function _renderConsultaRecientes(){
+  const wrap=document.getElementById('consultaRecientes');
+  if(!wrap)return;
+  const checklist=document.getElementById('consultaChecklist');
+  const buscador=document.getElementById('consultaBuscador');
+  const activo=(checklist&&checklist.style.display!=='none')||(buscador&&buscador.value.trim());
+  const recientes=_consultaRecientesGet();
+  if(activo||!recientes.length){ wrap.style.display='none'; wrap.textContent=''; return; }
+  setHTML(wrap, html`<span class="consulta-recientes-label">recientes:</span>${recientes.map(c=>{
+    const info=(window._equiposOrdenados||[]).find(e=>normCod(e.codigo)===normCod(c));
+    return html`<button class="consulta-chip" data-action="seleccionarConsultaEquipo" data-arg="${c}">${c}${info?.nombre?html` <span class="consulta-chip-sub">${info.nombre}</span>`:''}</button>`;
+  })}`);
+  wrap.style.display='flex';
+}
 
 function onConsultaBuscar(val){
   const clearBtn=document.getElementById('consultaClear');
@@ -926,10 +1040,18 @@ function onConsultaBuscar(val){
   const wrap=document.getElementById('consultaResultados');
   if(!wrap)return;
   const qText=(val||'').trim();
-  if(!qText){ wrap.style.display='none'; wrap.textContent=''; return; }
+  if(!qText){ wrap.style.display='none'; wrap.textContent=''; _renderConsultaRecientes(); return; }
+  const recWrap=document.getElementById('consultaRecientes');
+  if(recWrap){recWrap.style.display='none';recWrap.textContent='';}
   const q=normCod(qText), qLower=qText.toLowerCase();
+  const qPat=qText.toUpperCase().replace(/[\s-]+/g,'');
   const matches=(window._equiposOrdenados||[])
-    .filter(e=>normCod(e.codigo).includes(q)||(e.nombre||'').toLowerCase().includes(qLower))
+    .filter(e=>{
+      const codN=normCod(e.codigo);
+      if(codN.includes(q)||(e.nombre||'').toLowerCase().includes(qLower))return true;
+      const patente=(window._estadoEquipos||{})[codN]?.patente||(window._horometros||{})[codN]?.patente||'';
+      return patente&&patente.toUpperCase().replace(/[\s-]+/g,'').includes(qPat);
+    })
     .slice(0,20);
   setHTML(wrap, matches.length
     ? html`${matches.map(e=>html`<div class="consulta-result" data-action="seleccionarConsultaEquipo" data-arg="${e.codigo}">
@@ -950,56 +1072,125 @@ function limpiarConsulta(){
   if(resultados){resultados.style.display='none';resultados.textContent='';}
   const checklist=document.getElementById('consultaChecklist');
   if(checklist){checklist.style.display='none';checklist.textContent='';}
+  _renderConsultaRecientes();
 }
 
 async function seleccionarConsultaEquipo(codigo){
   const codN=normCod(codigo);
   _consultaEquipoSel=codN;
+  _consultaRecientesPush(codigo);
   const buscador=document.getElementById('consultaBuscador');
   if(buscador)buscador.value=codigo;
   const resultados=document.getElementById('consultaResultados');
   if(resultados){resultados.style.display='none';resultados.textContent='';}
+  const recWrap=document.getElementById('consultaRecientes');
+  if(recWrap){recWrap.style.display='none';recWrap.textContent='';}
 
   const info=(window._equiposOrdenados||[]).find(e=>normCod(e.codigo)===codN);
   const pendAbiertos=((window._trabajosPendientesPorEquipo||{})[codN]||[]).filter(t=>!t.resuelto);
   const op=operatividadEquipo(codN);
   const vtv=(window._vtvPorEquipo||{})[codN]||null;
+  const repuestosRows=_consultaRepuestosEquipo(codN);
+
+  _consultaRecurrenciasActuales=[];
+  _consultaTimelineFull=[]; _consultaTimelineShown=0;
 
   const wrap=document.getElementById('consultaChecklist');
   if(!wrap)return;
   wrap.style.display='block';
-  setHTML(wrap, _consultaChecklistHTML(codigo, info, pendAbiertos, op, vtv, null));
+  setHTML(wrap, _consultaChecklistHTML(codigo, info, pendAbiertos, op, vtv, null, null, null));
 
-  try{
-    const rows=await loadTrabajosRegistro(codigo);
-    if(_consultaEquipoSel!==codN)return; // el usuario ya buscó otra cosa mientras cargaba
-    const ultimos=rows.filter(r=>r.desc).sort((a,b)=>toSortDate(b.fecha)-toSortDate(a.fecha)).slice(0,3);
-    const cont=document.getElementById('consultaUltimosWrap');
-    if(cont)setHTML(cont, _consultaUltimosHTML(ultimos));
-  }catch(_){
-    if(_consultaEquipoSel!==codN)return;
-    const cont=document.getElementById('consultaUltimosWrap');
-    if(cont)setHTML(cont, html`<div class="no-data">No se pudo cargar el historial.</div>`);
+  const[trabajosRes,serviceRes]=await Promise.allSettled([
+    loadTrabajosRegistro(codigo),
+    fetchServiceHistorial(codigo),
+  ]);
+  if(_consultaEquipoSel!==codN)return; // el usuario ya buscó otra cosa mientras cargaba
+
+  const trabajosRows=trabajosRes.status==='fulfilled'?trabajosRes.value:[];
+  _consultaRecurrenciasActuales=_detectarRecurrencias(trabajosRows);
+  _consultaTimelineFull=_consultaTimelineEventos(trabajosRows,repuestosRows);
+  _consultaTimelineShown=Math.min(CONSULTA_TIMELINE_CHUNK,_consultaTimelineFull.length);
+
+  const recBanner=document.getElementById('consultaRecurrenteWrap');
+  if(recBanner)setHTML(recBanner,_consultaRecurrenteHTML(_consultaRecurrenciasActuales));
+  const todoOkWrap=document.getElementById('consultaTodoOkWrap');
+  if(todoOkWrap)setHTML(todoOkWrap,_consultaTodoOkHTML(pendAbiertos, op, vtv, _consultaRecurrenciasActuales));
+
+  const timelineWrap=document.getElementById('consultaTimelineWrap');
+  if(timelineWrap){
+    if(trabajosRes.status==='rejected')setHTML(timelineWrap, html`<div class="no-data">No se pudo cargar el historial de trabajos.</div>`);
+    else setHTML(timelineWrap, _consultaTimelineRenderChunk());
+  }
+
+  const svcHistWrap=document.getElementById('consultaSvcHistWrap');
+  if(svcHistWrap){
+    const serviceHist=serviceRes.status==='fulfilled'?serviceRes.value:[];
+    setHTML(svcHistWrap, _consultaSvcHistHTML(serviceHist));
   }
 }
 
-function _consultaUltimosHTML(ultimos){
-  if(ultimos==null)return html`<div class="no-data">cargando…</div>`;
-  if(!ultimos.length)return html`<div class="no-data">Sin trabajos registrados.</div>`;
-  return html`<div class="table-wrap"><table class="eq-inner-table">
-      <thead><tr><th>Fecha</th><th>Descripción</th></tr></thead>
-      <tbody>${ultimos.map(r=>html`<tr>
-        <td class="mono" style="font-size:10.5px;color:var(--text3);white-space:nowrap">${formatFechaCorta(r.fecha)}</td>
-        <td style="font-size:12px;color:var(--text2)">${r.desc||'—'}</td>
-      </tr>`)}</tbody>
-    </table></div>`;
+function _consultaRecurrenteHTML(recurrencias){
+  if(!recurrencias||!recurrencias.length)return'';
+  return html`<div class="consulta-recurrente">🔁 <b>Problema recurrente:</b> ${recurrencias.map(r=>`${r.label} (${r.count} veces en 12 meses, últ. ${formatFechaCorta(r.ultima)})`).join(' · ')}</div>`;
 }
 
-function _consultaChecklistHTML(codigo, info, pendAbiertos, op, vtv, ultimos){
-  const nombre=info?.nombre||codigo;
+function _consultaSvcHistHTML(serviceHist){
+  if(!serviceHist||!serviceHist.length)return'';
+  return html`<details class="consulta-svc-hist">
+      <summary>ver historial de service (${serviceHist.length})</summary>
+      <div class="table-wrap"><table class="eq-inner-table">
+        <thead><tr><th>Fecha</th><th>Hs/Km actual</th><th>Próximo</th><th>Responsable</th></tr></thead>
+        <tbody>${serviceHist.map(s=>html`<tr>
+          <td class="mono" style="font-size:10.5px;color:var(--text3);white-space:nowrap">${formatFechaCorta(s.fecha)}</td>
+          <td class="mono" style="font-size:11px">${s.horActual||'—'}</td>
+          <td class="mono" style="font-size:11px;color:var(--text3)">${s.horProximo||'—'}</td>
+          <td style="font-size:11px;color:var(--text3)">${s.personal||'—'}</td>
+        </tr>`)}</tbody>
+      </table></div>
+    </details>`;
+}
+
+function _consultaTimelineRenderChunk(){
+  if(!_consultaTimelineFull.length)return html`<div class="no-data">Sin historial registrado.</div>`;
+  const eventos=_consultaTimelineFull.slice(0,_consultaTimelineShown);
+  const rows=eventos.map(ev=>{
+    const icon=ev.tipo==='trabajo'?'🔧':'🔩';
+    const badges=ev.tipo==='trabajo'?_consultaMatchRecurrencias(ev.desc,_consultaRecurrenciasActuales):[];
+    const badge=badges.length?html` <span class="badge badge-amber" title="Problema recurrente">🔁 ${badges.map(b=>b.label).join(', ')}</span>`:'';
+    return html`<tr>
+      <td class="mono" style="font-size:10.5px;color:var(--text3);white-space:nowrap">${formatFechaCorta(ev.fecha)}</td>
+      <td style="font-size:12px;text-align:center" title="${ev.tipo==='trabajo'?'Trabajo':'Repuesto entregado'}">${icon}</td>
+      <td style="font-size:12px;color:var(--text2)">${ev.desc}${badge}</td>
+    </tr>`;
+  });
+  const masBtn=_consultaTimelineShown<_consultaTimelineFull.length
+    ? html`<button class="consulta-ver-mas" data-action="consultaTimelineVerMas">ver más (${_consultaTimelineFull.length-_consultaTimelineShown} restantes)</button>`
+    : '';
+  return html`<div class="table-wrap"><table class="eq-inner-table">
+      <thead><tr><th>Fecha</th><th></th><th>Descripción</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>${masBtn}`;
+}
+
+function consultaTimelineVerMas(){
+  _consultaTimelineShown=Math.min(_consultaTimelineShown+CONSULTA_TIMELINE_CHUNK,_consultaTimelineFull.length);
+  const cont=document.getElementById('consultaTimelineWrap');
+  if(cont)setHTML(cont,_consultaTimelineRenderChunk());
+}
+
+// recurrencias===null → todavía no se cargaron los trabajos, no mostramos el
+// banner de "todo OK" hasta saber si hay recurrencias (si no, podría mostrar
+// "sin recurrencias" antes de tiempo y quedar así aunque después aparezcan).
+function _consultaTodoOkHTML(pendAbiertos, op, vtv, recurrencias){
+  if(recurrencias==null)return'';
   const svcOk = op.nivel==='holgado'||op.nivel==='intermedio';
   const vtvOk = !vtv || vtv.dias>VTV_UMBRAL_DIAS;
-  const todoOk = !pendAbiertos.length && svcOk && vtvOk;
+  const todoOk = !pendAbiertos.length && svcOk && vtvOk && !recurrencias.length;
+  return todoOk?html`<div style="background:var(--green-bg);border:1px solid var(--green-tint);color:var(--green);padding:10px 14px;font-size:13px">✓ Sin pendientes · service al día · VTV al día · sin recurrencias</div>`:'';
+}
+
+function _consultaChecklistHTML(codigo, info, pendAbiertos, op, vtv, recurrencias, serviceHist, timelineHTML){
+  const nombre=info?.nombre||codigo;
 
   const filaPend = pendAbiertos.length
     ? html`<div class="table-wrap"><table class="eq-inner-table">
@@ -1024,14 +1215,16 @@ function _consultaChecklistHTML(codigo, info, pendAbiertos, op, vtv, ultimos){
   return html`
     <div style="font-size:16px;font-weight:600;color:var(--text)">${nombre}</div>
     <div class="mono" style="font-size:11px;color:var(--text3);margin-bottom:14px">${codigo}</div>
-    ${todoOk?html`<div style="background:var(--green-bg);border:1px solid var(--green-tint);color:var(--green);padding:10px 14px;font-size:13px">✓ Sin pendientes · service al día · VTV al día</div>`:''}
+    <div id="consultaRecurrenteWrap">${recurrencias==null?'':_consultaRecurrenteHTML(recurrencias)}</div>
+    <div id="consultaTodoOkWrap">${_consultaTodoOkHTML(pendAbiertos, op, vtv, recurrencias)}</div>
     <div class="consulta-label">⚠ trabajos pendientes${pendAbiertos.length?` (${pendAbiertos.length})`:''}</div>
     ${filaPend}
     <div class="consulta-label">🔧 service</div>
     <div style="border-left:3px solid ${op.color};background:var(--bg3);padding:10px 14px;font-size:13px;color:${op.color};font-weight:500">${svcTxt}</div>
+    <div id="consultaSvcHistWrap">${_consultaSvcHistHTML(serviceHist)}</div>
     <div class="consulta-label">📋 VTV</div>
     <div style="border-left:3px solid ${vtvColor};background:var(--bg3);padding:10px 14px;font-size:13px;color:${vtvColor};font-weight:500">${vtvTxt}</div>
-    <div class="consulta-label">🕓 últimos trabajos realizados</div>
-    <div id="consultaUltimosWrap">${_consultaUltimosHTML(ultimos)}</div>
+    <div class="consulta-label">🕓 historial completo — trabajos y repuestos entregados</div>
+    <div id="consultaTimelineWrap">${timelineHTML==null?html`<div class="no-data">cargando…</div>`:timelineHTML}</div>
   `;
 }

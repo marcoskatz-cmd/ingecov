@@ -48,14 +48,14 @@
      arranca el PIN gate. No reordenar ni pasar a type=module sin revisar
      ACTIONS. Bump del ?v= al cambiar cualquiera de ellos, para clientes con
      HTTP cache (el SW solo invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/01-core.js?v=76" defer></script>
-<script src="./js/02-datos.js?v=76" defer></script>
-<script src="./js/03-ui.js?v=76" defer></script>
-<script src="./js/04-carga.js?v=76" defer></script>
-<script src="./js/05-render.js?v=76" defer></script>
-<script src="./js/06-tabs.js?v=76" defer></script>
-<script src="./js/07-auditoria.js?v=76" defer></script>
-<script src="./js/08-bootstrap.js?v=76" defer></script>
+<script src="./js/01-core.js?v=77" defer></script>
+<script src="./js/02-datos.js?v=77" defer></script>
+<script src="./js/03-ui.js?v=77" defer></script>
+<script src="./js/04-carga.js?v=77" defer></script>
+<script src="./js/05-render.js?v=77" defer></script>
+<script src="./js/06-tabs.js?v=77" defer></script>
+<script src="./js/07-auditoria.js?v=77" defer></script>
+<script src="./js/08-bootstrap.js?v=77" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -940,6 +940,46 @@
     display:flex;align-items:center;gap:8px;margin:18px 0 8px;
   }
   .consulta-label:first-of-type{margin-top:0;}
+  .consulta-recientes{
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    margin-top:10px;max-width:420px;
+  }
+  .consulta-recientes-label{
+    font-family:'IBM Plex Sans',sans-serif;font-size:10.5px;color:var(--text3);
+    text-transform:uppercase;letter-spacing:.1em;
+  }
+  .consulta-chip{
+    background:var(--bg2);border:1px solid var(--border);color:var(--text2);
+    padding:4px 10px;font-size:11px;font-family:'JetBrains Mono',monospace;
+    font-weight:600;letter-spacing:.06em;cursor:pointer;border-radius:0;
+    transition:border-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease);
+  }
+  .consulta-chip:hover{border-color:var(--accent);color:var(--accent);}
+  .consulta-chip-sub{
+    font-family:'IBM Plex Sans',sans-serif;font-weight:400;color:var(--text3);
+    text-transform:none;letter-spacing:0;
+  }
+  .consulta-recurrente:not(:empty){
+    background:var(--amber-bg);border:1px solid var(--amber-tint);color:var(--amber);
+    padding:10px 14px;font-size:13px;margin-bottom:14px;
+  }
+  .consulta-svc-hist{margin-top:8px;}
+  .consulta-svc-hist summary{
+    cursor:pointer;font-family:'IBM Plex Sans',sans-serif;font-size:11.5px;
+    color:var(--blue);font-weight:600;list-style:none;
+  }
+  .consulta-svc-hist summary::-webkit-details-marker{display:none;}
+  .consulta-svc-hist summary::before{content:'▸ ';}
+  .consulta-svc-hist[open] summary::before{content:'▾ ';}
+  .consulta-svc-hist .table-wrap{margin-top:8px;}
+  .consulta-ver-mas{
+    display:block;width:100%;margin-top:8px;padding:9px;
+    background:var(--bg2);border:1px solid var(--border);color:var(--text2);
+    font-family:'IBM Plex Sans',sans-serif;font-size:11.5px;font-weight:600;
+    cursor:pointer;border-radius:0;
+    transition:border-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease);
+  }
+  .consulta-ver-mas:hover{border-color:var(--accent);color:var(--accent);}
   .view-btn{
     background:var(--bg2);border:1px solid var(--border);color:var(--text3);
     padding:10px 14px;font-family:'JetBrains Mono',monospace;font-size:14px;
@@ -1931,9 +1971,10 @@
       </div>
     </div>
 
-    <!-- Consultar equipo: buscador + checklist de taller (service, pendientes,
-         VTV, últimos trabajos). Vista de solo lectura, separada del modal de
-         detalle de equipo — no lo toca ni depende de él. -->
+    <!-- Consultar equipo: buscador + ficha de taller (service, pendientes,
+         VTV, historial completo de trabajos y repuestos con detección de
+         recurrencia). Vista de solo lectura, separada del modal de detalle
+         de equipo — no lo toca ni depende de él. -->
     <div class="tab-panel" id="tabConsulta">
       <div class="section-content">
         <div class="telemetria-card">
@@ -1941,10 +1982,11 @@
             <div class="telemetria-card-title">consultar equipo — para cuando entra al taller</div>
           </div>
           <div class="search-wrap" style="margin-top:10px;max-width:420px">
-            <input type="text" id="consultaBuscador" placeholder="Buscar por código o nombre..."
+            <input type="text" id="consultaBuscador" placeholder="Buscar por código, nombre o patente..."
               data-action="onConsultaBuscar" data-event="input" autocomplete="off">
             <button class="search-clear" id="consultaClear" data-action="limpiarConsulta" title="Limpiar">×</button>
           </div>
+          <div id="consultaRecientes" class="consulta-recientes" style="display:none"></div>
           <div id="consultaResultados" class="consulta-results" style="display:none"></div>
           <div id="consultaChecklist" style="margin-top:16px;display:none"></div>
         </div>
