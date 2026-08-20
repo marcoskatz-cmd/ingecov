@@ -832,9 +832,9 @@ async function toggleEquipoDetail(codigo,cardEl){
       (infoBar instanceof RawHTML ? infoBar.value : String(infoBar))+
       (horHTML instanceof RawHTML ? horHTML.value : String(horHTML))+
       vtvHTML+
-      eqSection('servicios y reparaciones en taller',contServicio,true).value+
-      (trabPendEq.length?eqSection(`trabajos pendientes (${trabPendAbiertos.length})`,contTrabPend,!!trabPendAbiertos.length).value:'')+
-      eqSection(`pedidos de repuestos (${pedidosEquipo.length})`,contPedidos,true).value+
+      eqSection('servicios y reparaciones en taller',contServicio,false).value+
+      (trabPendEq.length?eqSection(`trabajos pendientes (${trabPendAbiertos.length})`,contTrabPend,false).value:'')+
+      eqSection(`pedidos de repuestos (${pedidosEquipo.length})`,contPedidos,false).value+
       (entregasEquipo.length?eqSection(`entregas sin pedido vinculado (${entregasEquipo.length})`,contEntregas,false).value:'')+
       eqSection(`cargas de combustible${comb?.cargas?.length?` (${comb.cargas.length})`:''}`,contCombustible,false).value+
       eqSection('fuentes de información',contFuentes,false).value
