@@ -200,21 +200,100 @@ async function loadAll(){
     // pone en OBSERVACIONES para esa 2ª fuente apilada al mismo stream.
     window._configPanel = (configResp && configResp.ok) ? configResp.config : {};
     const _precioPesados = window._configPanel.precioCombustiblePesados;
-    // Gasto ESTIMADO de combustible pesados por mes (KPI superior + su rango
-    // de meses) — separado de window._gastoCombLivianosPorMes (costo real)
-    // para no mezclar un número inventado con uno cargado.
+
+    // Precio REAL de Tiburcio (Sanz) por categoría de combustible y mes, para
+    // estimar el costo de las cargas de camionetas (Carlos Herrero) — esa
+    // planilla no registra precio ni costo. A pedido de Marcos: "calculalos y
+    // copialos de los de tiburcio, así tengo el dato real del gasto de todos
+    // los livianos". Los nombres de producto NO coinciden entre las dos
+    // planillas (estaciones/marcas distintas) — Marcos confirmó el
+    // emparejamiento por categoría; "Diesel 500" no tiene equivalente propio
+    // en Tiburcio (que solo carga una calidad de gasoil) así que usa el mismo
+    // precio que "Diesel Premium Max".
+    const _normTipo=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+    const _TIPO_CAMIONETA_A_SANZ={
+      'diesel premium max':'diesel infinia',
+      'diesel 500':'diesel infinia',
+      'super max':'nafta super',
+      'nafta premium max':'nafta infinia',
+    };
+    // combLivianosRows sale del snapshot (SNAP_REDIRECT → COMB_LIVIANOS), que
+    // reshapea columnas y NO incluye "PRECIO UNITARIO" (el resto del panel
+    // nunca la necesitó, solo el TOTAL). Mismas columnas que usa
+    // procesarCombustibleLivianos: 0 fecha, 3 tipo, 4 litros, 11 total $ —
+    // el precio por litro se deriva de total÷litros en vez de leer una
+    // columna que en esta vista no existe.
+    const _precioSanzAcc={}; // { 'categoria|ym': [precios...] }
+    for(const r of (combLivianosRows||[])){
+      if(!r)continue;
+      const d=_parseDate(String(r[0]||'').trim());
+      if(!d)continue;
+      const categoria=_normTipo(r[3]);
+      const litrosR=parseFloat(String(r[4]||'').replace(',','.'));
+      const totalR=parseMoney(r[11]);
+      if(!categoria||!(litrosR>0)||!(totalR>0))continue;
+      const precioU=totalR/litrosR;
+      const ym=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+      const key=categoria+'|'+ym;
+      (_precioSanzAcc[key]=_precioSanzAcc[key]||[]).push(precioU);
+    }
+    const _precioSanzPorCategoriaYMes={};
+    for(const k of Object.keys(_precioSanzAcc)){
+      const arr=_precioSanzAcc[k];
+      _precioSanzPorCategoriaYMes[k]=arr.reduce((a,b)=>a+b,0)/arr.length;
+    }
+    // Precio de una categoría para un mes: exacto si hay, si no el mes
+    // disponible más cercano de esa MISMA categoría (los precios no saltan
+    // de golpe mes a mes, es mejor aproximación que promediar todo el año).
+    const _precioSanzPara=(categoria,ym)=>{
+      const exacto=_precioSanzPorCategoriaYMes[categoria+'|'+ym];
+      if(exacto!=null)return exacto;
+      const disponibles=Object.keys(_precioSanzPorCategoriaYMes)
+        .filter(k=>k.startsWith(categoria+'|')).map(k=>k.slice(categoria.length+1));
+      if(!disponibles.length)return null;
+      const [y,m]=ym.split('-').map(Number);
+      const idx=y*12+(m-1);
+      let mejor=null,mejorDist=Infinity;
+      for(const ymD of disponibles){
+        const [yD,mD]=ymD.split('-').map(Number);
+        const dist=Math.abs((yD*12+(mD-1))-idx);
+        if(dist<mejorDist){mejorDist=dist;mejor=ymD;}
+      }
+      return mejor?_precioSanzPorCategoriaYMes[categoria+'|'+mejor]:null;
+    };
+
+    // Gasto ESTIMADO por mes: pesados (Casares, precio fijo de ⚙ auditoría) y
+    // camionetas (Carlos Herrero, precio real de Tiburcio) por separado —
+    // costoFuente distingue de dónde salió cada estimación, así el ranking de
+    // "combustible livianos" puede sumar lo de camionetas (son livianos) sin
+    // mezclar el número inventado de pesados.
     const _gastoCombPesadosPorMes={};
+    const _gastoCombTiburcioPorMes={};
+    let _cargasCombTiburcioPorMes={};
     for(const codN of Object.keys(window._combustiblePorEquipo)){
       const eq=window._combustiblePorEquipo[codN];
-      if(_precioPesados>0){
-        for(const c of eq.cargas){
-          if(c.costo==null && !(c.obs||'').startsWith('Remito') && c.litros>0){
-            c.costo=c.litros*_precioPesados;
-            c.costoEstimado=true; // litros×precio configurado, no un monto real cargado
-            const d=_parseDate(c.fecha);
-            if(d){
-              const ym=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
-              _gastoCombPesadosPorMes[ym]=(_gastoCombPesadosPorMes[ym]||0)+c.costo;
+      for(const c of eq.cargas){
+        if(c.costo!=null)continue;
+        const esCamioneta=(c.obs||'').startsWith('Remito');
+        if(!esCamioneta && _precioPesados>0 && c.litros>0){
+          c.costo=c.litros*_precioPesados;
+          c.costoEstimado=true; c.costoFuente='pesados'; // litros×precio configurado, no un monto real cargado
+          const d=_parseDate(c.fecha);
+          if(d){
+            const ym=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+            _gastoCombPesadosPorMes[ym]=(_gastoCombPesadosPorMes[ym]||0)+c.costo;
+          }
+        }else if(esCamioneta && c.litros>0){
+          const categoria=_TIPO_CAMIONETA_A_SANZ[_normTipo(c.tipo)];
+          const d=_parseDate(c.fecha);
+          if(categoria&&d){
+            const ym=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+            const precio=_precioSanzPara(categoria,ym);
+            if(precio>0){
+              c.costo=c.litros*precio;
+              c.costoEstimado=true; c.costoFuente='tiburcio'; // litros×precio real de Tiburcio para la categoría equivalente
+              _gastoCombTiburcioPorMes[ym]=(_gastoCombTiburcioPorMes[ym]||0)+c.costo;
+              _cargasCombTiburcioPorMes[ym]=(_cargasCombTiburcioPorMes[ym]||0)+1;
             }
           }
         }
@@ -225,6 +304,8 @@ async function loadAll(){
       eq.totalCosto=eq.cargas.reduce((s,c)=>s+(c.costo||0),0);
     }
     window._gastoCombPesadosPorMes=_gastoCombPesadosPorMes;
+    window._gastoCombTiburcioPorMes=_gastoCombTiburcioPorMes;
+    window._cargasCombTiburcioPorMes=_cargasCombTiburcioPorMes;
 
     window._pedidosEntregados=entregadosRaw.filter(p=>(p['N° PEDIDO']||p['N° ENTREGA']||'').trim()!=='');
     // Catálogo maestro: única fuente de equipos = 4 tabs de la hoja de CÓDIGOS
@@ -244,9 +325,24 @@ async function loadAll(){
         if(p)patenteToCarN[p]=codN;
       }
       const liv=procesarCombustibleLivianos(combLivianosRows,patenteToCarN);
-      window._gastoCombLivianos=liv.gastoTotal;
-      window._gastoCombLivianosPorMes=liv.gastoPorMes;
-      window._cargasCombLivianosPorMes=liv.cargasPorMes;
+      // Suma lo estimado de camionetas (Carlos Herrero, precio real de
+      // Tiburcio) al gasto de livianos — Marcos: "así tengo el dato real del
+      // gasto de todos los livianos" (antes esas cargas no sumaban nada acá,
+      // no tenían costo). No es doble conteo: son cargas propias, distintas
+      // de las que ya carga Tiburcio para las mismas camionetas.
+      let _gastoLivianosTotal=liv.gastoTotal;
+      const _gastoLivianosPorMes={...liv.gastoPorMes};
+      const _cargasLivianosPorMes={...liv.cargasPorMes};
+      for(const ym of Object.keys(window._gastoCombTiburcioPorMes)){
+        _gastoLivianosPorMes[ym]=(_gastoLivianosPorMes[ym]||0)+window._gastoCombTiburcioPorMes[ym];
+        _gastoLivianosTotal+=window._gastoCombTiburcioPorMes[ym];
+      }
+      for(const ym of Object.keys(window._cargasCombTiburcioPorMes)){
+        _cargasLivianosPorMes[ym]=(_cargasLivianosPorMes[ym]||0)+window._cargasCombTiburcioPorMes[ym];
+      }
+      window._gastoCombLivianos=_gastoLivianosTotal;
+      window._gastoCombLivianosPorMes=_gastoLivianosPorMes;
+      window._cargasCombLivianosPorMes=_cargasLivianosPorMes;
       for(const codN of Object.keys(liv.porEquipo)){
         const e=liv.porEquipo[codN];
         const ex=window._combustiblePorEquipo[codN];
@@ -544,14 +640,16 @@ function _actualizarKpisDeRango(){
     }
   }
   if(cardH){cardH.classList.toggle('kpi-empty',!(horasTotal>0));cardH.classList.toggle('kpi-clickable',horasTotal>0);}
-  // --- Combustible livianos ---
+  // --- Combustible livianos (real de Tiburcio + estimado de camionetas
+  // por precio de Tiburcio para la categoría equivalente, ver arriba) ---
   const gastoComb=_sumarPorMes(window._gastoCombLivianosPorMes||{},yms);
   const cargasComb=_sumarPorMes(window._cargasCombLivianosPorMes||{},yms);
+  const cargasCombEst=_sumarPorMes(window._cargasCombTiburcioPorMes||{},yms);
   const cardG=document.getElementById('kpiCombCard');
   const valG=document.getElementById('kpiCombVal');
   const subG=document.getElementById('kpiCombSub');
   if(valG)valG.textContent=gastoComb>0?formatMoney(gastoComb):'—';
-  if(subG)subG.textContent=gastoComb>0?`${fmtInt(cargasComb)} cargas · ${labelRango}`:'sin cargas en el rango';
+  if(subG)subG.textContent=gastoComb>0?`${fmtInt(cargasComb)} cargas · ${labelRango}${cargasCombEst>0?` · ${fmtInt(cargasCombEst)} estimadas (camionetas)`:''}`:'sin cargas en el rango';
   if(cardG){cardG.classList.toggle('kpi-empty',!(gastoComb>0));cardG.classList.toggle('kpi-clickable',gastoComb>0);}
   // --- Combustible pesados (litros × precio configurado — Casares no trae
   // costo por carga, ver ⚙ auditoría). window._gastoCombPesadosPorMes queda

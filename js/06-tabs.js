@@ -522,10 +522,12 @@ function _listadoEquiposHoras(yms){
   return arr;
 }
 // Listado de equipos por gasto en combustible livianos para un rango de YMs.
-// Excluye cargas con costoEstimado (combustible pesados/Casares, litros ×
-// precio configurado): conviven en el mismo window._combustiblePorEquipo
-// para las 11 camionetas que están en las dos fuentes — sin este filtro un
-// número inventado se mezclaría con costo real cargado.
+// Incluye costo real (Tiburcio/Sanz) + estimado de camionetas (costoFuente
+// 'tiburcio': litros × precio real de Tiburcio para la categoría equivalente
+// — SON livianos, Marcos pidió sumarlos al "dato real del gasto"). Excluye
+// SOLO costoFuente 'pesados' (Casares, precio fijo de ⚙ auditoría): convive
+// en el mismo window._combustiblePorEquipo para las 11 camionetas que están
+// en las dos fuentes — sin este filtro un número de otra flota se mezclaría.
 function _listadoEquiposCombustible(yms){
   const cpe=window._combustiblePorEquipo||{};
   const ymsSet=new Set(yms);
@@ -535,7 +537,7 @@ function _listadoEquiposCombustible(yms){
     if(!e||!e.cargas)continue;
     let total=0;
     for(const c of e.cargas){
-      if(c.costoEstimado)continue;
+      if(c.costoFuente==='pesados')continue;
       const d=_parseDate(c.fecha);
       if(!d)continue;
       const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -552,7 +554,7 @@ function _listadoEquiposCombustible(yms){
 }
 // Listado de equipos por gasto ESTIMADO en combustible pesados (litros ×
 // precio configurado en ⚙ auditoría) para un rango de YMs. Espejo de
-// _listadoEquiposCombustible pero filtrando SOLO costoEstimado.
+// _listadoEquiposCombustible pero filtrando SOLO costoFuente 'pesados'.
 function _listadoEquiposCombustiblePesados(yms){
   const cpe=window._combustiblePorEquipo||{};
   const ymsSet=new Set(yms);
@@ -562,7 +564,7 @@ function _listadoEquiposCombustiblePesados(yms){
     if(!e||!e.cargas)continue;
     let total=0;
     for(const c of e.cargas){
-      if(!c.costoEstimado)continue;
+      if(c.costoFuente!=='pesados')continue;
       const d=_parseDate(c.fecha);
       if(!d)continue;
       const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;

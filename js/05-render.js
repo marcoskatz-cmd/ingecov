@@ -765,7 +765,7 @@ async function toggleEquipoDetail(codigo,cardEl){
           <td class="mono" style="font-size:10.5px;color:var(--text2);white-space:nowrap">${formatFechaCorta(c.fecha)}</td>
           <td class="mono" style="font-size:11px;text-align:right;color:${c.hr!=null?'var(--blue)':'var(--text3)'}">${c.hr!=null?fmtInt(c.hr)+' '+_hrUnit:'<span title="Horómetro/odómetro sin lectura">—</span>'}</td>
           <td class="mono" style="font-size:11px;text-align:right;color:var(--amber);font-weight:500">${fmtInt(c.litros)} L</td>
-          <td class="mono" style="font-size:11px;text-align:right;color:${c.costo>0?'var(--amber)':'var(--text3)'}"${c.costoEstimado?' title="Estimado: litros × precio configurado (⚙ auditoría), no un monto cargado"':''}>${c.costo>0?formatMoney(c.costo)+(c.costoEstimado?' ~':''):'—'}</td>
+          <td class="mono" style="font-size:11px;text-align:right;color:${c.costo>0?'var(--amber)':'var(--text3)'}"${c.costoEstimado?` title="Estimado: litros × precio ${c.costoFuente==='tiburcio'?'real de Tiburcio para la categoría de combustible equivalente':'configurado (⚙ auditoría)'}, no un monto cargado directamente"`:''}>${c.costo>0?formatMoney(c.costo)+(c.costoEstimado?' ~':''):'—'}</td>
           <td style="font-size:11px;color:var(--text2)">${c.tipo||'—'}</td>
           <td style="font-size:11px;color:var(--text3)">${c.lugar||'—'}</td>
           <td style="font-size:11px;color:var(--text3)">${c.operario||'—'}</td>
