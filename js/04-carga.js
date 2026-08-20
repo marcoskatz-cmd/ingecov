@@ -35,7 +35,7 @@ async function loadAll(){
     // Carga primaria: TODO lo necesario para el primer render.
     // PANEL_REPUESTOS pasa a ser fuente única de entregas (reemplaza MESES_ENTREGAS).
     // PANEL_TRABAJOS se carga acá también para alimentar telemetría de flota (rankings + chart de horas).
-    const[pendientesRaw,entregadosRaw,codV,codL,codP,codS,panelRepuestosLiveObj,panelRepuestosHistObj,panelTrabajosLiveObj,panelTrabajosHistObj,serviceFrecRows,serviceTrimRows,trim1Rows,trim2Rows,panelProgramaObj,combustibleObj,combLivianosRows,vtvRows,faltantesRows,trabPendRows]=await Promise.all([
+    const[pendientesRaw,entregadosRaw,codV,codL,codP,codS,panelRepuestosLiveObj,panelRepuestosHistObj,panelTrabajosLiveObj,panelTrabajosHistObj,serviceFrecRows,serviceTrimRows,trim1Rows,trim2Rows,panelProgramaObj,combustibleObj,combLivianosRows,vtvRows,faltantesRows,trabPendRows,configResp]=await Promise.all([
       fetchGvizRaw(SHEET_IDS.pedidos,'PENDIENTES'),
       // ENTREGADOS tiene título y contadores en filas 1-10; headers reales en fila 11.
       // El range fuerza a gviz a usar la fila 11 como header (sin esto, los nombres se pierden).
@@ -72,6 +72,9 @@ async function loadAll(){
       // TRABAJOS PENDIENTES: tareas de taller detectadas y todavía sin resolver
       // (hoja nueva ago-2026, misma planilla que TRABAJOS REALIZADOS).
       fetchGvizObj(SNAPSHOT_ID,'TRAB_PEND').catch(()=>[]),
+      // Config del panel (hoy: precio de combustible pesados). Lectura pública,
+      // sin PIN — la edición sí lo pide (⚙ en el modal de auditoría).
+      fetch(REFRESH_URL+'?ep=config').then(r=>r.json()).catch(()=>({ok:false})),
     ]);
     setLoadProgress(55);
 
@@ -189,6 +192,29 @@ async function loadAll(){
     // Procesar ENTREGA DE COMBUSTIBLE: por equipo, última hr/km + consumo promedio + historial.
     // No requiere Apps Script — la pestaña ya es plana (una fila = una carga).
     window._combustiblePorEquipo = procesarCombustible(combustibleObj);
+
+    // Config del panel (⚙ en auditoría). Combustible pesados (Casares) no
+    // trae costo por carga — se estima litros × precio configurado. Las
+    // camionetas quedan afuera a propósito (Marcos: el precio es solo para
+    // Casares): se identifican por el marcador "Remito " que el builder les
+    // pone en OBSERVACIONES para esa 2ª fuente apilada al mismo stream.
+    window._configPanel = (configResp && configResp.ok) ? configResp.config : {};
+    const _precioPesados = window._configPanel.precioCombustiblePesados;
+    for(const codN of Object.keys(window._combustiblePorEquipo)){
+      const eq=window._combustiblePorEquipo[codN];
+      if(_precioPesados>0){
+        for(const c of eq.cargas){
+          if(c.costo==null && !(c.obs||'').startsWith('Remito') && c.litros>0){
+            c.costo=c.litros*_precioPesados;
+            c.costoEstimado=true; // litros×precio configurado, no un monto real cargado
+          }
+        }
+      }
+      // totalCosto recalculado sobre TODAS las cargas (incluye las recién
+      // estimadas) — antes solo lo acumulaba procesarCombustibleLivianos,
+      // acá queda consistente con lo que muestra cada fila de la tabla.
+      eq.totalCosto=eq.cargas.reduce((s,c)=>s+(c.costo||0),0);
+    }
 
     window._pedidosEntregados=entregadosRaw.filter(p=>(p['N° PEDIDO']||p['N° ENTREGA']||'').trim()!=='');
     // Catálogo maestro: única fuente de equipos = 4 tabs de la hoja de CÓDIGOS

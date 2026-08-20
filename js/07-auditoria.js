@@ -21,11 +21,23 @@ const AUD_REGLAS={
   R6:'Código inexistente en LISTA DE EQUIPOS',
 };
 let _audPin=null;
+let _audWantConfig=false; // true = después de validar el PIN, ir a config en vez de a los hallazgos
 function abrirAuditoria(){
   const ov=document.getElementById('audOverlay'); if(!ov)return;
   ov.classList.add('open'); document.body.style.overflow='hidden';
   _audPin=sessionStorage.getItem('_audPin')||null;
+  _audWantConfig=false;
   if(_audPin)_audFetch(); else _audAskPin();
+}
+// ⚙ del header: mismo modal/PIN que la auditoría, solo cambia qué se
+// muestra después de validar. Si ya se validó el PIN en esta sesión, entra
+// directo; si no, pide PIN y de ahí salta a config (no a los hallazgos).
+function abrirConfigPanel(){
+  const ov=document.getElementById('audOverlay'); if(!ov)return;
+  if(!ov.classList.contains('open')){ ov.classList.add('open'); document.body.style.overflow='hidden'; }
+  _audPin=_audPin||sessionStorage.getItem('_audPin')||null;
+  if(_audPin){ _audRenderConfig(); }
+  else { _audWantConfig=true; _audAskPin(); }
 }
 function cerrarAuditoria(){
   const ov=document.getElementById('audOverlay'); if(!ov)return;
@@ -64,7 +76,8 @@ async function _audFetch(){
       return;
     }
     sessionStorage.setItem('_audPin',_audPin);
-    _audRender(j.audit);
+    if(_audWantConfig){ _audWantConfig=false; _audRenderConfig(); }
+    else{ _audRender(j.audit); }
   }catch(e){
     setHTML(body, html`<div style="padding:24px;text-align:center;color:var(--red);font-size:13px">No se pudo consultar la auditoría: ${(e&&e.message)||e}</div>`);
   }
@@ -94,6 +107,73 @@ function _audRender(a){
     </div>`;
   });
   setHTML(body, html`${bloques}${a.truncado?html`<div style="color:var(--text3);font-size:11px;padding-top:4px">lista truncada — corregí lo visible y el resto aparece en el próximo build</div>`:''}`);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ⚙ CONFIGURACIÓN DEL PANEL · dentro del mismo modal de auditoría
+   Parámetros de negocio editables sin deploy (hoy: precio de combustible
+   pesados, ver 04-carga.js). Se leen con ?ep=config (público) y se guardan
+   con ?ep=config_set&pin=… (mismo PIN ya validado para entrar acá) — viven
+   en Script Properties, no en el snapshot, así el cambio pega en el
+   próximo reload sin esperar el rebuild de 30 min.
+═══════════════════════════════════════════════════════════════════ */
+async function _audRenderConfig(){
+  const body=document.getElementById('audBody'), meta=document.getElementById('audMeta');
+  if(!body)return;
+  if(meta)meta.textContent=' · configuración';
+  setHTML(body, html`<div style="padding:30px;text-align:center;color:var(--text3);font-size:13px">cargando configuración…</div>`);
+  let cfg={};
+  try{
+    const r=await fetch(REFRESH_URL+'?ep=config');
+    const j=await r.json();
+    if(j.ok)cfg=j.config||{};
+  }catch(e){ /* si falla, el form queda vacío y se puede cargar igual */ }
+  const precio=cfg.precioCombustiblePesados;
+  setHTML(body, html`<div style="display:flex;flex-direction:column;gap:18px;padding:4px 2px">
+      <div style="font-size:11px;color:var(--text3);line-height:1.6">
+        Estos valores se guardan en el servidor y afectan a todos los que abren el panel —
+        no hace falta editar ninguna planilla ni esperar el rebuild de 30 min, pegan en el
+        próximo reload.
+      </div>
+      <div>
+        <label style="display:block;font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Precio combustible pesados (ARS/litro)</label>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px;max-width:420px">Solo aplica a los equipos de la planilla de Casares (esa fuente no trae costo por carga; se estima litros × este precio). Camionetas y livianos ya traen su costo real cargado, no se tocan.</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="cfgPrecioPesados" type="number" min="0" step="1" inputmode="decimal"
+            value="${precio!=null?precio:''}" placeholder="sin configurar"
+            style="background:transparent;border:1px solid var(--border);color:var(--text);padding:8px 12px;font-size:14px;width:140px"/>
+          <button class="refresh-btn" data-action="audGuardarConfig">guardar</button>
+        </div>
+        <div id="cfgPrecioPesadosMsg" style="font-size:11px;margin-top:6px;min-height:14px"></div>
+      </div>
+      <div><button class="refresh-btn" style="opacity:.7" data-action="audVolverAuditoria">← volver a auditoría</button></div>
+    </div>`);
+  const inp=document.getElementById('cfgPrecioPesados');
+  if(inp)inp.addEventListener('keydown',ev=>{if(ev.key==='Enter')audGuardarConfig();});
+}
+async function audGuardarConfig(){
+  const inp=document.getElementById('cfgPrecioPesados');
+  const msg=document.getElementById('cfgPrecioPesadosMsg');
+  const v=inp?parseFloat(inp.value):NaN;
+  if(!isFinite(v)||v<0){
+    if(msg){msg.textContent='Ingresá un número válido (≥ 0).';msg.style.color='var(--red)';}
+    return;
+  }
+  if(msg){msg.textContent='guardando…';msg.style.color='var(--text3)';}
+  try{
+    const r=await fetch(REFRESH_URL+'?ep=config_set&pin='+encodeURIComponent(_audPin)+'&key=precioCombustiblePesados&value='+encodeURIComponent(v));
+    const j=await r.json();
+    if(!j.ok){
+      if(msg){msg.textContent='Error: '+(j.error==='pin'?'PIN inválido':(j.error||'desconocido'));msg.style.color='var(--red)';}
+      return;
+    }
+    if(msg){msg.textContent='✓ guardado — se aplica en el próximo reload del panel';msg.style.color='var(--green)';}
+  }catch(e){
+    if(msg){msg.textContent='No se pudo guardar: '+((e&&e.message)||e);msg.style.color='var(--red)';}
+  }
+}
+function audVolverAuditoria(){
+  _audFetch(); // reusa el PIN ya validado, vuelve a mostrar los hallazgos
 }
 
 // ═══════════════════════════════════════════════════════════════════

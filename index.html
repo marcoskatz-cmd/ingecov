@@ -48,14 +48,14 @@
      arranca el PIN gate. No reordenar ni pasar a type=module sin revisar
      ACTIONS. Bump del ?v= al cambiar cualquiera de ellos, para clientes con
      HTTP cache (el SW solo invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/01-core.js?v=72" defer></script>
-<script src="./js/02-datos.js?v=72" defer></script>
-<script src="./js/03-ui.js?v=72" defer></script>
-<script src="./js/04-carga.js?v=72" defer></script>
-<script src="./js/05-render.js?v=72" defer></script>
-<script src="./js/06-tabs.js?v=72" defer></script>
-<script src="./js/07-auditoria.js?v=72" defer></script>
-<script src="./js/08-bootstrap.js?v=72" defer></script>
+<script src="./js/01-core.js?v=73" defer></script>
+<script src="./js/02-datos.js?v=73" defer></script>
+<script src="./js/03-ui.js?v=73" defer></script>
+<script src="./js/04-carga.js?v=73" defer></script>
+<script src="./js/05-render.js?v=73" defer></script>
+<script src="./js/06-tabs.js?v=73" defer></script>
+<script src="./js/07-auditoria.js?v=73" defer></script>
+<script src="./js/08-bootstrap.js?v=73" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -764,6 +764,12 @@
     border-radius:0;
   }
   .sv-modal-close:hover{color:var(--text);}
+  .sv-modal-gear{
+    background:none;border:none;color:var(--text3);
+    width:34px;height:34px;cursor:pointer;font-size:16px;line-height:1;
+    border-radius:0;
+  }
+  .sv-modal-gear:hover{color:var(--text);}
   .sv-modal-list{overflow-y:auto;}
   .sv-row{
     display:grid;grid-template-columns:88px 1fr 110px 110px 96px;gap:14px;
@@ -1961,7 +1967,10 @@
   <div class="sv-modal">
     <div class="sv-modal-head">
       <div class="sv-modal-title" id="audTitle">Auditoría de cargas <span id="audMeta" style="font-weight:400;font-size:11px;color:var(--text3)"></span></div>
-      <button class="sv-modal-close" data-action="cerrarAuditoria" title="Cerrar (Esc)" aria-label="Cerrar">×</button>
+      <div style="display:flex;align-items:center">
+        <button class="sv-modal-gear" data-action="abrirConfigPanel" title="Configuración del panel" aria-label="Configuración del panel">⚙</button>
+        <button class="sv-modal-close" data-action="cerrarAuditoria" title="Cerrar (Esc)" aria-label="Cerrar">×</button>
+      </div>
     </div>
     <div class="sv-modal-list" id="audBody" style="padding:14px 16px"></div>
   </div>

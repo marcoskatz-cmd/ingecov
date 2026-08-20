@@ -77,6 +77,43 @@ function doGet(e) {
     return _refreshJson({ ok: true, message: 'AUDIT_PIN seteado' });
   }
 
+  // ── CONFIG DEL PANEL (?ep=config → lectura pública, ?ep=config_set&pin=…
+  // → escritura con PIN de auditoría) ──────────────────────────────────
+  // Parámetros de negocio editables sin pedir un deploy — hoy solo el precio
+  // de combustible pesados (Casares no trae costo por carga; se estima
+  // litros × precio). Viven en Script Properties (prefijo CONFIG_), NO en el
+  // snapshot: así un cambio impacta en el próximo reload, sin esperar el
+  // rebuild de 30 min (mismo criterio que COSTOS DOWNTIME).
+  // Antes del gate de REFRESH_KEY a propósito: la lectura es pública (el
+  // precio no es sensible y lo necesita CUALQUIER cliente para calcular el
+  // KPI de gasto de combustible, no solo quien entra a auditoría) y la
+  // escritura tiene su PROPIO gate (AUDIT_PIN) — no necesita el token de
+  // refresh además.
+  var CONFIG_KEYS = ['precioCombustiblePesados'];
+  if (params.ep === 'config') {
+    var cfgProps = PropertiesService.getScriptProperties();
+    var config = {};
+    CONFIG_KEYS.forEach(function (k) {
+      var v = cfgProps.getProperty('CONFIG_' + k);
+      config[k] = v != null ? Number(v) : null;
+    });
+    return _refreshJson({ ok: true, config: config });
+  }
+  if (params.ep === 'config_set') {
+    var pinOkCfg = PropertiesService.getScriptProperties().getProperty('AUDIT_PIN');
+    if (!pinOkCfg) return _refreshJson({ ok: false, error: 'audit_pin_not_set' });
+    if (String(params.pin || '') !== pinOkCfg) {
+      Utilities.sleep(800);
+      return _refreshJson({ ok: false, error: 'pin' });
+    }
+    var cfgKey = String(params.key || '');
+    if (CONFIG_KEYS.indexOf(cfgKey) < 0) return _refreshJson({ ok: false, error: 'clave_invalida' });
+    var val = parseFloat(params.value);
+    if (!isFinite(val) || val < 0) return _refreshJson({ ok: false, error: 'valor_invalido' });
+    PropertiesService.getScriptProperties().setProperty('CONFIG_' + cfgKey, String(val));
+    return _refreshJson({ ok: true, key: cfgKey, value: val });
+  }
+
   // El token también protege contra que un crawler que encuentre la URL dispare
   // una reconstrucción al azar.
   var expected = PropertiesService.getScriptProperties().getProperty('REFRESH_KEY');

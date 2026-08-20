@@ -365,7 +365,10 @@ async function toggleEquipoDetail(codigo,cardEl){
     return d&&(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'))===_hoyYm;
   });
   const _gastoCombMes=_cargasMes.reduce((s,c)=>s+(c.costo||0),0);
-  const _gastoCombMesSub=_cargasMes.length?`${fmtInt(_cargasMes.length)} cargas · ${ymLabel(_hoyYm)}`:'sin cargas este mes';
+  const _gastoCombEstimado=_cargasMes.some(c=>c.costoEstimado);
+  const _gastoCombMesSub=_cargasMes.length
+    ?`${fmtInt(_cargasMes.length)} cargas · ${ymLabel(_hoyYm)}${_gastoCombEstimado?' · estimado (litros × precio configurado)':''}`
+    :'sin cargas este mes';
 
   // KPIs
   const kpisHTML=`
@@ -762,7 +765,7 @@ async function toggleEquipoDetail(codigo,cardEl){
           <td class="mono" style="font-size:10.5px;color:var(--text2);white-space:nowrap">${formatFechaCorta(c.fecha)}</td>
           <td class="mono" style="font-size:11px;text-align:right;color:${c.hr!=null?'var(--blue)':'var(--text3)'}">${c.hr!=null?fmtInt(c.hr)+' '+_hrUnit:'<span title="Horómetro/odómetro sin lectura">—</span>'}</td>
           <td class="mono" style="font-size:11px;text-align:right;color:var(--amber);font-weight:500">${fmtInt(c.litros)} L</td>
-          <td class="mono" style="font-size:11px;text-align:right;color:${c.costo>0?'var(--amber)':'var(--text3)'}">${c.costo>0?formatMoney(c.costo):'—'}</td>
+          <td class="mono" style="font-size:11px;text-align:right;color:${c.costo>0?'var(--amber)':'var(--text3)'}"${c.costoEstimado?' title="Estimado: litros × precio configurado (⚙ auditoría), no un monto cargado"':''}>${c.costo>0?formatMoney(c.costo)+(c.costoEstimado?' ~':''):'—'}</td>
           <td style="font-size:11px;color:var(--text2)">${c.tipo||'—'}</td>
           <td style="font-size:11px;color:var(--text3)">${c.lugar||'—'}</td>
           <td style="font-size:11px;color:var(--text3)">${c.operario||'—'}</td>
@@ -770,7 +773,7 @@ async function toggleEquipoDetail(codigo,cardEl){
         </tr>`).join('')}</tbody>
         ${(comb?.promedio!=null||comb?.totalCosto>0)?`<tfoot><tr style="background:var(--bg3);font-weight:500">
           <td colspan="2" style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em">Acumulado</td>
-          <td colspan="6" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text)">${comb?.promedio!=null?`${comb.promedio.toFixed(_unidad==='km'?1:2)} ${_consumoLabel} · `:''}${fmtInt(comb.totalLitros)} L${comb?.totalCosto>0?` · ${formatMoney(comb.totalCosto)} en combustible`:''}</td>
+          <td colspan="6" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text)">${comb?.promedio!=null?`${comb.promedio.toFixed(_unidad==='km'?1:2)} ${_consumoLabel} · `:''}${fmtInt(comb.totalLitros)} L${comb?.totalCosto>0?` · ${formatMoney(comb.totalCosto)} en combustible${cargasOrdenadas.some(c=>c.costoEstimado)?' (parte estimado, ~)':''}`:''}</td>
         </tr></tfoot>`:''}
       </table></div>`
     : `<div class="no-data">Sin cargas de combustible registradas para este equipo.</div>`;
