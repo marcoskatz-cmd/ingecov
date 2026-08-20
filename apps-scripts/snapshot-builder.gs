@@ -468,11 +468,19 @@ function _buildCombustible_(snap){
       n++;
     }
     // ── Camionetas: 2ª fuente que apila al MISMO stream (match por código).
-    //    Sin costo y sin horómetro/odómetro usable → ESTADO vacío ⇒ el browser
-    //    guarda la carga con hr=null (no calcula consumo), pero suma litros/mes
-    //    e historial por equipo. Columnas de la fuente:
-    //    FECHA · REMITO INTERNO · TIPO COMBUSTIBLE · CANTIDAD · EQUIPO · CÓDIGO
-    //    · N° SERIE/PATENTE · ODÓMETRO · RESPONSABLE · OBRA PARTICULAR · OBRA GENERAL
+    //    Sin costo, pero SÍ trae ODÓMETRO (KM) por carga (columna real, la
+    //    completan a veces — "Carlos Herrero"/planilla de camionetas, ago-2026:
+    //    Marcos pidió dejar de descartarla, antes se mandaba ESTADO/HOROMETRO
+    //    siempre en blanco "a propósito" y el odómetro real quedaba sin usar).
+    //    Si hay lectura >0 se marca 'Sí funciona' (mismo contrato que Casares/
+    //    Sanz: el browser exige ESTADO='Sí…' para tomar el HOROMETRO como
+    //    válido); sin lectura queda igual que antes (ESTADO/HOROMETRO vacíos).
+    //    Esto NO toca la operatividad (hr/km "actual" sigue viniendo SOLO del
+    //    resumen de service, decisión de Marcos 13/7) — solo mejora el
+    //    historial de cargas y el cálculo de consumo L/100km de este tab.
+    //    Columnas de la fuente: FECHA · REMITO INTERNO · TIPO COMBUSTIBLE ·
+    //    CANTIDAD · EQUIPO · CÓDIGO · N° SERIE/PATENTE · ODÓMETRO (KM) ·
+    //    RESPONSABLE · OBRA PARTICULAR · OBRA GENERAL
     let nCam = 0;
     try{
       const tc = _readTabByHeader_(SNAP_SRC.combCamionetas, ['REMITO INTERNO']);
@@ -485,13 +493,15 @@ function _buildCombustible_(snap){
         const cObr = _idx_(hc, ['OBRA PARTICULAR','OBRA GENERAL','OBRA']);
         const cRes = _idx_(hc, ['RESPONSABLE','OPERARIO','CHOFER']);
         const cRem = _idx_(hc, ['REMITO INTERNO','REMITO']);
+        const cOdo = _idx_(hc, ['ODÓMETRO KM','ODOMETRO KM','ODÓMETRO','ODOMETRO']);
         for(const r of tc.rows){
           const cod = _at_(r, cCod);
           if(!_snapNormCod(cod)) continue;   // "Bidón"/Obra sin código → se ignoran
-          // Solo auditoría de cargas: hs/km salen de la planilla de service, NO de acá.
-          // ESTADO vacío ⇒ el browser guarda con hr=null (no calcula consumo).
+          const odoRaw = _at_(r, cOdo);
+          const odoNum = parseFloat(String(odoRaw).replace(/[^\d.,-]/g,'').replace(',','.'));
+          const tieneOdo = isFinite(odoNum) && odoNum > 0;
           out.push([
-            cod, _at_(r, cFec), '', '',
+            cod, _at_(r, cFec), tieneOdo ? 'Sí funciona' : '', tieneOdo ? odoRaw : '',
             _at_(r, cLit), _at_(r, cTip), _at_(r, cObr), _at_(r, cRes),
             cRem >= 0 ? ('Remito ' + _at_(r, cRem)) : '',
           ]);
