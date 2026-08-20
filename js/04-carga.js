@@ -200,6 +200,10 @@ async function loadAll(){
     // pone en OBSERVACIONES para esa 2ª fuente apilada al mismo stream.
     window._configPanel = (configResp && configResp.ok) ? configResp.config : {};
     const _precioPesados = window._configPanel.precioCombustiblePesados;
+    // Gasto ESTIMADO de combustible pesados por mes (KPI superior + su rango
+    // de meses) — separado de window._gastoCombLivianosPorMes (costo real)
+    // para no mezclar un número inventado con uno cargado.
+    const _gastoCombPesadosPorMes={};
     for(const codN of Object.keys(window._combustiblePorEquipo)){
       const eq=window._combustiblePorEquipo[codN];
       if(_precioPesados>0){
@@ -207,6 +211,11 @@ async function loadAll(){
           if(c.costo==null && !(c.obs||'').startsWith('Remito') && c.litros>0){
             c.costo=c.litros*_precioPesados;
             c.costoEstimado=true; // litros×precio configurado, no un monto real cargado
+            const d=_parseDate(c.fecha);
+            if(d){
+              const ym=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+              _gastoCombPesadosPorMes[ym]=(_gastoCombPesadosPorMes[ym]||0)+c.costo;
+            }
           }
         }
       }
@@ -215,6 +224,7 @@ async function loadAll(){
       // acá queda consistente con lo que muestra cada fila de la tabla.
       eq.totalCosto=eq.cargas.reduce((s,c)=>s+(c.costo||0),0);
     }
+    window._gastoCombPesadosPorMes=_gastoCombPesadosPorMes;
 
     window._pedidosEntregados=entregadosRaw.filter(p=>(p['N° PEDIDO']||p['N° ENTREGA']||'').trim()!=='');
     // Catálogo maestro: única fuente de equipos = 4 tabs de la hoja de CÓDIGOS
@@ -543,13 +553,22 @@ function _actualizarKpisDeRango(){
   if(valG)valG.textContent=gastoComb>0?formatMoney(gastoComb):'—';
   if(subG)subG.textContent=gastoComb>0?`${fmtInt(cargasComb)} cargas · ${labelRango}`:'sin cargas en el rango';
   if(cardG){cardG.classList.toggle('kpi-empty',!(gastoComb>0));cardG.classList.toggle('kpi-clickable',gastoComb>0);}
-  // --- Combustible pesados (litros; la fuente Casares no trae costo) ---
+  // --- Combustible pesados (litros × precio configurado — Casares no trae
+  // costo por carga, ver ⚙ auditoría). window._gastoCombPesadosPorMes queda
+  // vacío si no hay precio cargado: no se inventa un número sin base. ---
   const litrosPes=_sumarPorMes(window._litrosCombPesadosPorMes||{},yms);
   const cargasPes=_sumarPorMes(window._cargasCombPesadosPorMes||{},yms);
+  const gastoPes=_sumarPorMes(window._gastoCombPesadosPorMes||{},yms);
   const cardP=document.getElementById('kpiCombPesCard');
   const valP=document.getElementById('kpiCombPesVal');
   const subP=document.getElementById('kpiCombPesSub');
-  if(valP)valP.textContent=litrosPes>0?fmtInt(Math.round(litrosPes))+' L':'—';
-  if(subP)subP.textContent=litrosPes>0?`${fmtInt(cargasPes)} cargas · ${labelRango}`:'sin cargas en el rango';
-  if(cardP)cardP.classList.toggle('kpi-empty',!(litrosPes>0));
+  if(valP)valP.textContent=gastoPes>0?formatMoney(gastoPes):'—';
+  if(subP){
+    subP.textContent = gastoPes>0
+      ? `${fmtInt(cargasPes)} cargas · ${fmtInt(Math.round(litrosPes))} L · ${labelRango} · estimado`
+      : litrosPes>0
+        ? `${fmtInt(litrosPes)} L sin precio — cargalo en ⚙ auditoría`
+        : 'sin cargas en el rango';
+  }
+  if(cardP){cardP.classList.toggle('kpi-empty',!(gastoPes>0));cardP.classList.toggle('kpi-clickable',gastoPes>0);}
 }

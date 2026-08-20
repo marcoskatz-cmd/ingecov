@@ -522,6 +522,10 @@ function _listadoEquiposHoras(yms){
   return arr;
 }
 // Listado de equipos por gasto en combustible livianos para un rango de YMs.
+// Excluye cargas con costoEstimado (combustible pesados/Casares, litros ×
+// precio configurado): conviven en el mismo window._combustiblePorEquipo
+// para las 11 camionetas que están en las dos fuentes — sin este filtro un
+// número inventado se mezclaría con costo real cargado.
 function _listadoEquiposCombustible(yms){
   const cpe=window._combustiblePorEquipo||{};
   const ymsSet=new Set(yms);
@@ -531,6 +535,34 @@ function _listadoEquiposCombustible(yms){
     if(!e||!e.cargas)continue;
     let total=0;
     for(const c of e.cargas){
+      if(c.costoEstimado)continue;
+      const d=_parseDate(c.fecha);
+      if(!d)continue;
+      const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+      if(ymsSet.has(ym))total+=(c.costo||0);
+    }
+    if(total>0)acc[codN]=total;
+  }
+  const arr=Object.entries(acc).map(([codN,v])=>{
+    const{rawCod,nombre}=_equipoLabel(codN);
+    return{codN,rawCod,nombre,valor:v};
+  });
+  arr.sort((a,b)=>b.valor-a.valor);
+  return arr;
+}
+// Listado de equipos por gasto ESTIMADO en combustible pesados (litros ×
+// precio configurado en ⚙ auditoría) para un rango de YMs. Espejo de
+// _listadoEquiposCombustible pero filtrando SOLO costoEstimado.
+function _listadoEquiposCombustiblePesados(yms){
+  const cpe=window._combustiblePorEquipo||{};
+  const ymsSet=new Set(yms);
+  const acc={};
+  for(const codN of Object.keys(cpe)){
+    const e=cpe[codN];
+    if(!e||!e.cargas)continue;
+    let total=0;
+    for(const c of e.cargas){
+      if(!c.costoEstimado)continue;
       const d=_parseDate(c.fecha);
       if(!d)continue;
       const ym=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
@@ -549,6 +581,7 @@ const _KPI_DETAIL_CFG={
   costo:{label:'Costo en repuestos',getList:_listadoEquiposCosto,formatVal:v=>formatMoney(v),unitLabel:'$'},
   horas:{label:'Horas en taller',  getList:_listadoEquiposHoras,formatVal:v=>fmtInt(Math.round(v))+' hr',unitLabel:'hr'},
   combustible:{label:'Combustible livianos',getList:_listadoEquiposCombustible,formatVal:v=>formatMoney(v),unitLabel:'$'},
+  combustiblePesados:{label:'Combustible pesados (estimado)',getList:_listadoEquiposCombustiblePesados,formatVal:v=>formatMoney(v),unitLabel:'$'},
 };
 function abrirDetalleKpi(tipo){
   const cfg=_KPI_DETAIL_CFG[tipo];
