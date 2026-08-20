@@ -838,6 +838,7 @@ function renderTelemetriaFlota(){
   const ACCENT=_cssVar('--accent','#3a5fc8');
   const CORP =_cssVar('--corp','#5d80e8');
   const RED  =_cssVar('--red','#e5484d');
+  const BLUE =_cssVar('--blue','#5d80e8');
   const TICK =_cssVar('--chart-tick','#6a7287');
   const GRID =_cssVar('--chart-grid','#1a2030');
   const TEXT2=_cssVar('--text2','#aab3c8');
@@ -851,13 +852,18 @@ function renderTelemetriaFlota(){
   const horasPorMesFlota=window._horasPorMesFlota||{};
   const horasCorrPorMes=window._horasCorrPorMes||{};
   const horasPrevPorMes=window._horasPrevPorMes||{};
+  // Combustible = livianos (real Tiburcio + estimado camionetas) + pesados
+  // (estimado Casares, litros × precio de ⚙ auditoría) — gasto total de
+  // flota, misma escala $ que "costo en repuestos".
+  const gastoCombLivianosPorMes=window._gastoCombLivianosPorMes||{};
+  const gastoCombPesadosPorMes=window._gastoCombPesadosPorMes||{};
 
   // Union de meses presentes en cualquiera de las series (ordenados).
   // Filtramos YMs inválidos (año fuera del rango razonable): alguna fila de datos
   // puede venir con fecha mal formateada (ej. "01/02/205" → ym "205-02") y no
   // queremos que genere un punto "Feb'5" en el chart.
   const _anioAct=new Date().getFullYear();
-  const ymsAll=[...new Set([...Object.keys(costosPorMes),...Object.keys(horasPorMesFlota)])]
+  const ymsAll=[...new Set([...Object.keys(costosPorMes),...Object.keys(horasPorMesFlota),...Object.keys(gastoCombLivianosPorMes),...Object.keys(gastoCombPesadosPorMes)])]
     .filter(ym=>/^\d{4}-\d{2}$/.test(ym)&&+ym.slice(0,4)>=2020&&+ym.slice(0,4)<=_anioAct+1)
     .sort();
   const labels=ymsAll.map(ym=>{const[y,mm]=ym.split('-');return`${nomMes[+mm-1]}'${y.slice(2)}`;});
@@ -867,11 +873,13 @@ function renderTelemetriaFlota(){
   });
   const dataHorasCorr=ymsAll.map(ym=>Math.round((horasCorrPorMes[ym]||0)*10)/10);
   const dataHorasPrev=ymsAll.map(ym=>Math.round((horasPrevPorMes[ym]||0)*10)/10);
+  const dataCombustible=ymsAll.map(ym=>(gastoCombLivianosPorMes[ym]||0)+(gastoCombPesadosPorMes[ym]||0));
 
   // Resumen numérico arriba del chart
   const totC=dataCosto.reduce((s,v)=>s+v,0);
   const totHc=dataHorasCorr.reduce((s,v)=>s+v,0);
   const totHp=dataHorasPrev.reduce((s,v)=>s+v,0);
+  const totCb=dataCombustible.reduce((s,v)=>s+v,0);
   const totalsEl=document.getElementById('comboTotals');
   if(totalsEl){
     // El resumen suma TODOS los meses graficados (no solo 2026), así que el label
@@ -879,7 +887,7 @@ function renderTelemetriaFlota(){
     // el chart incluye histórico 2025.
     const periodo=ymsAll.length?(labels[0]===labels[labels.length-1]?labels[0]:`${labels[0]}–${labels[labels.length-1]}`):'';
     setHTML(totalsEl, ymsAll.length
-      ?html`acumulado ${periodo} · <span class="v-costo">${formatMoney(totC)}</span> en repuestos<span class="sep">·</span><span class="v-corr">${totHc.toFixed(0)} hr</span> correctivo<span class="sep">·</span><span class="v-prev">${totHp.toFixed(0)} hr</span> preventivo`
+      ?html`acumulado ${periodo} · <span class="v-costo">${formatMoney(totC)}</span> en repuestos<span class="sep">·</span><span class="v-combustible">${formatMoney(totCb)}</span> en combustible<span class="sep">·</span><span class="v-corr">${totHc.toFixed(0)} hr</span> correctivo<span class="sep">·</span><span class="v-prev">${totHp.toFixed(0)} hr</span> preventivo`
       :'sin datos para graficar');
   }
 
@@ -901,6 +909,17 @@ function renderTelemetriaFlota(){
             maxBarThickness:48,
             yAxisID:'yCosto',
             order:2,  // las barras detrás de la línea
+          },
+          {
+            type:'bar',
+            label:'Combustible',
+            data:dataCombustible,
+            backgroundColor:BLUE+'cc',
+            borderColor:BLUE,
+            borderWidth:1,
+            maxBarThickness:48,
+            yAxisID:'yCosto',
+            order:2,
           },
           {
             type:'line',
@@ -957,6 +976,7 @@ function renderTelemetriaFlota(){
             callbacks:{
               label:c=>{
                 if(c.dataset.label==='Costo en repuestos')return '  ▣ '+formatMoney(c.raw)+' en repuestos';
+                if(c.dataset.label==='Combustible')        return '  ▣ '+formatMoney(c.raw)+' en combustible';
                 if(c.dataset.label==='Horas correctivo')   return '  ─ '+c.raw.toFixed(1)+' hr correctivo';
                 if(c.dataset.label==='Horas preventivo')   return '  ─ '+c.raw.toFixed(1)+' hr preventivo';
                 return c.raw;
@@ -974,8 +994,8 @@ function renderTelemetriaFlota(){
             type:'linear',
             position:'left',
             beginAtZero:true,
-            title:{display:true,text:'$ repuestos',color:AMBER,font:{size:10,family:'JetBrains Mono',weight:'600'},padding:{bottom:8}},
-            ticks:{color:AMBER,font:{size:10,family:'JetBrains Mono'},callback:v=>v>=1e6?'$'+(v/1e6).toFixed(1)+'M':v>=1e3?'$'+(v/1e3).toFixed(0)+'K':'$'+v},
+            title:{display:true,text:'$ repuestos / combustible',color:AMBER,font:{size:10,family:'JetBrains Mono',weight:'600'},padding:{bottom:8}},
+            ticks:{color:TEXT2,font:{size:10,family:'JetBrains Mono'},callback:v=>v>=1e6?'$'+(v/1e6).toFixed(1)+'M':v>=1e3?'$'+(v/1e3).toFixed(0)+'K':'$'+v},
             grid:{color:GRID,drawTicks:false},
             border:{display:false}
           },

@@ -48,14 +48,14 @@
      arranca el PIN gate. No reordenar ni pasar a type=module sin revisar
      ACTIONS. Bump del ?v= al cambiar cualquiera de ellos, para clientes con
      HTTP cache (el SW solo invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/01-core.js?v=75" defer></script>
-<script src="./js/02-datos.js?v=75" defer></script>
-<script src="./js/03-ui.js?v=75" defer></script>
-<script src="./js/04-carga.js?v=75" defer></script>
-<script src="./js/05-render.js?v=75" defer></script>
-<script src="./js/06-tabs.js?v=75" defer></script>
-<script src="./js/07-auditoria.js?v=75" defer></script>
-<script src="./js/08-bootstrap.js?v=75" defer></script>
+<script src="./js/01-core.js?v=76" defer></script>
+<script src="./js/02-datos.js?v=76" defer></script>
+<script src="./js/03-ui.js?v=76" defer></script>
+<script src="./js/04-carga.js?v=76" defer></script>
+<script src="./js/05-render.js?v=76" defer></script>
+<script src="./js/06-tabs.js?v=76" defer></script>
+<script src="./js/07-auditoria.js?v=76" defer></script>
+<script src="./js/08-bootstrap.js?v=76" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -1150,6 +1150,7 @@
     width:14px;height:14px;display:inline-block;
   }
   .combo-swatch.costo{background:var(--amber);}
+  .combo-swatch.combustible{background:var(--blue);}
   .combo-swatch.horas,
   .combo-swatch.corr,
   .combo-swatch.prev{
@@ -1169,6 +1170,7 @@
     text-transform:uppercase;
   }
   .combo-totals .v-costo{color:var(--amber);font-weight:700;}
+  .combo-totals .v-combustible{color:var(--blue);font-weight:700;}
   .combo-totals .v-horas{color:var(--corp);font-weight:700;}
   .combo-totals .v-corr{color:var(--red);font-weight:700;}
   .combo-totals .v-prev{color:var(--corp);font-weight:700;}
@@ -1779,6 +1781,7 @@
             <div class="telemetria-card-title">actividad de flota mes a mes</div>
             <div class="combo-legend">
               <span class="combo-leg-item"><span class="combo-swatch costo"></span>costo en repuestos</span>
+              <span class="combo-leg-item"><span class="combo-swatch combustible"></span>combustible</span>
               <span class="combo-leg-item"><span class="combo-swatch corr"></span>horas correctivo</span>
               <span class="combo-leg-item"><span class="combo-swatch prev"></span>horas preventivo</span>
             </div>
