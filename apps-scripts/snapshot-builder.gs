@@ -149,6 +149,9 @@ function construirSnapshot(){
   // Properties, NO al snapshot público; lo sirve la webapp con PIN).
   try{ _auditar_(); }catch(e){ Logger.log('[auditoría] falló: ' + (e && e.message || e)); }
 
+  // Alertas de service por email (alertas.js). Nunca debe tumbar el snapshot.
+  try{ alertasService_(snap); }catch(e){ Logger.log('[alertas] falló: ' + (e && e.message || e)); }
+
   const dt = ((Date.now() - t0) / 1000).toFixed(1);
   const msg = 'Snapshot OK en ' + dt + 's · ' + meta.length + ' pestañas · '
             + errores.length + ' con problema'
