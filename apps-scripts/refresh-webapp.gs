@@ -131,6 +131,25 @@ function doGet(e) {
   // destinatario vive en la Script Property FALT_MAIL_TO y el trigger está
   // instalado. Para cambiar destinatarios: editar la property en el editor.)
 
+  // ── ALERTAS DE SERVICE (?ep=alertas&key=…) ───────────────────────────
+  // Diagnóstico del sistema de alertas (alertas.js): estado guardado por
+  // equipo + foto de lo que hoy está en zona de aviso. Solo lee, no manda
+  // mail.
+  if (params.ep === 'alertas') {
+    try {
+      var araw = PropertiesService.getScriptProperties().getProperty('ALERTAS_SVC_ESTADO');
+      var aest = araw ? JSON.parse(araw) : null;
+      var enZona = _alertaLeerPanel_(null).filter(function (f) { return f.enZona; })
+        .map(function (f) { return { cod: f.cod, rest: f.rest, unidad: f.unidad, estado: f.estado }; });
+      var marcados = [];
+      for (var ak in (aest || {})) if (aest[ak].z) marcados.push(ak + ' (desde ' + aest[ak].desde + ')');
+      return _refreshJson({ ok: true, estadoGuardado: aest ? Object.keys(aest).length : null,
+        marcadosEnZona: marcados, enZonaAhora: enZona, umbral: ALERTA_UMBRAL, dest: ALERTA_DEST });
+    } catch (err) {
+      return _refreshJson({ ok: false, error: String(err && err.message || err) });
+    }
+  }
+
   // ── DEBUG (?ep=debug_sheet&key=…&id=<sheetId>) ───────────────────────
   // Diagnóstico puntual: devuelve nombres de pestañas + header + primeras
   // filas de un sheet, para inspeccionar estructura sin acceso directo desde
