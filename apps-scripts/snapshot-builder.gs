@@ -337,7 +337,7 @@ function _buildRepuestos_(snap){
     const iCos = _idx_(h, ['COSTO','PRECIO','TOTAL','IMPORTE','COSTO ENTREGA','PRECIO TOTAL','MONTO','COSTO TOTAL']);
     const iRaz = _idx_(h, ['DESTINO/RAZÓN','RAZÓN','RAZON','MOTIVO','DESTINO','RAZÓN 1']);
     const iRes = _idx_(h, ['RESPONSABLE','RESPONSABLE ENTREGA','RESPONSABLE 1']);
-    const iIte = _idx_(h, ['DESCRIPCIÓN DE REPUESTOS','DESCRIPCION DE REPUESTOS','REPUESTOS','ITEMS DETALLE','DESCRIPCIÓN','DESCRIPCION']);
+    const iIte = _idx_(h, ['RESUMEN REPUESTOS','DETALLE REPUESTOS','DESCRIPCIÓN DE REPUESTOS','DESCRIPCION DE REPUESTOS','REPUESTOS','ITEMS DETALLE','DESCRIPCIÓN','DESCRIPCION']);
     // N° PEDIDO de la entrega: vínculo entrega→pedido (el otro sentido del que
     // trae PED_PEND). Algunas entregas registran el pedido acá aunque el pedido
     // no tenga el back-ref N° ENTREGA cargado → el browser matchea por ambos
@@ -411,7 +411,7 @@ function _buildPedidos_(snap){
     const iFec = _idx_(h, ['FECHA']);
     const iEqu = _idx_(h, ['EQUIPO/SECTOR','EQUIPO','EQUIPO/SECTOR 1']);
     const iCod = _idx_(h, ['CÓDIGO','CODIGO','CÓDIGO 1']);
-    const iDes = _idx_(h, ['DESCRIPCIÓN DE REPUESTOS','DESCRIPCION DE REPUESTOS','DESCRIPCIÓN','DESCRIPCION','REPUESTOS']);
+    const iDes = _idx_(h, ['RESUMEN REPUESTOS','DETALLE REPUESTOS','DESCRIPCIÓN DE REPUESTOS','DESCRIPCION DE REPUESTOS','DESCRIPCIÓN','DESCRIPCION','REPUESTOS']);
     const iEst = _idx_(h, ['ESTADO']);
     // N° ORDEN (orden de compra) y N° ENTREGA (back-ref del pedido a su/s
     // entrega/s, ej. "1168" o "648-650" cuando fue parcial/multi). Con N° ENTREGA
