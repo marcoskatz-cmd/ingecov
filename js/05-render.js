@@ -63,8 +63,6 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
   const _corrPct=horasTotalFlota>0?Math.round(_horasCorr/horasTotalFlota*100):0;
   const _prevPct=horasTotalFlota>0?100-_corrPct:0;
 
-  // Operativos absolutos (estado green en _estadoEquipos)
-  const operativosAbs=Object.values(window._estadoEquipos||{}).filter(info=>ESTADO_COLOR(info.estado)==='green').length;
   const totalEquipos=Object.keys(window._estadoEquipos||{}).length;
 
   // Service: operatividad de cada equipo del PROGRAMA DE TRABAJOS DE SERVICE.
@@ -133,8 +131,10 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
     ? `${vtvVencidas} vencida${vtvVencidas===1?'':'s'} · ${vtvPorVencer} por vencer · ${vtvConDatos}/${totalEquipos||'—'} con VTV cargada`
     : 'sin datos de VTV cargados';
 
-  // KPIs (8: operativos, pedidos activos, reparación, service crítico, costo mes,
-  // horas taller, combustible livianos, combustible pesados)
+  // KPIs (7: reparación, service crítico, costo mes, horas taller,
+  // combustible livianos, combustible pesados, VTV crítica)
+  // sep-2026: se sacaron "operativos" y "pedidos activos" a pedido de Marcos
+  // (no los miraba). pendActivos sigue vivo: alimenta la status bar (hsPend).
   // Cualquier KPI cuyo valor numérico real sea 0 o no haya dato se renderiza con clase
   // .kpi-empty para atenuar visualmente; los KPIs con valor compiten por la atención.
   const _kpiCostoEmpty = !(totalCostoMes>0);
@@ -158,8 +158,6 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
     ? html` data-action="openVtvCriticaModal" title="Ver lista de VTV críticas"`
     : '';
   setHTML(document.getElementById('kpiGrid'), html`
-    <div class="kpi${totalEquipos?'':' kpi-empty'}"><div class="kpi-label">operativos</div><div class="kpi-val green">${fmtInt(operativosAbs)}<span style="font-size:18px;color:var(--text3);font-weight:400"> / ${totalEquipos?fmtInt(totalEquipos):'—'}</span></div><div class="kpi-sub">estado verde en CÓDIGOS</div><div class="kpi-accent-bar green"></div></div>
-    <div class="kpi${pendActivos?'':' kpi-empty'}"><div class="kpi-label">pedidos activos</div><div class="kpi-val ${pendActivos>10?'red':'amber'}">${fmtInt(pendActivos)}</div><div class="kpi-sub">pendiente · parcial · comprado</div><div class="kpi-accent-bar ${pendActivos>10?'red':'amber'}"></div></div>
     <div class="kpi${enReparacion?'':' kpi-empty'}"><div class="kpi-label">equipos en reparación</div><div class="kpi-val amber">${fmtInt(enReparacion)}</div><div class="kpi-sub">estado naranja en CÓDIGOS</div><div class="kpi-accent-bar amber"></div></div>
     <div class="kpi${_kpiServiceEmpty?' kpi-empty':''}${serviceCritico>0?' kpi-clickable':''}"${svKpiAttrs}><div class="kpi-label">service crítico</div><div class="kpi-val ${serviceClass}">${fmtInt(serviceCritico)}</div><div class="kpi-sub">${serviceSub}</div><div class="kpi-accent-bar ${serviceClass}"></div></div>
     <div class="kpi${_kpiCostoEmpty?' kpi-empty':' kpi-clickable'}" id="kpiCostoCard" data-action="abrirDetalleKpi" data-arg="costo" title="Ver desglose por equipo"><div class="kpi-label">costo en repuestos</div><div class="kpi-val amber" id="kpiCostoVal">${totalCostoMes>0?formatMoney(totalCostoMes):'—'}</div><div class="kpi-sub" id="kpiCostoSub">${MES_ACTUAL.label} · ${fmtInt(entConCosto)} entregas con costo</div><div class="kpi-accent-bar amber"></div></div>
