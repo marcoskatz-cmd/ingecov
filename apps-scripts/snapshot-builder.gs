@@ -170,7 +170,7 @@ function construirSnapshot(){
    tenencia (sale de TIPO EQUIPO: Propio/Alquilado). UBICACIÓN → LUGAR.
    Header de salida = nombres que parseCodigos resuelve sin tocar el browser.
 ═══════════════════════════════════════════════════════════════════════ */
-const COD_OUT_HEADER = ['CODIGO','EQUIPO','ESTADO','LUGAR','OPERARIO','FECHA','PATENTE','MARCA','MODELO','CLASIFICACION','OBSERVACION'];
+const COD_OUT_HEADER = ['CODIGO','EQUIPO','ESTADO','LUGAR','OPERARIO','FECHA','PATENTE','MARCA','MODELO','CLASIFICACION','OBSERVACION','AÑO'];
 
 function _catEquipo_(clasif, cod){
   const c = _snapNormCod(clasif);
@@ -199,6 +199,7 @@ function _buildCodigos_(snap){
     const iUbi = _idx_(h, ['UBICACIÓN','UBICACION','LUGAR']);
     const iFec = _idx_(h, ['FECHA']);
     const iTen = _idx_(h, ['TIPO EQUIPO','TENENCIA','PROPIEDAD']);
+    const iAno = _idx_(h, ['AÑO FABRICACIÓN','AÑO FABRICACION','AÑO','AÑO DE FABRICACIÓN','MODELO AÑO']);
 
     const buckets = { V:[COD_OUT_HEADER.slice()], L:[COD_OUT_HEADER.slice()], P:[COD_OUT_HEADER.slice()], S:[COD_OUT_HEADER.slice()] };
     let n = 0;
@@ -209,7 +210,7 @@ function _buildCodigos_(snap){
       const nombre = [clasif, marca, modelo].filter(x => x && x !== '-').join(' ');
       const out = [
         cod, nombre, _at_(r, iEst), _at_(r, iUbi), _at_(r, iOpe),
-        _at_(r, iFec), _at_(r, iPat), marca, modelo, clasif, _at_(r, iTen),
+        _at_(r, iFec), _at_(r, iPat), marca, modelo, clasif, _at_(r, iTen), _at_(r, iAno),
       ];
       buckets[_catEquipo_(clasif, cod)].push(out);
       n++;

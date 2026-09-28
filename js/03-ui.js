@@ -371,6 +371,7 @@ function renderEquipoIndex(equipos){
           ${op.nivel!=='sin-datos'?html`<span style="color:${op.color};font-weight:600" title="Operatividad de service · ${op.label}">● ${op.label}</span>`:''}
           ${tenBadge}
           ${patente?html`<span class="eq-patente">${patente}</span>`:''}
+          ${info?.anio?html`<span title="Año de fabricación">${info.anio}</span>`:''}
           ${info?.ubicacion?html`<span>${info.ubicacion}</span>`:''}
           ${e.costoTotal>0?html`<span style="color:var(--amber)">${formatMoney(e.costoTotal)}</span>`:''}
           ${hor?.actual?html`<span style="color:var(--blue)">${hor.actual}</span>`:''}
@@ -402,6 +403,7 @@ function renderEquipoIndex(equipos){
           ${op.nivel!=='sin-datos'?html`<span style="color:${op.color};font-weight:600" title="Operatividad de service · ${op.label}">● ${op.label}</span>`:''}
           ${tenBadge}
           ${patente?html`<span class="eq-patente" title="Patente">${patente}</span>`:''}
+          ${info?.anio?html`<span title="Año de fabricación">${info.anio}</span>`:''}
           ${info?.estado?html`<span style="color:${ESTADO_CSS[est]}">${info.estado}</span>`:''}
           ${e.costoTotal>0?html`<span style="color:var(--amber)">${formatMoney(e.costoTotal)}</span>`:''}
           ${hor?.actual?html`<span style="color:var(--blue)" title="Horómetro actual">${hor.actual}</span>`:''}

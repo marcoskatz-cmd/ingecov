@@ -297,6 +297,7 @@ async function toggleEquipoDetail(codigo,cardEl){
   const mostrarDesc=descripcion&&normCod(descripcion)!==normCod(nombre);
   const subTags=[
     patente?html`<span class="eq-detail-tag">📋 ${patente}</span>`:'',
+    info0?.anio?html`<span class="eq-detail-tag" title="Año de fabricación">📅 ${info0.anio}</span>`:'',
     mostrarDesc?html`<span class="eq-detail-tag" style="opacity:.85">${descripcion}</span>`:'',
   ].filter(Boolean);
 

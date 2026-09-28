@@ -248,6 +248,7 @@ function parseCodigos(rows,categoria){
   const iPat=hdr.findIndex(h=>h.includes('PATENTE')||h.includes('DOMINIO'));
   const iMar=hdr.findIndex(h=>h==='MARCA');
   const iMod=hdr.findIndex(h=>h==='MODELO');
+  const iAno=hdr.findIndex(h=>h==='ANO'||h.startsWith('ANOFAB'));
   const iCla=hdr.findIndex(h=>h.includes('CLASIF')||h.includes('TIPO')||h.includes('CATEGORIA'));
   // Columna OBSERVACIÓN: indica propiedad del equipo. Valores observados en la hoja:
   //   "Propio" (mayoría), "Alquiler"/"Alquilado", "Externo" (transporte pesado tercerizado),
@@ -266,6 +267,7 @@ function parseCodigos(rows,categoria){
     const modelo      =iMod>=0?String(r[iMod]||'').trim():'';
     const clasificacion=iCla>=0?String(r[iCla]||'').trim():'';
     const observacion =iObs>=0?String(r[iObs]||'').trim():'';
+    const anio=iAno>=0?(String(r[iAno]||'').match(/(19|20)\d{2}/)||[''])[0]:'';
     // Filtrar filas-ruido: código presente pero sin ningún dato real
     if(!equipo&&!estado&&!ubicacion&&!operario&&!patente&&!marca&&!modelo)continue;
     const fechaCelda=iFec>=0?formatFechaCorta(String(r[iFec]||'').trim()):null;
@@ -289,6 +291,7 @@ function parseCodigos(rows,categoria){
       categoria:categoria||'',
       observacion,
       tenencia,
+      anio,
     };
   }
   return result;
