@@ -267,7 +267,7 @@ function parseCodigos(rows,categoria){
     const modelo      =iMod>=0?String(r[iMod]||'').trim():'';
     const clasificacion=iCla>=0?String(r[iCla]||'').trim():'';
     const observacion =iObs>=0?String(r[iObs]||'').trim():'';
-    const anio=iAno>=0?(String(r[iAno]||'').match(/(19|20)\d{2}/)||[''])[0]:'';
+    const anio=iAno>=0?(String(r[iAno]||'').match(/\b(19|20)\d{2}\b/)||[''])[0]:'';
     // Filtrar filas-ruido: código presente pero sin ningún dato real
     if(!equipo&&!estado&&!ubicacion&&!operario&&!patente&&!marca&&!modelo)continue;
     const fechaCelda=iFec>=0?formatFechaCorta(String(r[iFec]||'').trim()):null;
