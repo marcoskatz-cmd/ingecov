@@ -107,7 +107,8 @@ async function loadAll(){
     // falsos positivos o falsos negativos. Trade-off aceptado: las ~700 hr de
     // 2026 que están solo en pestañas por equipo (cargas manuales sin pasar por
     // la planilla mensual del Drive) no aparecen en el panel.
-    const panelTrabajosHist2025 = await fetchTrabajosHistPorEquipo(y=>y===2025);
+    // sep-2026: TRAB_HIST58 trae el Excel histórico (oct-2024→feb-2026); tomamos todo lo previo a 2026.
+    const panelTrabajosHist2025 = await fetchTrabajosHistPorEquipo(y=>y<=2025);
     const panelTrabajosObj=[
       ..._filtrarAnio(panelTrabajosLiveObj,y=>y>=2026,_SIN_FECHA_TRAB),
       ..._filtrarAnio(panelTrabajosHistObj,y=>y===2025,_SIN_FECHA_TRAB),
