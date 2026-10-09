@@ -1,6 +1,12 @@
 <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Traslados de equipos — INGECO</title><meta http-equiv="refresh" content="0; url=https://script.google.com/a/macros/grupoingeco.com.ar/s/AKfycbzR4aBoiESqvZmvrUVbj8ct5ypigesfuT9QGssSuFXQgT_W4HJU0wmwHxC15WmczKf4/exec">
-<link rel="canonical" href="https://script.google.com/a/macros/grupoingeco.com.ar/s/AKfycbzR4aBoiESqvZmvrUVbj8ct5ypigesfuT9QGssSuFXQgT_W4HJU0wmwHxC15WmczKf4/exec"></head>
+<title>Traslados de equipos — INGECO</title><link rel="canonical" href="https://script.google.com/a/macros/grupoingeco.com.ar/s/AKfycbzR4aBoiESqvZmvrUVbj8ct5ypigesfuT9QGssSuFXQgT_W4HJU0wmwHxC15WmczKf4/exec"></head>
 <body style="font-family:system-ui;background:#1f3a8a;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center">
 <p>Esta app se mudó. Te llevamos a la nueva versión…<br><a href="https://script.google.com/a/macros/grupoingeco.com.ar/s/AKfycbzR4aBoiESqvZmvrUVbj8ct5ypigesfuT9QGssSuFXQgT_W4HJU0wmwHxC15WmczKf4/exec" style="color:#fff">Si no abre sola, tocá acá</a></p>
-<script>location.replace("https://script.google.com/a/macros/grupoingeco.com.ar/s/AKfycbzR4aBoiESqvZmvrUVbj8ct5ypigesfuT9QGssSuFXQgT_W4HJU0wmwHxC15WmczKf4/exec" + (location.search || ""));</script></body></html>
+<script>
+(async function(){
+  // Limpiar la PWA vieja (service worker + caché) para que no siga sirviendo la versión anterior.
+  try { if ('serviceWorker' in navigator) { const rs = await navigator.serviceWorker.getRegistrations(); await Promise.all(rs.map(r => r.unregister())); } } catch (e) {}
+  try { if (window.caches) { const ks = await caches.keys(); await Promise.all(ks.map(k => caches.delete(k))); } } catch (e) {}
+  location.replace("https://script.google.com/a/macros/grupoingeco.com.ar/s/AKfycbzR4aBoiESqvZmvrUVbj8ct5ypigesfuT9QGssSuFXQgT_W4HJU0wmwHxC15WmczKf4/exec" + (location.search || ""));
+})();
+</script><noscript><meta http-equiv="refresh" content="0; url=https://script.google.com/a/macros/grupoingeco.com.ar/s/AKfycbzR4aBoiESqvZmvrUVbj8ct5ypigesfuT9QGssSuFXQgT_W4HJU0wmwHxC15WmczKf4/exec"></noscript></body></html>
