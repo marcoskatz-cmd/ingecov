@@ -48,14 +48,15 @@
      arranca el PIN gate. No reordenar ni pasar a type=module sin revisar
      ACTIONS. Bump del ?v= al cambiar cualquiera de ellos, para clientes con
      HTTP cache (el SW solo invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/01-core.js?v=81" defer></script>
-<script src="./js/02-datos.js?v=81" defer></script>
-<script src="./js/03-ui.js?v=81" defer></script>
-<script src="./js/04-carga.js?v=81" defer></script>
-<script src="./js/05-render.js?v=81" defer></script>
-<script src="./js/06-tabs.js?v=81" defer></script>
-<script src="./js/07-auditoria.js?v=81" defer></script>
-<script src="./js/08-bootstrap.js?v=81" defer></script>
+<script src="./js/01-core.js?v=82" defer></script>
+<script src="./js/02-datos.js?v=82" defer></script>
+<script src="./js/03-ui.js?v=82" defer></script>
+<script src="./js/04-carga.js?v=82" defer></script>
+<script src="./js/05-render.js?v=82" defer></script>
+<script src="./js/06-tabs.js?v=82" defer></script>
+<script src="./js/07-auditoria.js?v=82" defer></script>
+<script src="./js/08-bootstrap.js?v=82" defer></script>
+<script src="./js/09-bot.js?v=82" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -1704,6 +1705,44 @@
     margin-top:12px; min-height:18px;
     color:var(--red); font-size:12px;
   }
+
+  /* ═══ AlberBot ═══ */
+  .bot-fab{position:fixed;right:18px;bottom:18px;z-index:900;width:60px;height:60px;border-radius:50%;border:1px solid var(--border);background:var(--bg2);cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 22px rgba(0,0,0,.35);transition:transform .15s,box-shadow .15s}
+  .bot-fab:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(0,0,0,.4)}
+  .bot-fab svg{width:44px;height:44px;display:block}
+  .bot-fab.open{display:none}
+  .bot-panel{position:fixed;right:18px;bottom:18px;z-index:901;width:min(420px,calc(100vw - 24px));height:min(640px,calc(100vh - 36px));background:var(--bg2);border:1px solid var(--border);border-radius:14px;box-shadow:0 14px 44px rgba(0,0,0,.45);display:none;flex-direction:column;overflow:hidden}
+  .bot-panel.open{display:flex}
+  .bot-head{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);background:var(--bg3)}
+  .bot-head svg{width:34px;height:34px;flex:0 0 auto}
+  .bot-head-title{font-weight:600;font-size:14px;color:var(--text);line-height:1.1}
+  .bot-head-sub{font-size:10.5px;color:var(--text3);font-family:'JetBrains Mono',monospace;margin-top:2px}
+  .bot-head .bot-spacer{flex:1}
+  .bot-head .icon-btn{width:30px;height:30px}
+  .bot-log{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;font-size:13px;line-height:1.45}
+  .bot-msg{max-width:92%;padding:8px 11px;border-radius:12px;word-wrap:break-word}
+  .bot-user{align-self:flex-end;background:var(--accent-bg2);color:var(--text);border-bottom-right-radius:4px;white-space:pre-wrap}
+  .bot-bot{align-self:flex-start;background:var(--bg3);color:var(--text);border-bottom-left-radius:4px}
+  .bot-sys{align-self:center;font-size:11px;color:var(--text3);text-align:center}
+  .bot-bot p{margin:0 0 6px}.bot-bot p:last-child{margin:0}
+  .bot-bot ul{margin:0 0 6px 16px;padding:0}.bot-bot li{margin:2px 0}
+  .bot-bot code{font-family:'JetBrains Mono',monospace;font-size:11.5px;background:var(--bg);padding:1px 4px;border-radius:4px}
+  .bot-table{border-collapse:collapse;margin:4px 0 6px;font-size:11.5px;width:100%}
+  .bot-table th,.bot-table td{border:1px solid var(--border);padding:3px 6px;text-align:left;vertical-align:top}
+  .bot-table th{background:var(--bg);font-weight:600;color:var(--text2)}
+  .bot-dots{display:inline-flex;gap:4px;padding:4px 2px}
+  .bot-dots i{width:6px;height:6px;border-radius:50%;background:var(--text3);animation:botblink 1.2s infinite}
+  .bot-dots i:nth-child(2){animation-delay:.2s}.bot-dots i:nth-child(3){animation-delay:.4s}
+  @keyframes botblink{0%,80%,100%{opacity:.25}40%{opacity:1}}
+  .bot-estado{font-size:11px;color:var(--text3);padding:0 12px;min-height:16px;font-family:'JetBrains Mono',monospace}
+  .bot-form{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--border);align-items:flex-end}
+  .bot-form textarea{flex:1;resize:none;min-height:38px;max-height:120px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font:inherit;font-size:13px;line-height:1.35}
+  .bot-form textarea:focus{outline:none;border-color:var(--green)}
+  .bot-send{height:38px;padding:0 14px;border-radius:10px;border:none;background:var(--green);color:#042a26;font-weight:600;cursor:pointer;font-size:13px}
+  .bot-send:hover{filter:brightness(1.08)}
+  .bot-cupo{font-size:10.5px;color:var(--text3);padding:0 12px 8px;font-family:'JetBrains Mono',monospace;text-align:right}
+  @media print{.bot-fab,.bot-panel{display:none!important}}
+  @media (max-width:520px){.bot-panel{right:0;bottom:0;width:100vw;height:100vh;border-radius:0}.bot-fab{right:14px;bottom:14px}}
 </style>
 
 </head>
@@ -2062,6 +2101,61 @@
      que "Guardar como PDF" del navegador produzca un informe limpio. Lo llena
      repDescargarPDF() antes de window.print(). -->
 <div id="repPrintDoc" aria-hidden="true"></div>
+
+
+<!-- ═══ AlberBot: chat con Claude sobre los datos cargados (js/09-bot.js) ═══ -->
+<button class="bot-fab" id="botFab" data-action="botToggle" title="AlberBot" aria-label="Abrir AlberBot">
+  <svg viewBox="0 0 64 64" aria-hidden="true">
+        <line x1="32" y1="4" x2="32" y2="11" stroke="var(--text3)" stroke-width="2.5" stroke-linecap="round"/>
+        <circle cx="32" cy="4" r="3" fill="var(--accent)"/>
+        <rect x="18" y="10" width="28" height="19" rx="7" fill="var(--green)"/>
+        <rect x="22" y="15" width="20" height="9" rx="4.5" fill="#06302b"/>
+        <circle cx="28" cy="19.5" r="2.4" fill="#e6fffa"/><circle cx="36" cy="19.5" r="2.4" fill="#e6fffa"/>
+        <rect x="29" y="28" width="6" height="4" fill="var(--green)"/>
+        <ellipse cx="32" cy="46" rx="19" ry="15" fill="var(--green)"/>
+        <ellipse cx="32" cy="47" rx="11" ry="8" fill="#0f766e" opacity=".55"/>
+        <circle cx="32" cy="46" r="3" fill="#e6fffa" opacity=".9"/>
+        <rect x="8" y="38" width="7" height="14" rx="3.5" fill="var(--green)"/>
+        <rect x="49" y="38" width="7" height="14" rx="3.5" fill="var(--green)"/>
+        <rect x="23" y="58" width="7" height="4" rx="2" fill="#0f766e"/><rect x="34" y="58" width="7" height="4" rx="2" fill="#0f766e"/>
+      </svg>
+</button>
+<div class="bot-panel" id="botPanel" role="dialog" aria-label="AlberBot">
+  <div class="bot-head">
+    <svg viewBox="0 0 64 64" aria-hidden="true">
+        <line x1="32" y1="4" x2="32" y2="11" stroke="var(--text3)" stroke-width="2.5" stroke-linecap="round"/>
+        <circle cx="32" cy="4" r="3" fill="var(--accent)"/>
+        <rect x="18" y="10" width="28" height="19" rx="7" fill="var(--green)"/>
+        <rect x="22" y="15" width="20" height="9" rx="4.5" fill="#06302b"/>
+        <circle cx="28" cy="19.5" r="2.4" fill="#e6fffa"/><circle cx="36" cy="19.5" r="2.4" fill="#e6fffa"/>
+        <rect x="29" y="28" width="6" height="4" fill="var(--green)"/>
+        <ellipse cx="32" cy="46" rx="19" ry="15" fill="var(--green)"/>
+        <ellipse cx="32" cy="47" rx="11" ry="8" fill="#0f766e" opacity=".55"/>
+        <circle cx="32" cy="46" r="3" fill="#e6fffa" opacity=".9"/>
+        <rect x="8" y="38" width="7" height="14" rx="3.5" fill="var(--green)"/>
+        <rect x="49" y="38" width="7" height="14" rx="3.5" fill="var(--green)"/>
+        <rect x="23" y="58" width="7" height="4" rx="2" fill="#0f766e"/><rect x="34" y="58" width="7" height="4" rx="2" fill="#0f766e"/>
+      </svg>
+    <div>
+      <div class="bot-head-title">AlberBot</div>
+      <div class="bot-head-sub">consultas sobre la flota</div>
+    </div>
+    <span class="bot-spacer"></span>
+    <button class="icon-btn" data-action="botReiniciar" title="Nueva conversación" aria-label="Nueva conversación">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/></svg>
+    </button>
+    <button class="icon-btn" data-action="botToggle" title="Cerrar (Esc)" aria-label="Cerrar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="bot-log" id="botLog"></div>
+  <div class="bot-estado" id="botEstado"></div>
+  <div class="bot-form">
+    <textarea id="botInput" rows="1" placeholder="Preguntale a AlberBot… (Enter envía, Shift+Enter salto)"></textarea>
+    <button class="bot-send" data-action="botEnviar">Enviar</button>
+  </div>
+  <div class="bot-cupo" id="botCupo"></div>
+</div>
 
 <!-- script grande extraído a js/app.js -->
 </body>
