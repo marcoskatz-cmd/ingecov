@@ -89,6 +89,9 @@ function doGet(e) {
   // KPI de gasto de combustible, no solo quien entra a auditoría) y la
   // escritura tiene su PROPIO gate (AUDIT_PIN) — no necesita el token de
   // refresh además.
+  // ── ALBERBOT (?ep=bot_estado → cupo del día; el chat va por doPost en bot.js) ── (público, antes del gate de REFRESH_KEY)
+  if (params.ep === 'bot_estado') return _refreshJson(botEstado_());
+
   var CONFIG_KEYS = ['precioCombustiblePesados'];
   if (params.ep === 'config') {
     var cfgProps = PropertiesService.getScriptProperties();
@@ -143,8 +146,31 @@ function doGet(e) {
         .map(function (f) { return { cod: f.cod, rest: f.rest, unidad: f.unidad, estado: f.estado }; });
       var marcados = [];
       for (var ak in (aest || {})) if (aest[ak].z) marcados.push(ak + ' (desde ' + aest[ak].desde + ')');
+      var quota = null, envio = null;
+      try { quota = MailApp.getRemainingDailyQuota(); } catch (qe) { quota = 'ERR: ' + qe.message; }
+      // ?ep=alertas&key=…&send=1 → fuerza el envío y reporta la excepción exacta.
+      if (String(params.send || '') === '1') {
+        try { envio = alertasServiceProbar(); }
+        catch (se) { envio = 'EXCEPCION: ' + (se && se.message || se); }
+      }
+      // ?ep=alertas&key=…&resumen=1 → manda el resumen semanal ahora mismo.
+      var resumen = null;
+      if (String(params.resumen || '') === '1') {
+        try { resumen = alertasResumenSemanal(); }
+        catch (re) { resumen = 'EXCEPCION: ' + (re && re.message || re); }
+      }
+      // ?ep=alertas&key=…&instalar=1 → instala/reinstala el trigger de los lunes 8am.
+      var trigger = null;
+      if (String(params.instalar || '') === '1') {
+        try { trigger = alertasInstalarTriggerResumen(); }
+        catch (te) { trigger = 'EXCEPCION: ' + (te && te.message || te); }
+      }
+      var triggers = null;
+      try { triggers = alertasTriggersListar(); } catch (tle) { triggers = 'ERR: ' + tle.message; }
       return _refreshJson({ ok: true, estadoGuardado: aest ? Object.keys(aest).length : null,
-        marcadosEnZona: marcados, enZonaAhora: enZona, umbral: ALERTA_UMBRAL, dest: ALERTA_DEST });
+        marcadosEnZona: marcados, enZonaAhora: enZona, umbral: ALERTA_UMBRAL, dest: ALERTA_DEST,
+        cuotaMailRestante: quota, usuarioEfectivo: Session.getEffectiveUser().getEmail(), envio: envio,
+        resumen: resumen, triggerInstalado: trigger, triggers: triggers });
     } catch (err) {
       return _refreshJson({ ok: false, error: String(err && err.message || err) });
     }
