@@ -2,6 +2,7 @@
 <html lang="es">
 <head>
 <script src="https://marcoskatz-cmd.github.io/app-ingeco/guard.js" data-modulo="INGECOV"></script>
+<script>/* Si llegó desde la app INGECO (identidad validada por guard.js), no pedir el PIN del panel. */ if (window.INGECO_USUARIO) { try { sessionStorage.setItem('ingeco-pin-ok', '1'); } catch (e) {} }</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="strict-origin-when-cross-origin">
