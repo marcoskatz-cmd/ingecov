@@ -182,7 +182,7 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
     const down=states.filter(i=>ESTADO_COLOR(i.estado)==='red').length;
     const set=(id,val)=>{const el=document.getElementById(id);if(el)el.textContent=val;};
     set('hsEq', total?fmtInt(total):'—');
-    set('hsOp', total?`${fmtInt(oper)}/${fmtInt(total)}`:'—');
+    set('hsOp', total?fmtInt(oper):'—');
     set('hsRep', fmtInt(rep));
     set('hsDown', fmtInt(down));
     set('hsPend', fmtInt(pendActivos));

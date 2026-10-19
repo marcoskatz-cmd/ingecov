@@ -23,7 +23,7 @@ async function loadAll(){
   // de re-fetchear los endpoints.
   const esManualRefresh = !!window._estadoEquipos;
   const btn=document.getElementById('refreshBtn');
-  btn.classList.add('loading');btn.textContent='↻ cargando...';
+  btn.classList.add('loading');(btn.querySelector('.rb-txt')||btn).textContent='Cargando…';
   document.getElementById('loadingState').style.display='block';
   document.getElementById('dashboard').style.display='none';
   document.getElementById('errorState').style.display='none';
@@ -468,7 +468,7 @@ async function loadAll(){
     setHTML(document.getElementById('errorState'), html`<div style="color:var(--red);margin-bottom:8px">⚠ Error al cargar datos</div><div style="font-size:12px;color:var(--text3)">${e.message}</div><div style="margin-top:12px"><button data-action="loadAll" class="refresh-btn">Reintentar</button></div>`);
     setLoadProgress(100);
   }
-  btn.classList.remove('loading');btn.textContent='↻ actualizar';
+  btn.classList.remove('loading');(btn.querySelector('.rb-txt')||btn).textContent='Actualizar';
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -576,10 +576,12 @@ function renderKpiRangeBar(){
   const fmtYm=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
   const ult=n=>{const o=[];for(let i=0;i<n;i++)o.push(fmtYm(new Date(now.getFullYear(),now.getMonth()-i,1)));return o.filter(ym=>meses.includes(ym));};
   // Atajos: fijan la selección. Chips: togglean un mes (multi-selección).
-  const fill=(label,yms)=>html`<button class="kpi-range-btn" data-action="setKpiMeses" data-arg="${yms.join(',')}">${label}</button>`;
+  // Atajo activo = el que coincide exactamente con la selección actual.
+  const selKey=[...sel].sort().join(',');
+  const fill=(label,yms)=>{const k=[...yms].sort().join(',');return html`<button class="kpi-range-btn${k===selKey?' active':''}" data-action="setKpiMeses" data-arg="${yms.join(',')}">${label}</button>`;};
   const chip=ym=>html`<button class="kpi-range-btn kpi-mes-chip${sel.has(ym)?' active':''}" data-action="toggleKpiMes" data-arg="${ym}">${_ymCorto(ym)}</button>`;
-  const atajos=[fill('mes',_ymsEnRango('mesActual')),fill('últ 3m',ult(3)),fill('últ 6m',ult(6)),fill('todo',meses)];
-  setHTML(bar, html`<span class="lbl">meses ›</span>${atajos}<span class="kpi-range-sep"></span>${meses.map(chip)}`);
+  const atajos=[fill('Mes',_ymsEnRango('mesActual')),fill('3 meses',ult(3)),fill('6 meses',ult(6)),fill('Todo',meses)];
+  setHTML(bar, html`<div class="kpi-seg">${atajos}</div><div class="kpi-mes-strip">${meses.map(chip)}</div>`);
 }
 // Fija la selección de meses (reemplaza la actual). Acepta array o string "ym,ym".
 function setKpiMeses(yms){

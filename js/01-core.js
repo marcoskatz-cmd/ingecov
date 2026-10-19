@@ -338,8 +338,8 @@ async function syncNow(){
   _syncing=true;
   const btn=document.getElementById('refreshBtn');
   let secs=0;
-  if(btn){btn.classList.add('loading');btn.textContent='↻ actualizando…';}
-  const tick=setInterval(()=>{secs++;if(btn)btn.textContent='↻ actualizando '+secs+'s…';},1000);
+  if(btn){btn.classList.add('loading');(btn.querySelector('.rb-txt')||btn).textContent='Actualizando…';}
+  const tick=setInterval(()=>{secs++;if(btn)(btn.querySelector('.rb-txt')||btn).textContent='Actualizando '+secs+' s…';},1000);
   const ctrl=new AbortController();
   const killer=setTimeout(()=>ctrl.abort(),360000); // tope 6 min = techo de Apps Script (run real ~3.5 min)
   try{

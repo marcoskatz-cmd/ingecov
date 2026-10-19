@@ -50,16 +50,16 @@
      arranca el PIN gate. No reordenar ni pasar a type=module sin revisar
      ACTIONS. Bump del ?v= al cambiar cualquiera de ellos, para clientes con
      HTTP cache (el SW solo invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/01-core.js?v=91" defer></script>
-<script src="./js/02-datos.js?v=91" defer></script>
-<script src="./js/03-ui.js?v=91" defer></script>
-<script src="./js/04-carga.js?v=91" defer></script>
-<script src="./js/05-render.js?v=91" defer></script>
-<script src="./js/06-tabs.js?v=91" defer></script>
-<script src="./js/07-auditoria.js?v=91" defer></script>
-<script src="./js/08-bootstrap.js?v=91" defer></script>
-<script src="./js/09-bot.js?v=91" defer></script>
-<script src="./js/10-combustible.js?v=91" defer></script>
+<script src="./js/01-core.js?v=92" defer></script>
+<script src="./js/02-datos.js?v=92" defer></script>
+<script src="./js/03-ui.js?v=92" defer></script>
+<script src="./js/04-carga.js?v=92" defer></script>
+<script src="./js/05-render.js?v=92" defer></script>
+<script src="./js/06-tabs.js?v=92" defer></script>
+<script src="./js/07-auditoria.js?v=92" defer></script>
+<script src="./js/08-bootstrap.js?v=92" defer></script>
+<script src="./js/09-bot.js?v=92" defer></script>
+<script src="./js/10-combustible.js?v=92" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -1877,6 +1877,49 @@
   .tab-nav.can-left .tab-arrow.left,.tab-nav.can-right .tab-arrow.right{visibility:visible;opacity:1;}
   @media (max-width:768px){ .tab-arrow{width:30px;height:30px;} .tab-nav{gap:4px;} }
   .tab-btn[hidden]{display:none!important;}
+
+  /* ── Encabezado y barra de estado reacomodados (19-oct-2026) ── */
+  .header-top{grid-template-columns:auto 1fr;padding:12px 24px;}
+  .header-actions{justify-self:end;gap:10px;}
+  .live-pill{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--text2);white-space:nowrap;padding-right:6px;}
+  .live-pill i{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px var(--green-bg);}
+  .live-pill b{font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--text);font-size:12.5px;}
+  .live-sep{color:var(--text-mute);}
+  .auto-wrap{font-family:'Barlow',sans-serif;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text2);border-right:0;padding-right:0;margin-right:0;gap:8px;}
+  .auto-select{font-family:'Barlow',sans-serif;font-size:13px;letter-spacing:0;padding:7px 10px;background:var(--bg2);color:var(--text);}
+  .auto-countdown{border-radius:var(--r-pill);font-size:11px;}
+  .icon-btn{width:38px;height:38px;}
+  .refresh-btn{display:inline-flex;align-items:center;gap:7px;height:38px;padding:0 18px;}
+  .refresh-btn{text-transform:none;letter-spacing:0;}
+  .refresh-btn.loading svg{animation:spin .9s linear infinite;}
+  .refresh-btn.loading::after{display:none;}
+  .refresh-btn svg{width:16px;height:16px;stroke:#fff;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;}
+  .status-bar{height:auto;gap:8px;padding:9px 24px;align-items:center;font-family:'Barlow',sans-serif;font-size:13px;background:var(--bg);}
+  .stat-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:var(--r-pill);background:var(--bg2);border:1px solid var(--border);color:var(--text2);white-space:nowrap;flex-shrink:0;}
+  .stat-chip b{font-family:'JetBrains Mono',monospace;font-weight:600;color:var(--text);font-size:12.5px;}
+  .stat-chip i{width:7px;height:7px;border-radius:50%;background:var(--text3);}
+  .stat-chip.ok i{background:var(--green);} .stat-chip.ok b{color:var(--green);}
+  .stat-chip.alert i{background:var(--amber);} .stat-chip.alert b{color:var(--amber);}
+  .stat-chip.crit i{background:var(--red);} .stat-chip.crit b{color:var(--red);}
+  .resumen-head{display:flex;align-items:center;justify-content:space-between;gap:12px 20px;flex-wrap:wrap;margin-bottom:14px;}
+  .resumen-head .section-label{margin:0;padding:0;font-size:18px;}
+  .resumen-head .kpi-range-bar{margin:0;}
+  .kpi-seg{display:inline-flex;background:var(--bg3);border-radius:var(--r-pill);padding:3px;gap:2px;}
+  .kpi-seg .kpi-range-btn{border:0;background:transparent;padding:6px 12px;}
+  .kpi-seg .kpi-range-btn:hover{background:rgba(255,255,255,.6);}
+  .kpi-seg .kpi-range-btn.active{background:var(--bg2);color:var(--text);box-shadow:var(--shadow-sm);}
+  .kpi-mes-strip{display:inline-flex;gap:4px;flex-wrap:wrap;}
+  .kpi-mes-strip .kpi-range-btn{padding:5px 9px;font-size:11.5px;background:transparent;border-color:transparent;color:var(--text2);}
+  .kpi-mes-strip .kpi-range-btn:hover{border-color:var(--border);background:var(--bg2);}
+  .kpi-mes-strip .kpi-range-btn.active{background:var(--text);color:#fff;border-color:var(--text);}
+  @media (max-width:980px){ .live-pill{display:none;} }
+  @media (max-width:768px){
+    .header-top{padding:9px 12px;}
+    .status-bar{padding:8px 12px;gap:6px;overflow-x:auto;}
+    .stat-chip{font-size:12px;padding:4px 10px;}
+    .resumen-head .section-label{font-size:16px;}
+    .kpi-mes-strip{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none;}
+  }
 </style>
 
 </head>
@@ -1930,16 +1973,13 @@
         <div class="logo-sub-small">INGECO<span class="sep">·</span>Flota 2026<span class="sep">·</span>Tucumán</div>
       </div>
     </div>
-    <div class="masthead-mid">
-      <span class="rule"></span>
-      <span>Sistema operativo<b>&nbsp;·&nbsp;Datos en vivo desde Drive</b></span>
-      <span class="rule"></span>
-    </div>
+    
     <div class="header-actions">
+      <span class="live-pill" title="Datos leídos del snapshot de Drive"><i></i>En vivo<span class="live-sep">·</span>actualizado <b id="hsLast">—</b></span>
       <div class="auto-wrap">
-        <span>auto</span>
+        <span>Auto-actualizar</span>
         <select class="auto-select" id="autoSelect" data-action="setAutoRefresh" data-event="change" title="Auto-refresh">
-          <option value="0">off</option>
+          <option value="0">No</option>
           <option value="300">5 min</option>
           <option value="600">10 min</option>
           <option value="1800">30 min</option>
@@ -1950,19 +1990,15 @@
       <button class="icon-btn" data-action="abrirAuditoria" title="Auditoría de cargas" aria-label="Auditoría de cargas">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/><path d="M9 12l2 2 4-4"/></svg>
       </button>
-      <button class="refresh-btn" id="refreshBtn" data-action="syncNow">sync</button>
+      <button class="refresh-btn" id="refreshBtn" data-action="syncNow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg><span class="rb-txt">Actualizar</span></button>
     </div>
   </div>
   <div class="status-bar">
-    <span class="stat-cell live"><span class="stat-k">sys</span><span class="stat-v" id="hsStatus">online</span></span>
-    <span class="stat-cell"><span class="stat-k">equip</span><span class="stat-v" id="hsEq">—</span></span>
-    <span class="stat-cell ok"><span class="stat-k">oper</span><span class="stat-v" id="hsOp">—</span></span>
-    <span class="stat-cell alert"><span class="stat-k">rep</span><span class="stat-v" id="hsRep">—</span></span>
-    <span class="stat-cell crit"><span class="stat-k">down</span><span class="stat-v" id="hsDown">—</span></span>
-    <span class="stat-cell"><span class="stat-k">pedidos</span><span class="stat-v" id="hsPend">—</span></span>
-    <span class="stat-cell spacer"></span>
-    <span class="stat-cell"><span class="stat-k">last</span><span class="stat-v" id="hsLast">—</span></span>
-    <span class="stat-cell"><span class="stat-k">utc-3</span><span class="stat-v" id="hsClock">--:--:--</span></span>
+    <span class="stat-chip"><b id="hsEq">—</b> equipos</span>
+    <span class="stat-chip ok"><i></i><b id="hsOp">—</b> operativos</span>
+    <span class="stat-chip alert"><i></i><b id="hsRep">—</b> en reparación</span>
+    <span class="stat-chip crit"><i></i><b id="hsDown">—</b> fuera de servicio</span>
+    <span class="stat-chip"><b id="hsPend">—</b> pedidos pendientes</span>
   </div>
 </header>
 
@@ -1985,11 +2021,11 @@
 
     <!-- KPIs · siempre fijos -->
     <div class="section">
-      <div class="section-label static">
-        resumen operativo
+      <div class="resumen-head">
+        <div class="section-label static">Resumen operativo</div>
+        <div class="kpi-range-bar" id="kpiRangeBar"></div>
       </div>
       <div class="section-content" id="secKpis">
-        <div class="kpi-range-bar" id="kpiRangeBar"></div>
         <div class="kpi-grid" id="kpiGrid"></div>
       </div>
     </div>
