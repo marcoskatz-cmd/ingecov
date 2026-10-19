@@ -50,16 +50,16 @@
      arranca el PIN gate. No reordenar ni pasar a type=module sin revisar
      ACTIONS. Bump del ?v= al cambiar cualquiera de ellos, para clientes con
      HTTP cache (el SW solo invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/01-core.js?v=88" defer></script>
-<script src="./js/02-datos.js?v=88" defer></script>
-<script src="./js/03-ui.js?v=88" defer></script>
-<script src="./js/04-carga.js?v=88" defer></script>
-<script src="./js/05-render.js?v=88" defer></script>
-<script src="./js/06-tabs.js?v=88" defer></script>
-<script src="./js/07-auditoria.js?v=88" defer></script>
-<script src="./js/08-bootstrap.js?v=88" defer></script>
-<script src="./js/09-bot.js?v=88" defer></script>
-<script src="./js/10-combustible.js?v=88" defer></script>
+<script src="./js/01-core.js?v=89" defer></script>
+<script src="./js/02-datos.js?v=89" defer></script>
+<script src="./js/03-ui.js?v=89" defer></script>
+<script src="./js/04-carga.js?v=89" defer></script>
+<script src="./js/05-render.js?v=89" defer></script>
+<script src="./js/06-tabs.js?v=89" defer></script>
+<script src="./js/07-auditoria.js?v=89" defer></script>
+<script src="./js/08-bootstrap.js?v=89" defer></script>
+<script src="./js/09-bot.js?v=89" defer></script>
+<script src="./js/10-combustible.js?v=89" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -1851,6 +1851,13 @@
   .filter-dd .filter-btn.active .f-count{background:rgba(232,93,26,.15);color:var(--accent);}
   .filter-dd .filter-btn .f-count{margin-left:auto;}
   @media (max-width:768px){ .filter-dd .filter-bar{min-width:220px;} .filter-dd summary{font-size:12.5px;padding:7px 10px 7px 12px;} }
+
+  /* Detalles de distribución (19-oct-2026): KPIs en 2 filas con sentido (estado / gasto)
+     y filtros de equipos en la misma línea que el buscador. */
+  @media (min-width:1000px){ .kpi-grid{grid-template-columns:repeat(4,1fr);} }
+  .controls-bar .filter-row{margin:0;flex:0 0 auto;}
+  .controls-bar .search-wrap{flex:1 1 260px;}
+  @media (max-width:768px){ .controls-bar .filter-row{flex:1 1 100%;} }
 </style>
 
 </head>
@@ -2023,9 +2030,7 @@
           </div>
           <button class="view-btn active" id="btnGrid" data-action="setViewMode" data-arg="grid" title="Vista cuadros">⊞</button>
           <button class="view-btn" id="btnList" data-action="setViewMode" data-arg="list" title="Vista lista">☰</button>
-        </div>
-
-        <div class="filter-row">
+          <div class="filter-row">
         <!-- Filtros por categoría (hoja de origen) -->
         <details class="filter-dd" id="ddCat">
           <summary><span class="dd-k">Categoría</span><span class="dd-v" id="ddCatV">Todas</span><span class="dd-chev">▾</span></summary>
@@ -2065,6 +2070,9 @@
           <div class="filter-bar filter-bar-ubi" id="filterBarUbi"></div>
         </details>
         </div>
+        </div>
+
+        
 
         <div id="equipoGrid" class="equipo-grid"></div>
 
