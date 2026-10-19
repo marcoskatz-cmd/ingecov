@@ -55,16 +55,54 @@ function _combLabelRango(){
 }
 
 /* Consumo de un equipo dentro de un conjunto de cargas (ya ordenadas por
-   fecha): litros entre la primera y la última lectura ÷ delta de lectura.
-   Misma regla que _recalcConsumo (entran TODAS las cargas del intervalo,
-   se excluyen los litros de la primera). Devuelve null si no hay 2 lecturas. */
+   fecha), TOLERANTE a lecturas mal cargadas (pedido de Marcos 19-oct-2026:
+   "omití el error y hacé el cálculo"):
+     · se arma un tramo entre cada par de lecturas consecutivas; los litros
+       del tramo son los de las cargas posteriores a la primera lectura hasta
+       la segunda inclusive (misma regla que _recalcConsumo).
+     · un tramo se DESCARTA si la lectura retrocede (typo, reseteo) o si el
+       consumo que implica está fuera del rango plausible de la unidad.
+     · consumo = Σ litros / Σ delta de los tramos válidos.
+   Detección de unidad: varios camiones (CMN-03/04/22) tienen el odómetro
+   roto y el chofer anota el HORÓMETRO en la misma columna. Si en km/L no
+   queda ningún tramo plausible pero en L/hr sí, se informa en L/hr y se
+   marca `unidadDetectada`. Devuelve {valor,unidad,segOk,segDesc} o null. */
+const _COMB_RANGO={km:[1,30],hr:[0.5,80]};   // km/L · L/hr plausibles
+function _combTramos(cargas){
+  const out=[]; let i0=-1, lit=0;
+  for(let i=0;i<cargas.length;i++){
+    const c=cargas[i];
+    if(i0>=0)lit+=c.litros||0;
+    if(c.hr==null)continue;
+    if(i0>=0)out.push({delta:c.hr-cargas[i0].hr,litros:lit});
+    i0=i; lit=0;
+  }
+  return out;
+}
+function _combConsumoUnidad(tramos,unidad){
+  const[lo,hi]=_COMB_RANGO[unidad];
+  let L=0,D=0,ok=0,desc=0;
+  for(const t of tramos){
+    if(!(t.delta>0&&t.litros>0)){desc++;continue;}
+    const v=unidad==='km'?(t.delta/t.litros):(t.litros/t.delta);
+    if(v<lo||v>hi){desc++;continue;}
+    L+=t.litros; D+=t.delta; ok++;
+  }
+  if(!ok)return null;
+  return{valor:unidad==='km'?(D/L):(L/D),unidad,segOk:ok,segDesc:desc};
+}
 function _combConsumo(cargas,unidad){
-  const conHr=cargas.filter(c=>c.hr!=null);
-  if(conHr.length<2)return null;
-  const delta=conHr[conHr.length-1].hr-conHr[0].hr;
-  const litros=_litrosEntreLecturas(cargas);
-  if(!(delta>0&&litros>0))return null;
-  return unidad==='km'?(delta/litros):(litros/delta);   // km/L · L/hr
+  const tramos=_combTramos(cargas);
+  if(!tramos.length)return null;
+  const otra=unidad==='km'?'hr':'km';
+  const r=_combConsumoUnidad(tramos,unidad);
+  const r2=_combConsumoUnidad(tramos,otra);
+  // Gana la unidad que deja MÁS tramos plausibles (empate → la propia del
+  // equipo). Con "la primera que funcione" CMN-04 salía en km/L por un
+  // único salto accidental (122→400) y descartaba 11 tramos coherentes en hs.
+  if(r&&(!r2||r.segOk>=r2.segOk))return r;
+  if(r2){r2.unidadDetectada=true;return r2;}
+  return null;
 }
 
 /* Arma los datos del grupo activo para el rango de meses activo. */
@@ -95,9 +133,13 @@ function _combDatosGrupo(){
     const costo=sel.reduce((s,c)=>s+(c.costo||0),0);
     const estimado=sel.some(c=>c.costoEstimado);
     const lecturas=sel.filter(c=>c.hr!=null).length;
-    const consumo=_combConsumo(sel,unidad);
+    const cr=_combConsumo(sel,unidad);
+    const consumo=cr?cr.valor:null;
+    const consUnidad=cr?cr.unidad:unidad;
     const ult=[...sel].reverse().find(c=>c.hr!=null);
-    equipos.push({codN,rawCod,nombre,unidad,litros,costo,estimado,nCargas:sel.length,lecturas,consumo,
+    equipos.push({codN,rawCod,nombre,unidad,consUnidad,unidadDetectada:!!(cr&&cr.unidadDetectada),
+      segOk:cr?cr.segOk:0,segDesc:cr?cr.segDesc:0,
+      litros,costo,estimado,nCargas:sel.length,lecturas,consumo,
       ultimaHr:ult?ult.hr:null,ultimaFecha:ult?ult.fecha:null,horasEspejoDe:e.horasEspejoDe||null});
     for(const c of sel)cargasTodas.push({...c,codN,rawCod,nombre,unidad});
   }
@@ -179,14 +221,20 @@ function renderCombustibleTab(){
     <div class="cb-kpi"><div class="cb-kpi-val">${fmtInt(litros)} L</div><div class="cb-kpi-lbl">litros cargados · ${rango}</div></div>
     <div class="cb-kpi"><div class="cb-kpi-val amber">${costo>0?formatMoney(costo)+(estimado?' ~':''):'—'}</div><div class="cb-kpi-lbl">${estimado?(esLiv?'gasto (parte estimado ~)':'gasto estimado · litros × precio ⚙'):'gasto real'}</div></div>
     <div class="cb-kpi"><div class="cb-kpi-val">${fmtInt(nCargas)}</div><div class="cb-kpi-lbl">cargas · ${fmtInt(D.equipos.length)} ${esLiv?'vehículos':'equipos'}</div></div>
-    <div class="cb-kpi"><div class="cb-kpi-val">${fmtInt(medibles.length)}<small>/${fmtInt(D.equipos.length)}</small></div><div class="cb-kpi-lbl">con consumo medible (≥2 lecturas)</div></div>`;
+    <div class="cb-kpi"><div class="cb-kpi-val">${fmtInt(medibles.length)}<small>/${fmtInt(D.equipos.length)}</small></div><div class="cb-kpi-lbl">con consumo medible (lecturas erróneas descartadas)</div></div>`;
   setHTML(document.getElementById('combKpis'), kpis);
 
   // Rankings
-  const rk1=[...medibles].sort((a,b)=>esLiv?(a.consumo-b.consumo):(b.consumo-a.consumo)); // peor primero
+  // peor primero; los de unidad detectada distinta (camiones con horómetro) van al final, en L/hr
+  const rk1=[...medibles].sort((a,b)=>{
+    if(a.unidadDetectada!==b.unidadDetectada)return a.unidadDetectada?1:-1;
+    if(a.consUnidad==='km')return a.consumo-b.consumo;
+    return b.consumo-a.consumo;
+  });
   const rk2=[...D.equipos].sort((a,b)=>b.litros-a.litros);
   const bar=(v,max)=>html`<div class="cb-bar"><div class="cb-bar-fill" style="width:${max>0?Math.round(v/max*100):0}%"></div></div>`;
-  const maxC=rk1.length?Math.max(...rk1.map(e=>e.consumo)):0;
+  const _nat=rk1.filter(e=>!e.unidadDetectada);
+  const maxC=_nat.length?Math.max(..._nat.map(e=>e.consumo)):0;
   const maxL=rk2.length?rk2[0].litros:0;
   const fila=(e,i,valHtml,barHtml,sub)=>html`<div class="cb-row" data-action="_irAEquipoDesdeKpi" data-arg="${e.rawCod}" title="Abrir detalle del equipo">
       <div class="cb-pos">${i+1}</div>
@@ -197,16 +245,18 @@ function renderCombustibleTab(){
     </div>`;
   const r1=document.getElementById('combRank1');
   setHTML(document.getElementById('combRank1Title'), html`ranking por consumo específico — ${esLiv?'menos rendidor primero (km/L)':'más gastador primero (L/hr)'} · ${rango}`);
-  setHTML(r1, rk1.length?rk1.map((e,i)=>fila(e,i,html`${_combFmtConsumo(e.consumo,unidad)}`,bar(e.consumo,maxC),
-      html`${fmtInt(e.litros)} L · ${e.lecturas} lecturas · últ. ${_combFmtLectura(e.ultimaHr,unidad)}${e.ultimaFecha?' ('+e.ultimaFecha+')':''}`))
+  const _desc=e=>e.segDesc>0?html` · <span class="cb-warn" title="Tramos entre lecturas descartados por lectura que retrocede o consumo implausible">${e.segDesc} descart.</span>`:'';
+  const _det=e=>e.unidadDetectada?html` · <span class="cb-warn" title="El odómetro no da valores plausibles: la columna trae el horómetro. Se informa en L/hr.">lectura en ${e.consUnidad==='hr'?'horas':'km'}</span>`:'';
+  setHTML(r1, rk1.length?rk1.map((e,i)=>fila(e,i,html`${_combFmtConsumo(e.consumo,e.consUnidad)}`,e.unidadDetectada?html`<div class="cb-bar"></div>`:bar(e.consumo,maxC),
+      html`${fmtInt(e.litros)} L · ${e.segOk} tramos · últ. ${_combFmtLectura(e.ultimaHr,e.consUnidad)}${e.ultimaFecha?' ('+e.ultimaFecha+')':''}${_desc(e)}${_det(e)}`))
     :html`<div class="svc-empty">Ningún ${esLiv?'vehículo':'equipo'} tiene 2 lecturas de ${esLiv?'odómetro':'horómetro'} en el rango: no se puede medir consumo.</div>`);
   const r2=document.getElementById('combRank2');
   setHTML(document.getElementById('combRank2Title'), html`ranking por litros cargados · ${rango}`);
   setHTML(r2, rk2.length?rk2.map((e,i)=>fila(e,i,html`${fmtInt(e.litros)} L<small>${litros>0?Math.round(e.litros/litros*100):0}%</small>`,bar(e.litros,maxL),
-      html`${e.nCargas} cargas${e.costo>0?' · '+formatMoney(e.costo)+(e.estimado?' ~':''):''}${e.consumo!=null?' · '+_combFmtConsumo(e.consumo,unidad):' · sin consumo medible'}`))
+      html`${e.nCargas} cargas${e.costo>0?' · '+formatMoney(e.costo)+(e.estimado?' ~':''):''}${e.consumo!=null?' · '+_combFmtConsumo(e.consumo,e.consUnidad):' · sin consumo medible'}`))
     :html`<div class="svc-empty">Sin cargas en el rango seleccionado.</div>`);
   const sm=document.getElementById('combSinMed');
-  setHTML(sm, sinMed.length?html`<div class="cb-sinmed-title">sin consumo medible en el rango (${sinMed.length}) — falta lectura de ${esLiv?'odómetro':'horómetro'} en las cargas</div>
+  setHTML(sm, sinMed.length?html`<div class="cb-sinmed-title">sin consumo medible en el rango (${sinMed.length}) — sin dos lecturas plausibles de ${esLiv?'odómetro':'horómetro'}</div>
     <div class="cb-chips">${sinMed.map(e=>html`<button class="cb-chip" data-action="_irAEquipoDesdeKpi" data-arg="${e.rawCod}" title="${e.nombre} · ${e.nCargas} cargas, ${e.lecturas} con lectura${e.horasEspejoDe?' · horas vía '+e.horasEspejoDe:''}">${e.rawCod}<small>${e.lecturas}/${e.nCargas}</small></button>`)}</div>`:'');
 
   // Filtro de equipo para el historial
