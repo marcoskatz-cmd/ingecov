@@ -303,8 +303,8 @@ function renderInactivos(){
       data-cod="${x.codigo}" data-nom="${x.nombre}"
       data-action="toggleEquipoDetail" data-arg="${x.codigo}">
       <div class="eq-status-strip ${est}"></div>
-      <div class="eq-code">${x.codigo}</div>
-      <div class="eq-name">${x.nombre||'—'}</div>
+      <div class="eq-top"><div class="eq-code">${x.codigo}</div>${eqTypeIcon(x.codigo)}</div>
+      <div class="eq-name">${eqBrandImg((window._estadoEquipos||{})[normCod(x.codigo)]?.marca)}<span class="eq-name-txt">${x.nombre||'—'}</span></div>
       <div class="eq-meta">
         <span style="color:${ESTADO_CSS[est]}">${estLabel}</span>
         ${x.categoria?html`<span>${CAT_LABEL[x.categoria]||x.categoria}</span>`:''}
@@ -314,6 +314,37 @@ function renderInactivos(){
       </div>
     </div>`;
   })}</div>`);
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   FICHAS V2 — ícono por tipo de equipo y logo por marca
+   Los íconos viven en un sprite inline de index.html (#ico-*); los logos
+   en img/marcas/*.svg (Simple Icons + Wikimedia Commons). Si la marca no
+   tiene logo, no se muestra nada: nunca iniciales ni emojis.
+═══════════════════════════════════════════════════════ */
+const TIPO_ICONO={EXC:'exc',RTP:'exc',CF:'cf',MNV:'mnv',RDL:'rodillo',RL:'rodillo',RN:'rodillo',RPC:'rodillo',
+  CMN:'camion',BAT:'camion',CRT:'camion',CMT:'camioneta',PLN:'planta',ZRN:'zaranda',TRT:'zaranda',CMP:'compresor',
+  GEN:'generador',FRA:'fresadora',TRM:'terminadora',TPD:'topadora',AUT:'autoelevador',MRT:'martillo',BRD:'barredora'};
+function tipoIconoId(codigo){
+  const p=String(codigo||'').toUpperCase().match(/^[A-Z]+/)?.[0]||'';
+  return 'ico-'+(TIPO_ICONO[p]||'generico');
+}
+const MARCA_LOGO={cat:'cat',caterpillar:'cat',johndeere:'johndeere',nissan:'nissan',ford:'ford',mercedesbenz:'mercedes',mercedes:'mercedes',
+  volvo:'volvo',komatsu:'komatsu',chevrolet:'chevrolet',fiat:'fiat',volkswagen:'volkswagen',vw:'volkswagen',renault:'renault',toyota:'toyota',
+  hyundai:'hyundai',scania:'scania',dynapac:'dynapac',wirtgen:'wirtgen',bomag:'bomag',atlascopco:'atlascopco',metso:'metso',
+  ingersollrand:'ingersollrand',ammann:'ammann',sullair:'sullair',lonking:'lonking',cummins:'cummins'};
+function marcaLogoSrc(marca){
+  const k=String(marca||'').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g,'');
+  const f=MARCA_LOGO[k];
+  return f?`./img/marcas/${f}.svg`:null;
+}
+function eqBrandImg(marca,cls){
+  const src=marcaLogoSrc(marca);
+  return src?html`<img class="${cls||'eq-brand'}" src="${src}" alt="${marca}" title="${marca}" loading="lazy">`:'';
+}
+function eqTypeIcon(codigo,cls){
+  return new RawHTML(`<svg class="${cls||'eq-type'}" aria-hidden="true"><use href="#${tipoIconoId(codigo)}"/></svg>`);
 }
 
 // VISTA
@@ -366,7 +397,7 @@ function renderEquipoIndex(equipos){
         data-action="toggleEquipoDetail" data-arg="${e.codigo}">
         <span class="eq-list-dot" style="background:${estCss}" title="${info?.estado||'Sin estado'}"></span>
         <span class="eq-list-code">${e.codigo}</span>
-        <span class="eq-list-name">${titulo}</span>
+        <span class="eq-list-name">${eqTypeIcon(e.codigo,'eq-list-type')}${eqBrandImg(e.marca||info?.marca,'eq-list-brand')}${titulo}</span>
         <div class="eq-list-meta">
           ${tienePend?html`<span class="pending-dot" title="Pedidos pendientes"></span>`:''}
           ${op.nivel!=='sin-datos'?html`<span style="color:${op.color};font-weight:600" title="Operatividad de service · ${op.label}">● ${op.label}</span>`:''}
@@ -398,8 +429,8 @@ function renderEquipoIndex(equipos){
         title="${tienePend?'Tiene pedidos pendientes':''}"
         data-action="toggleEquipoDetail" data-arg="${e.codigo}">
         <div class="eq-status-strip ${est}"></div>
-        <div class="eq-code">${e.codigo}</div>
-        <div class="eq-name">${titulo}</div>
+        <div class="eq-top"><div class="eq-code">${e.codigo}</div>${eqTypeIcon(e.codigo)}</div>
+        <div class="eq-name">${eqBrandImg(e.marca||info?.marca)}<span class="eq-name-txt">${titulo}</span></div>
         <div class="eq-meta">
           ${op.nivel!=='sin-datos'?html`<span style="color:${op.color};font-weight:600" title="Operatividad de service · ${op.label}">● ${op.label}</span>`:''}
           ${tenBadge}

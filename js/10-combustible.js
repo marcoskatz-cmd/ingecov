@@ -328,7 +328,7 @@ function _renderCombChart(D){
     ]},
     options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
       plugins:{legend:{display:false},tooltip:{backgroundColor:TOOLTIP_BG,titleColor:TOOLTIP_FG,bodyColor:TOOLTIP_FG,padding:10,borderColor:GRID,borderWidth:1,
-        titleFont:{family:'JetBrains Mono',size:11,weight:'600'},bodyFont:{family:'Inter',size:12},
+        titleFont:{family:'JetBrains Mono',size:11,weight:'600'},bodyFont:{family:'Barlow',size:12},
         callbacks:{label:c=>c.dataset.label==='Litros'?'  ▣ '+fmtInt(c.raw)+' L':'  ─ '+formatMoney(c.raw)+(D.grupo==='pesados'?' (estimado)':'')}}},
       scales:{
         x:{ticks:{color:TEXT2,font:{size:11,family:'JetBrains Mono',weight:'500'}},grid:{display:false},border:{color:GRID}},

@@ -979,7 +979,7 @@ function renderTelemetriaFlota(){
             borderColor:GRID,
             borderWidth:1,
             titleFont:{family:'JetBrains Mono',size:11,weight:'600'},
-            bodyFont:{family:'Inter',size:12},
+            bodyFont:{family:'Barlow',size:12},
             bodySpacing:6,
             callbacks:{
               label:c=>{

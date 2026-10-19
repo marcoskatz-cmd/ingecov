@@ -345,7 +345,7 @@ function toggleCostoEquipo(codN){
           backgroundColor:TOOLTIP_BG,titleColor:TOOLTIP_FG,bodyColor:TOOLTIP_FG,
           padding:12,borderColor:GRID,borderWidth:1,
           titleFont:{family:'JetBrains Mono',size:11,weight:'600'},
-          bodyFont:{family:'Inter',size:12},bodySpacing:6,
+          bodyFont:{family:'Barlow',size:12},bodySpacing:6,
           callbacks:{
             label:c=>`  ${c.dataset.label}: ${_fmtARS(c.raw)}`,
             footer:items=>'Total: '+_fmtARS(items.reduce((s,i)=>s+i.raw,0)),

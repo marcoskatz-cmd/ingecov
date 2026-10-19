@@ -94,6 +94,17 @@ function _dispatchAction(e) {
   }
 }
 
+
+// Tema v2: las etiquetas estáticas (tabs, títulos de sección) estaban en
+// minúscula porque el CSS viejo las ponía en mayúsculas; ahora van en
+// "Mayúscula inicial". Solo toca el primer nodo de texto de cada una.
+(function capitalizarEtiquetas(){
+  document.querySelectorAll('#tabBar .tab-btn, .section-label').forEach(el=>{
+    const tn=[...el.childNodes].find(n=>n.nodeType===3&&n.textContent.trim());
+    if(tn)tn.textContent=tn.textContent.replace(/^(\s*)(\p{L})/u,(m,a,b)=>a+b.toUpperCase());
+  });
+})();
+
 document.addEventListener('click',  _dispatchAction);
 document.addEventListener('change', _dispatchAction);
 document.addEventListener('input',  _dispatchAction);

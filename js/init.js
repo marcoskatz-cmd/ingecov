@@ -1,11 +1,11 @@
-// Tema: dark por defecto (cockpit aesthetic). Light queda como toggle.
+// Tema: claro, único (Marcos no quiere modo oscuro).
 (function(){
   try{
-    const saved = localStorage.getItem('ingecov-theme');
-    // Default: dark (no respeta prefers-color-scheme — la estética se diseñó para dark)
-    const t = saved || 'dark';
-    document.documentElement.setAttribute('data-theme', t);
-  }catch(_){ document.documentElement.setAttribute('data-theme','dark'); }
+    // Tema único claro (oct-2026). Se pisa cualquier preferencia guardada del
+    // viejo modo oscuro.
+    localStorage.removeItem('ingecov-theme');
+    document.documentElement.setAttribute('data-theme', 'light');
+  }catch(_){ document.documentElement.setAttribute('data-theme','light'); }
 })();
 function toggleTheme(){
   const cur = document.documentElement.getAttribute('data-theme') || 'dark';
