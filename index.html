@@ -50,16 +50,16 @@
      arranca el PIN gate. No reordenar ni pasar a type=module sin revisar
      ACTIONS. Bump del ?v= al cambiar cualquiera de ellos, para clientes con
      HTTP cache (el SW solo invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/01-core.js?v=87" defer></script>
-<script src="./js/02-datos.js?v=87" defer></script>
-<script src="./js/03-ui.js?v=87" defer></script>
-<script src="./js/04-carga.js?v=87" defer></script>
-<script src="./js/05-render.js?v=87" defer></script>
-<script src="./js/06-tabs.js?v=87" defer></script>
-<script src="./js/07-auditoria.js?v=87" defer></script>
-<script src="./js/08-bootstrap.js?v=87" defer></script>
-<script src="./js/09-bot.js?v=87" defer></script>
-<script src="./js/10-combustible.js?v=87" defer></script>
+<script src="./js/01-core.js?v=88" defer></script>
+<script src="./js/02-datos.js?v=88" defer></script>
+<script src="./js/03-ui.js?v=88" defer></script>
+<script src="./js/04-carga.js?v=88" defer></script>
+<script src="./js/05-render.js?v=88" defer></script>
+<script src="./js/06-tabs.js?v=88" defer></script>
+<script src="./js/07-auditoria.js?v=88" defer></script>
+<script src="./js/08-bootstrap.js?v=88" defer></script>
+<script src="./js/09-bot.js?v=88" defer></script>
+<script src="./js/10-combustible.js?v=88" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -1831,6 +1831,26 @@
   .combo-legend{font-size:12.5px;} .combo-totals{font-size:12px;}
   .combo-totals b,.combo-totals strong{font-family:'JetBrains Mono',monospace;}
   @media (max-width:768px){ .eq-brand{height:15px;max-width:60px;} }
+
+  /* Filtros de equipos como desplegables (pedido de Marcos 19-oct-2026) */
+  .filter-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;position:relative;z-index:5;}
+  .filter-dd{position:relative;}
+  .filter-dd summary{list-style:none;display:inline-flex;align-items:center;gap:7px;padding:8px 12px 8px 14px;border-radius:var(--r-pill);border:1px solid var(--border);background:var(--bg2);cursor:pointer;font-size:13px;color:var(--text);user-select:none;white-space:nowrap;box-shadow:var(--shadow-sm);}
+  .filter-dd summary::-webkit-details-marker{display:none;}
+  .filter-dd summary:hover,.filter-dd[open] summary{border-color:var(--border2);}
+  .filter-dd.is-set summary{border-color:var(--text);background:var(--text);color:#fff;}
+  .filter-dd .dd-k{color:var(--text3);font-weight:500;}
+  .filter-dd.is-set .dd-k{color:rgba(255,255,255,.7);}
+  .filter-dd .dd-v{font-weight:600;}
+  .filter-dd .dd-chev{font-size:11px;color:var(--text3);margin-left:2px;}
+  .filter-dd.is-set .dd-chev{color:rgba(255,255,255,.7);}
+  .filter-dd .filter-bar{position:absolute;top:calc(100% + 6px);left:0;z-index:60;min-width:260px;max-width:min(92vw,420px);max-height:340px;overflow:auto;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r-md);box-shadow:var(--shadow-lg);padding:8px;margin:0;flex-direction:column;align-items:stretch;gap:2px;}
+  .filter-dd .filter-btn{width:100%;justify-content:space-between;border:0;border-radius:var(--r-sm);background:transparent;padding:9px 12px;font-size:13px;font-weight:500;color:var(--text);}
+  .filter-dd .filter-btn:hover{background:var(--bg3);color:var(--text);}
+  .filter-dd .filter-btn.active{background:var(--accent-bg);color:var(--accent);box-shadow:none;}
+  .filter-dd .filter-btn.active .f-count{background:rgba(232,93,26,.15);color:var(--accent);}
+  .filter-dd .filter-btn .f-count{margin-left:auto;}
+  @media (max-width:768px){ .filter-dd .filter-bar{min-width:220px;} .filter-dd summary{font-size:12.5px;padding:7px 10px 7px 12px;} }
 </style>
 
 </head>
@@ -2005,32 +2025,46 @@
           <button class="view-btn" id="btnList" data-action="setViewMode" data-arg="list" title="Vista lista">☰</button>
         </div>
 
+        <div class="filter-row">
         <!-- Filtros por categoría (hoja de origen) -->
-        <div class="filter-bar" id="filterBarCat">
+        <details class="filter-dd" id="ddCat">
+          <summary><span class="dd-k">Categoría</span><span class="dd-v" id="ddCatV">Todas</span><span class="dd-chev">▾</span></summary>
+          <div class="filter-bar" id="filterBarCat">
           <button class="filter-btn active" data-action="setFiltroCategoria" data-arg="todas">Todas <span class="f-count" id="fcCatTodas">—</span></button>
           <button class="filter-btn" data-action="setFiltroCategoria" data-arg="viales">Viales, asfalto y trituración <span class="f-count" id="fcCatViales">0</span></button>
           <button class="filter-btn" data-action="setFiltroCategoria" data-arg="liviano">Transporte liviano <span class="f-count" id="fcCatLiviano">0</span></button>
           <button class="filter-btn" data-action="setFiltroCategoria" data-arg="pesado">Transporte pesado <span class="f-count" id="fcCatPesado">0</span></button>
           <button class="filter-btn" data-action="setFiltroCategoria" data-arg="soporte">Soporte <span class="f-count" id="fcCatSoporte">0</span></button>
         </div>
+        </details>
 
         <!-- Filtros por estado (los inactivos y sin estado viven en su propia sección) -->
-        <div class="filter-bar" id="filterBar">
+        <details class="filter-dd" id="ddEst">
+          <summary><span class="dd-k">Estado</span><span class="dd-v" id="ddEstV">Todas</span><span class="dd-chev">▾</span></summary>
+          <div class="filter-bar" id="filterBar">
           <button class="filter-btn active" data-action="setFiltroEstado" data-arg="todos">Todos <span class="f-count" id="fcTodos">—</span></button>
           <button class="filter-btn" data-action="setFiltroEstado" data-arg="operativo"><span style="color:var(--green)">●</span> Operativo <span class="f-count" id="fcOper">0</span></button>
           <button class="filter-btn" data-action="setFiltroEstado" data-arg="reparacion"><span style="color:var(--amber)">●</span> En reparación <span class="f-count" id="fcRep">0</span></button>
         </div>
+        </details>
 
         <!-- Filtros por tenencia (propio / alquilado, viene de CÓDIGOS columna OBSERVACIÓN) -->
-        <div class="filter-bar" id="filterBarTen">
+        <details class="filter-dd" id="ddTen">
+          <summary><span class="dd-k">Tenencia</span><span class="dd-v" id="ddTenV">Todas</span><span class="dd-chev">▾</span></summary>
+          <div class="filter-bar" id="filterBarTen">
           <button class="filter-btn active" data-action="setFiltroTenencia" data-arg="todas">Toda tenencia <span class="f-count" id="fcTenTodas">—</span></button>
           <button class="filter-btn" data-action="setFiltroTenencia" data-arg="propio"><span style="color:var(--green)">◆</span> Propio <span class="f-count" id="fcTenProp">0</span></button>
           <button class="filter-btn" data-action="setFiltroTenencia" data-arg="alquilado"><span style="color:var(--amber)">◆</span> Alquilado <span class="f-count" id="fcTenAlq">0</span></button>
           <button class="filter-btn" id="btnTenDesc" data-action="setFiltroTenencia" data-arg="desconocido" style="display:none">Sin clasificar <span class="f-count" id="fcTenDesc">0</span></button>
         </div>
+        </details>
 
         <!-- Filtros por ubicación (poblado dinámicamente) -->
-        <div class="filter-bar filter-bar-ubi" id="filterBarUbi"></div>
+        <details class="filter-dd" id="ddUbi">
+          <summary><span class="dd-k">Ubicación</span><span class="dd-v" id="ddUbiV">Todas</span><span class="dd-chev">▾</span></summary>
+          <div class="filter-bar filter-bar-ubi" id="filterBarUbi"></div>
+        </details>
+        </div>
 
         <div id="equipoGrid" class="equipo-grid"></div>
 

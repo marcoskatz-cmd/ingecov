@@ -239,7 +239,28 @@ function aplicarFiltros(){
     if(_activeEqCard.classList.contains('hidden'))closeEquipoDetail();
     else placeDetailPanelNearCard(_activeEqCard);
   }
+
+  // Desplegables de filtros: la pastilla muestra la opción activa y se cierra
+  // al elegir. "Todas/Todos" no cuenta como filtro aplicado (pastilla blanca).
+  _syncFilterDropdowns();
 }
+function _syncFilterDropdowns(){
+  document.querySelectorAll('details.filter-dd').forEach(dd=>{
+    const act=dd.querySelector('.filter-btn.active');
+    const v=dd.querySelector('.dd-v');
+    if(!act||!v)return;
+    const txt=[...act.childNodes].filter(n=>n.nodeType===3||!(n.classList&&n.classList.contains('f-count'))).map(n=>n.textContent).join('').replace(/[●◆]/g,'').trim();
+    const cnt=act.querySelector('.f-count')?.textContent?.trim();
+    v.textContent=txt+(cnt&&cnt!=='—'?' · '+cnt:'');
+    dd.classList.toggle('is-set',!/^tod[ao]s?/i.test(txt));
+  });
+}
+// Un solo desplegable abierto a la vez; se cierran al elegir o al clickear afuera.
+document.addEventListener('click',e=>{
+  const dd=e.target.closest('details.filter-dd');
+  if(dd&&e.target.closest('.filter-btn')){ setTimeout(()=>{dd.removeAttribute('open');},0); return; }
+  document.querySelectorAll('details.filter-dd[open]').forEach(o=>{ if(o!==dd)o.removeAttribute('open'); });
+});
 
 /* ═══════════════════════════════════════════════════════
    SECCIÓN EQUIPOS INACTIVOS — desuso / no operativos
