@@ -50,16 +50,16 @@
      arranca el PIN gate. No reordenar ni pasar a type=module sin revisar
      ACTIONS. Bump del ?v= al cambiar cualquiera de ellos, para clientes con
      HTTP cache (el SW solo invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/01-core.js?v=90" defer></script>
-<script src="./js/02-datos.js?v=90" defer></script>
-<script src="./js/03-ui.js?v=90" defer></script>
-<script src="./js/04-carga.js?v=90" defer></script>
-<script src="./js/05-render.js?v=90" defer></script>
-<script src="./js/06-tabs.js?v=90" defer></script>
-<script src="./js/07-auditoria.js?v=90" defer></script>
-<script src="./js/08-bootstrap.js?v=90" defer></script>
-<script src="./js/09-bot.js?v=90" defer></script>
-<script src="./js/10-combustible.js?v=90" defer></script>
+<script src="./js/01-core.js?v=91" defer></script>
+<script src="./js/02-datos.js?v=91" defer></script>
+<script src="./js/03-ui.js?v=91" defer></script>
+<script src="./js/04-carga.js?v=91" defer></script>
+<script src="./js/05-render.js?v=91" defer></script>
+<script src="./js/06-tabs.js?v=91" defer></script>
+<script src="./js/07-auditoria.js?v=91" defer></script>
+<script src="./js/08-bootstrap.js?v=91" defer></script>
+<script src="./js/09-bot.js?v=91" defer></script>
+<script src="./js/10-combustible.js?v=91" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -1862,6 +1862,21 @@
   /* Modal service crítico: columnas con unidad (km / hr / fechas) */
   .sv-hr,.sv-rest{white-space:nowrap;}
   @media (min-width:769px){ .sv-row{grid-template-columns:80px minmax(160px,1fr) 120px 120px 130px;} }
+
+  /* Navegación de tabs con flechas (19-oct-2026): las flechas y el degradé
+     solo aparecen del lado donde hay más tabs ocultas. */
+  .tab-nav{position:relative;display:flex;align-items:center;gap:6px;margin-bottom:1.75rem;}
+  .tab-nav .tab-bar{flex:1;min-width:0;margin-bottom:0;scroll-behavior:smooth;
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 var(--fade-l,0px),#000 calc(100% - var(--fade-r,0px)),transparent 100%);
+            mask-image:linear-gradient(90deg,transparent 0,#000 var(--fade-l,0px),#000 calc(100% - var(--fade-r,0px)),transparent 100%);}
+  .tab-nav.can-left  .tab-bar{--fade-l:36px;}
+  .tab-nav.can-right .tab-bar{--fade-r:36px;}
+  .tab-arrow{flex:none;width:34px;height:34px;border-radius:50%;border:1px solid var(--border);background:var(--bg2);box-shadow:var(--shadow-sm);display:grid;place-items:center;cursor:pointer;color:var(--text2);visibility:hidden;opacity:0;transition:opacity var(--t-fast) var(--ease),background var(--t-fast) var(--ease);}
+  .tab-arrow svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;}
+  .tab-arrow:hover{background:var(--bg3);color:var(--text);}
+  .tab-nav.can-left .tab-arrow.left,.tab-nav.can-right .tab-arrow.right{visibility:visible;opacity:1;}
+  @media (max-width:768px){ .tab-arrow{width:30px;height:30px;} .tab-nav{gap:4px;} }
+  .tab-btn[hidden]{display:none!important;}
 </style>
 
 </head>
@@ -1980,16 +1995,23 @@
     </div>
 
     <!-- Navegación por tabs -->
+    <div class="tab-nav" id="tabNav">
+    <button class="tab-arrow left" data-action="scrollTabs" data-arg="-1" aria-label="Tabs anteriores" title="Anteriores"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
     <div class="tab-bar" id="tabBar">
       <button class="tab-btn active" data-action="setTab" data-arg="tabTelemetria">telemetría de flota<span class="tab-badge" id="telemetriaBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabEquipos">equipos<span class="tab-badge" id="equipoCount">—</span></button>
-      <button class="tab-btn" data-action="setTab" data-arg="tabConsulta">consultar equipo</button>
+      <!-- "Consultar equipo" apagado a pedido de Marcos (19-oct-2026). El panel
+           #tabConsulta y su lógica en 06-tabs.js siguen intactos: para revivirlo
+           basta con sacar el atributo hidden de este botón. -->
+      <button class="tab-btn" data-action="setTab" data-arg="tabConsulta" hidden>consultar equipo</button>
       <button class="tab-btn" data-action="setTab" data-arg="tabCombustible">combustible<span class="tab-badge" id="combBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabService">service<span class="tab-badge" id="serviceBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabTrabPend">trabajos pendientes<span class="tab-badge" id="trabPendBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabFaltantes">pendientes de carga<span class="tab-badge" id="faltantesBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabCostos">costos downtime<span class="tab-badge" id="costosBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabReemplazo">conservar vs reemplazar<span class="tab-badge" id="reemplazoBadge">—</span></button>
+    </div>
+    <button class="tab-arrow right" data-action="scrollTabs" data-arg="1" aria-label="Más tabs" title="Más"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
     </div>
 
     <!-- Telemetría de flota (gráficos + rankings) -->

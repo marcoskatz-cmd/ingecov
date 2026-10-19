@@ -20,6 +20,7 @@ const ACTIONS = {
   syncNow:                       () => syncNow(),
   toggleSection:                 (id) => toggleSection(id),
   setTab:                        (id, t) => setTab(id, t),
+  scrollTabs:                    (dir) => scrollTabs(+dir),
   repSelectEquipo:               (arg, t) => repSelectEquipo(t.value),
   repRecalc:                     () => repRecalc(),
   repAddFalla:                   () => repAddFalla(),
@@ -103,6 +104,31 @@ function _dispatchAction(e) {
     const tn=[...el.childNodes].find(n=>n.nodeType===3&&n.textContent.trim());
     if(tn)tn.textContent=tn.textContent.replace(/^(\s*)(\p{L})/u,(m,a,b)=>a+b.toUpperCase());
   });
+})();
+
+
+// Flechas de la barra de tabs: se muestran solo del lado con tabs ocultas.
+function _syncTabArrows(){
+  const nav=document.getElementById('tabNav'), bar=document.getElementById('tabBar');
+  if(!nav||!bar)return;
+  const max=bar.scrollWidth-bar.clientWidth;
+  nav.classList.toggle('can-left', bar.scrollLeft>4);
+  nav.classList.toggle('can-right', bar.scrollLeft<max-4);
+}
+function scrollTabs(dir){
+  const bar=document.getElementById('tabBar'); if(!bar)return;
+  bar.scrollBy({left:dir*Math.max(200,bar.clientWidth*0.7),behavior:'smooth'});
+}
+(function initTabArrows(){
+  const bar=document.getElementById('tabBar'); if(!bar)return;
+  bar.addEventListener('scroll',_syncTabArrows,{passive:true});
+  window.addEventListener('resize',_syncTabArrows);
+  // Rueda del mouse vertical → desplazamiento horizontal sobre la barra.
+  bar.addEventListener('wheel',e=>{ if(Math.abs(e.deltaY)>Math.abs(e.deltaX)&&bar.scrollWidth>bar.clientWidth){ bar.scrollLeft+=e.deltaY; e.preventDefault(); } },{passive:false});
+  // La tab activa siempre a la vista.
+  bar.addEventListener('click',e=>{ const b=e.target.closest('.tab-btn'); if(b)b.scrollIntoView({behavior:'smooth',block:'nearest',inline:'nearest'}); });
+  if(window.ResizeObserver)new ResizeObserver(_syncTabArrows).observe(bar);
+  _syncTabArrows();
 })();
 
 document.addEventListener('click',  _dispatchAction);
