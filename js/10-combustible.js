@@ -68,6 +68,10 @@ function _combLabelRango(){
    queda ningún tramo plausible pero en L/hr sí, se informa en L/hr y se
    marca `unidadDetectada`. Devuelve {valor,unidad,segOk,segDesc} o null. */
 const _COMB_RANGO={km:[1,30],hr:[0.5,80]};   // km/L · L/hr plausibles
+// Camiones que tienen HORÓMETRO y no odómetro (confirmado por Marcos
+// 19-oct-2026: Scania LT111 = CMN-22, Ford Cargo 1831 = CMN-03). Su consumo
+// se informa en L/hr sin pasar por la detección automática.
+const COMB_LECTURA_HORAS=new Set(['CMN03','CMN22']);
 function _combTramos(cargas){
   const out=[]; let i0=-1, lit=0;
   for(let i=0;i<cargas.length;i++){
@@ -133,11 +137,12 @@ function _combDatosGrupo(){
     const costo=sel.reduce((s,c)=>s+(c.costo||0),0);
     const estimado=sel.some(c=>c.costoEstimado);
     const lecturas=sel.filter(c=>c.hr!=null).length;
-    const cr=_combConsumo(sel,unidad);
+    const forzadaHr=COMB_LECTURA_HORAS.has(codN);
+    const cr=forzadaHr?_combConsumoUnidad(_combTramos(sel),'hr'):_combConsumo(sel,unidad);
     const consumo=cr?cr.valor:null;
-    const consUnidad=cr?cr.unidad:unidad;
+    const consUnidad=cr?cr.unidad:(forzadaHr?'hr':unidad);
     const ult=[...sel].reverse().find(c=>c.hr!=null);
-    equipos.push({codN,rawCod,nombre,unidad,consUnidad,unidadDetectada:!!(cr&&cr.unidadDetectada),
+    equipos.push({codN,rawCod,nombre,unidad,consUnidad,unidadDetectada:!!(cr&&cr.unidadDetectada),horometro:forzadaHr,
       segOk:cr?cr.segOk:0,segDesc:cr?cr.segDesc:0,
       litros,costo,estimado,nCargas:sel.length,lecturas,consumo,
       ultimaHr:ult?ult.hr:null,ultimaFecha:ult?ult.fecha:null,horasEspejoDe:e.horasEspejoDe||null});
@@ -227,13 +232,14 @@ function renderCombustibleTab(){
   // Rankings
   // peor primero; los de unidad detectada distinta (camiones con horómetro) van al final, en L/hr
   const rk1=[...medibles].sort((a,b)=>{
-    if(a.unidadDetectada!==b.unidadDetectada)return a.unidadDetectada?1:-1;
+    const oa=a.consUnidad!==unidad, ob=b.consUnidad!==unidad;   // unidad distinta a la del grupo → al final
+    if(oa!==ob)return oa?1:-1;
     if(a.consUnidad==='km')return a.consumo-b.consumo;
     return b.consumo-a.consumo;
   });
   const rk2=[...D.equipos].sort((a,b)=>b.litros-a.litros);
   const bar=(v,max)=>html`<div class="cb-bar"><div class="cb-bar-fill" style="width:${max>0?Math.round(v/max*100):0}%"></div></div>`;
-  const _nat=rk1.filter(e=>!e.unidadDetectada);
+  const _nat=rk1.filter(e=>e.consUnidad===unidad);
   const maxC=_nat.length?Math.max(..._nat.map(e=>e.consumo)):0;
   const maxL=rk2.length?rk2[0].litros:0;
   const fila=(e,i,valHtml,barHtml,sub)=>html`<div class="cb-row" data-action="_irAEquipoDesdeKpi" data-arg="${e.rawCod}" title="Abrir detalle del equipo">
@@ -246,8 +252,9 @@ function renderCombustibleTab(){
   const r1=document.getElementById('combRank1');
   setHTML(document.getElementById('combRank1Title'), html`ranking por consumo específico — ${esLiv?'menos rendidor primero (km/L)':'más gastador primero (L/hr)'} · ${rango}`);
   const _desc=e=>e.segDesc>0?html` · <span class="cb-warn" title="Tramos entre lecturas descartados por lectura que retrocede o consumo implausible">${e.segDesc} descart.</span>`:'';
-  const _det=e=>e.unidadDetectada?html` · <span class="cb-warn" title="El odómetro no da valores plausibles: la columna trae el horómetro. Se informa en L/hr.">lectura en ${e.consUnidad==='hr'?'horas':'km'}</span>`:'';
-  setHTML(r1, rk1.length?rk1.map((e,i)=>fila(e,i,html`${_combFmtConsumo(e.consumo,e.consUnidad)}`,e.unidadDetectada?html`<div class="cb-bar"></div>`:bar(e.consumo,maxC),
+  const _det=e=>e.horometro?html` · <span title="Este camión tiene horómetro, no odómetro">horómetro</span>`
+    :e.unidadDetectada?html` · <span class="cb-warn" title="El odómetro no da valores plausibles: la columna trae el horómetro. Se informa en L/hr.">lectura en ${e.consUnidad==='hr'?'horas':'km'}</span>`:'';
+  setHTML(r1, rk1.length?rk1.map((e,i)=>fila(e,i,html`${_combFmtConsumo(e.consumo,e.consUnidad)}`,e.consUnidad!==unidad?html`<div class="cb-bar"></div>`:bar(e.consumo,maxC),
       html`${fmtInt(e.litros)} L · ${e.segOk} tramos · últ. ${_combFmtLectura(e.ultimaHr,e.consUnidad)}${e.ultimaFecha?' ('+e.ultimaFecha+')':''}${_desc(e)}${_det(e)}`))
     :html`<div class="svc-empty">Ningún ${esLiv?'vehículo':'equipo'} tiene 2 lecturas de ${esLiv?'odómetro':'horómetro'} en el rango: no se puede medir consumo.</div>`);
   const r2=document.getElementById('combRank2');
