@@ -67,6 +67,13 @@ const ACTIONS = {
   limpiarConsulta:                () => limpiarConsulta(),
   seleccionarConsultaEquipo:      (codigo) => seleccionarConsultaEquipo(codigo),
   consultaTimelineVerMas:         () => consultaTimelineVerMas(),
+  // tab combustible (10-combustible.js)
+  setCombGrupo:                   (g) => setCombGrupo(g),
+  setCombMeses:                   (yms) => setCombMeses(yms),
+  toggleCombMes:                  (ym) => toggleCombMes(ym),
+  onCombFiltroEquipo:             (_, t) => onCombFiltroEquipo(t.value),
+  onCombBuscar:                   (_, t) => onCombBuscar(t.value),
+  combVerMas:                     () => combVerMas(),
 };
 
 function _dispatchAction(e) {

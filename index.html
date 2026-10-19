@@ -50,15 +50,16 @@
      arranca el PIN gate. No reordenar ni pasar a type=module sin revisar
      ACTIONS. Bump del ?v= al cambiar cualquiera de ellos, para clientes con
      HTTP cache (el SW solo invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/01-core.js?v=83" defer></script>
-<script src="./js/02-datos.js?v=82" defer></script>
-<script src="./js/03-ui.js?v=82" defer></script>
-<script src="./js/04-carga.js?v=82" defer></script>
-<script src="./js/05-render.js?v=82" defer></script>
-<script src="./js/06-tabs.js?v=82" defer></script>
-<script src="./js/07-auditoria.js?v=82" defer></script>
-<script src="./js/08-bootstrap.js?v=82" defer></script>
-<script src="./js/09-bot.js?v=82" defer></script>
+<script src="./js/01-core.js?v=84" defer></script>
+<script src="./js/02-datos.js?v=84" defer></script>
+<script src="./js/03-ui.js?v=84" defer></script>
+<script src="./js/04-carga.js?v=84" defer></script>
+<script src="./js/05-render.js?v=84" defer></script>
+<script src="./js/06-tabs.js?v=84" defer></script>
+<script src="./js/07-auditoria.js?v=84" defer></script>
+<script src="./js/08-bootstrap.js?v=84" defer></script>
+<script src="./js/09-bot.js?v=84" defer></script>
+<script src="./js/10-combustible.js?v=84" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -811,6 +812,41 @@
   .svc-badge.amber{color:var(--amber);border-color:var(--amber);}
   .svc-badge.blue{color:var(--blue);border-color:var(--blue);}
   .svc-badge.gray{color:var(--text3);border-color:var(--divider);}
+  /* ── tab combustible ── */
+  .cb-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0;}
+  .cb-kpi{background:var(--bg);border:1px solid var(--border);padding:12px 14px;}
+  .cb-kpi-val{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:600;color:var(--text);}
+  .cb-kpi-val.amber{color:var(--amber);}
+  .cb-kpi-val small{font-size:12px;color:var(--text3);font-weight:500;}
+  .cb-kpi-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-top:4px;}
+  .cb-chart-wrap{position:relative;height:220px;margin:6px 0 22px;}
+  .cb-rank-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start;}
+  .cb-row{display:grid;grid-template-columns:26px 76px minmax(120px,1fr) 118px;gap:10px;align-items:center;padding:9px 10px 7px;border-bottom:1px solid var(--divider);cursor:pointer;transition:background var(--t-fast) var(--ease);}
+  .cb-row:hover{background:var(--bg-elev);}
+  .cb-row .svc-nom small{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .cb-pos{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text3);text-align:right;}
+  .cb-val{font-weight:600;color:var(--text);white-space:nowrap;}
+  .cb-val small{display:block;font-size:10px;color:var(--text3);font-weight:400;}
+  .cb-bar{height:3px;background:var(--bg3);grid-column:1/-1;}
+  .cb-bar-fill{height:100%;background:var(--blue);}
+  .cb-sinmed-title{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin:18px 0 8px;}
+  .cb-chips{display:flex;flex-wrap:wrap;gap:6px;}
+  .cb-chip{background:transparent;border:1px solid var(--border);color:var(--text2);font-family:'JetBrains Mono',monospace;font-size:11px;padding:4px 8px;cursor:pointer;border-radius:0;}
+  .cb-chip:hover{border-color:var(--accent);color:var(--text);}
+  .cb-chip small{color:var(--text3);margin-left:6px;font-size:9px;}
+  .cb-crow{display:grid;grid-template-columns:84px 72px minmax(140px,1fr) 64px 110px 96px 100px 120px 130px;gap:10px;align-items:center;min-width:900px;padding:8px 12px;border-bottom:1px solid var(--divider);cursor:pointer;font-size:12px;}
+  .cb-crow:hover{background:var(--bg-elev);}
+  .cb-crow.svc-head{cursor:default;position:sticky;top:0;z-index:1;background:var(--bg);border-bottom:1px solid var(--accent);font-family:'IBM Plex Sans',sans-serif;font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);}
+  .cb-crow.svc-head:hover{background:var(--bg);}
+  .cb-crow .svc-cod{font-size:12px;}
+  .cb-crow .svc-nom{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;}
+  .cb-fecha{text-align:left!important;}
+  .cb-dim{color:var(--text3)!important;font-style:italic;}
+  .cb-tipo,.cb-txt{color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .cb-more{padding:12px;text-align:center;}
+  .cb-filtros{display:flex;gap:8px;flex-wrap:wrap;}
+  .cb-select,.cb-input{background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;padding:6px 9px;border-radius:0;max-width:260px;}
+  .cb-select:focus,.cb-input:focus{outline:none;border-color:var(--accent);}
   .svc-empty{padding:36px;text-align:center;color:var(--text3);font-size:13px;}
   .sv-fuente{
     font-family:'JetBrains Mono',monospace;font-size:9px;
@@ -1453,6 +1489,9 @@
 
     /* KPI GRID */
     .kpi-grid{grid-template-columns:repeat(2,1fr);}
+    .cb-kpis{grid-template-columns:repeat(2,1fr);}
+    .cb-rank-grid{grid-template-columns:1fr;}
+    .cb-kpi-val{font-size:18px;}
     .kpi{padding:12px 12px 11px;min-height:90px;}
     .kpi-label{font-size:9.5px;letter-spacing:.08em;}
     .kpi-val{font-size:23px;margin-top:8px;}
@@ -1850,6 +1889,7 @@
       <button class="tab-btn active" data-action="setTab" data-arg="tabTelemetria">telemetría de flota<span class="tab-badge" id="telemetriaBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabEquipos">equipos<span class="tab-badge" id="equipoCount">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabConsulta">consultar equipo</button>
+      <button class="tab-btn" data-action="setTab" data-arg="tabCombustible">combustible<span class="tab-badge" id="combBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabService">service<span class="tab-badge" id="serviceBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabTrabPend">trabajos pendientes<span class="tab-badge" id="trabPendBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabFaltantes">pendientes de carga<span class="tab-badge" id="faltantesBadge">—</span></button>
@@ -1982,6 +2022,41 @@
         <div class="telemetria-card" style="margin-top:12px">
           <div class="telemetria-card-title">parámetros del cálculo</div>
           <div id="costosParams" style="font-size:12px;color:var(--text2);line-height:1.7;padding:6px 2px">cargando…</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tabCombustible">
+      <div class="section-content">
+        <div class="telemetria-card">
+          <div class="combo-header">
+            <div class="telemetria-card-title">combustible — cargas, consumo y rankings</div>
+            <div class="kpi-range-bar" id="combGrupoBar"></div>
+          </div>
+          <div class="kpi-range-bar" id="combRangeBar" style="margin-top:10px"></div>
+          <div id="combWrap">
+            <div class="cb-kpis" id="combKpis"></div>
+            <div class="cb-chart-wrap"><canvas id="chartComb"></canvas></div>
+            <div class="cb-rank-grid">
+              <div>
+                <div class="telemetria-card-title" id="combRank1Title">ranking por consumo</div>
+                <div class="svc-table" id="combRank1">cargando…</div>
+              </div>
+              <div>
+                <div class="telemetria-card-title" id="combRank2Title">ranking por litros</div>
+                <div class="svc-table" id="combRank2">cargando…</div>
+              </div>
+            </div>
+            <div id="combSinMed"></div>
+            <div class="combo-header" style="margin-top:28px">
+              <div class="telemetria-card-title" id="combCargasTitle">cargas históricas</div>
+              <div class="cb-filtros">
+                <select id="combFiltroEq" class="cb-select" data-action="onCombFiltroEquipo" data-event="change"></select>
+                <input id="combBuscar" class="cb-input" type="search" placeholder="buscar (tipo, lugar, operario…)" data-action="onCombBuscar" data-event="input">
+              </div>
+            </div>
+            <div class="svc-table" id="combCargas">cargando…</div>
+          </div>
         </div>
       </div>
     </div>

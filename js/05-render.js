@@ -102,6 +102,11 @@ function renderDashboard(pendientesRaw,entregasMesParsed){
   });
   window._serviceCriticosList=_criticosList;
   try{ renderServiceTab(); }catch(e){ console.warn('[INGECO] service tab:',e); }
+  try{
+    const _cb=document.getElementById('combBadge');
+    if(_cb)_cb.textContent=fmtInt(Object.values(window._combustiblePorEquipo||{}).reduce((s,e)=>s+((e.cargas||[]).length),0));
+    if(document.getElementById('tabCombustible')?.classList.contains('active'))renderCombustibleTab();
+  }catch(e){ console.warn('[INGECO] combustible tab:',e); }
 
   const serviceClass=serviceCritico>0?'red':(serviceAmber>0?'amber':'green');
   const serviceSub=serviceConDatos>0

@@ -13,7 +13,7 @@
 // v3: bump para forzar invalidación del app.js viejo cacheado en HTTP cache del
 // browser de clientes ya instalados. El JS vigente calcula horas en taller sumando
 // todo PANEL_TRABAJOS (no solo 2026 como hacía una versión anterior).
-const CACHE_VERSION = 'v59';
+const CACHE_VERSION = 'v60';
 const SHELL_CACHE   = `ingecov-shell-${CACHE_VERSION}`;
 const CDN_CACHE     = `ingecov-cdn-${CACHE_VERSION}`;
 
@@ -35,6 +35,7 @@ const SHELL_ASSETS = [
   './js/07-auditoria.js',
   './js/08-bootstrap.js',
   './js/09-bot.js',
+  './js/10-combustible.js',
   './fonts/fonts.css',
   './fonts/ibm-plex-sans-latin.woff2',
   './fonts/jetbrains-mono-latin.woff2',

@@ -33,6 +33,7 @@ function setTab(id,t){
   // 0px; al mostrar telemetría hay que reajustarlo.
   if(id==='tabTelemetria'&&_chartComboFlota){try{_chartComboFlota.resize();}catch(_){}}
   if(id==='tabReemplazo'){ renderReemplazo(); }
+  if(id==='tabCombustible'){ try{ renderCombustibleTab(); }catch(e){ console.warn('[INGECO] combustible tab:',e); } }
   if(id==='tabConsulta'){ try{ _renderConsultaRecientes(); }catch(_){} }
 }
 
