@@ -986,6 +986,16 @@ function procesarProgramaService(frecRows,trimRows){
 // última carga de combustible por ser "más fresca", pero los typos de carga
 // (dígitos comidos, códigos cruzados) contaminaban la operatividad — decisión
 // jul-2026: una sola fuente curada, la del encargado de mantenimiento.
+
+// Unidad del service según FRECUENCIA (regla compartida con alertas.js):
+// "S/H …" → días (calendario) · ≥1000 → km · resto → hr.
+function unidadService(frecuencia){
+  const f=String(frecuencia||'').trim();
+  if(/s\/?h/i.test(f))return 'días';
+  const n=parseFloat(f.replace(/\./g,'').replace(',','.'));
+  if(isFinite(n)&&n>=1000)return 'km';
+  return 'hr';
+}
 function operatividadEquipo(codN){
   const SD={nivel:'sin-datos',color:'var(--text3)',label:'Sin datos',
             restantes:null,hrActual:null,hrProximo:null,fuente:'',frecuencia:''};
@@ -1006,11 +1016,19 @@ function operatividadEquipo(codN){
     return isFinite(n)?n:null;
   };
   const hrProximo=numHr(sp.estHrKm);
-  const restantes=numHr(sp.operatividad);  // columna OPERATIVIDAD = hr/km restantes (ya calculado)
+  const restantes=numHr(sp.operatividad);  // columna OPERATIVIDAD = hr/km/días restantes (ya calculado)
   let hrActual=numHr(sp.hrActual);
   if(hrActual==null)hrActual=numHr(sp.ultHrKm);
   const fuente='resumen de service';
-  return{nivel,color,label,restantes,hrActual,hrProximo,fuente,frecuencia:sp.frecuencia};
+  // Unidad del service: misma regla que alertas.js del backend. "S/H (120 días)"
+  // = equipo sin horómetro con service por CALENDARIO: actual y próximo son
+  // FECHAS y "restantes" son días. Antes se descartaban las fechas (numHr) y
+  // el modal mostraba "—" con un número suelto que parecía horas.
+  const unidad=unidadService(sp.frecuencia);
+  const esFecha=v=>/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(String(v||'').trim());
+  const actualTxt = unidad==='días' ? (esFecha(sp.hrActual)?String(sp.hrActual).trim():'') : (hrActual!=null?fmtInt(hrActual)+' '+unidad:'');
+  const proximoTxt= unidad==='días' ? (esFecha(sp.estHrKm)?String(sp.estHrKm).trim():'') : (hrProximo!=null?fmtInt(hrProximo)+' '+unidad:'');
+  return{nivel,color,label,restantes,hrActual,hrProximo,fuente,frecuencia:sp.frecuencia,unidad,actualTxt,proximoTxt};
 }
 
 /* ═══════════════════════════════════════════════════════

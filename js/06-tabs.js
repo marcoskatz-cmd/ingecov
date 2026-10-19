@@ -650,12 +650,13 @@ function openServiceCriticoModal(){
   }else{
     setHTML(wrap, list.map(c=>{
       const restCls = (c.restantes!=null && c.restantes>0) ? ' amber' : '';
+      const _u = c.unidad ? ' '+c.unidad : '';
       const restStr = c.restantes==null ? '—'
-        : c.restantes<=0 ? `−${fmtInt(Math.abs(c.restantes))}`
-        : fmtInt(c.restantes);
+        : c.restantes<=0 ? `−${fmtInt(Math.abs(c.restantes))}${_u}`
+        : fmtInt(c.restantes)+_u;
       const restLbl = c.restantes==null ? 'sin estimado'
-        : c.restantes<=0 ? 'pasado'
-        : 'restantes';
+        : c.restantes<=0 ? 'vencido hace'
+        : 'faltan';
       return html`<div class="sv-row" data-action="_irAEquipoDesdeKpi" data-arg="${c.codigo}" title="Abrir detalle del equipo">
         <div class="sv-cod">${c.codigo}</div>
         <div class="sv-nom">${c.nombre||'—'}</div>
@@ -838,8 +839,9 @@ function renderServiceTab(){
       nombre: info.equipo||sp[codN].descripcion||'',
       nivel: op.nivel, label: estadoTxt||op.label,
       hrActual: op.hrActual, hrProximo: op.hrProximo, restantes: op.restantes,
+      actualTxt: op.actualTxt, proximoTxt: op.proximoTxt,
       frecuencia: op.frecuencia||sp[codN].frecuencia||'',
-      unidad: unidadDeEquipo(codigo),
+      unidad: op.unidad||unidadDeEquipo(codigo),
       ultFecha: sp[codN].ultFecha||'',
     };
   });
@@ -860,15 +862,15 @@ function renderServiceTab(){
     <div class="svc-num">restantes</div><div class="svc-num">frec.</div><div class="svc-num">últ. service</div>
   </div>`;
   const body=rows.map(r=>{
-    const rest=r.restantes==null?'—':r.restantes<=0?'−'+fmtInt(Math.abs(r.restantes)):'+'+fmtInt(r.restantes);
+    const rest=r.restantes==null?'—':(r.restantes<=0?'−'+fmtInt(Math.abs(r.restantes)):'+'+fmtInt(r.restantes))+' '+r.unidad;
     const restCls=r.restantes==null?'':r.restantes<=0?' red':' amber';
     const rowCls=r.nivel==='sin-datos'?' svc-dim':'';
     return html`<div class="svc-row${new RawHTML(rowCls)}" data-action="_irAEquipoDesdeKpi" data-arg="${r.codigo}" title="Abrir detalle del equipo">
       <div class="svc-cod">${r.codigo}</div>
       <div class="svc-nom" title="${r.nombre}">${r.nombre||'—'}</div>
       <div><span class="svc-badge ${new RawHTML(badgeCls(r.nivel))}">${r.label||'sin datos'}</span></div>
-      <div class="svc-num">${fmtU(r.hrActual,r.unidad)}</div>
-      <div class="svc-num">${fmtU(r.hrProximo,r.unidad)}</div>
+      <div class="svc-num">${r.actualTxt||'—'}</div>
+      <div class="svc-num">${r.proximoTxt||'—'}</div>
       <div class="svc-num svc-rest2${new RawHTML(restCls)}">${rest}</div>
       <div class="svc-num">${r.frecuencia||'—'}</div>
       <div class="svc-num">${r.ultFecha||'—'}</div>
