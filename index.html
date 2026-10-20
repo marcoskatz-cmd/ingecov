@@ -18,7 +18,7 @@
   · frame-ancestors no se setea via meta; el script tiene un frame-buster que
     redirige top a la URL real si alguien intenta embedearnos en un iframe.
 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self' https://docs.google.com https://script.google.com https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'self'; form-action 'none'; object-src 'none'; require-trusted-types-for 'script'; trusted-types ingecov-html ingecov-sw;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self'; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self' https://docs.google.com https://script.google.com https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'self'; form-action 'none'; object-src 'none'; require-trusted-types-for 'script'; trusted-types ingecov-html ingecov-sw default;">
 <title>Panel de Mantenimiento — INGECO</title>
 <!-- PWA: instalable como app en PC y celular. El manifest describe nombre,
      icono y modo standalone; el service worker (registrado en init.js) da el
@@ -35,6 +35,10 @@
 <!-- Fonts self-hosted (latin subset, variable woff2). Eliminado el third-party
      a fonts.googleapis.com/gstatic.com: CSP más simple + sin beacons a Google. -->
 <link rel="stylesheet" href="./fonts/fonts.css">
+<!-- Leaflet (mapa de la tarja) con SRI, desde el mismo CDN que Chart.js -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
+      integrity="sha384-c6Rcwz4e4CITMbu/NBmnNS8yN2sC3cUElMEMfP3vqqKFp7GOYaaBBCqmaWBjmkjb"
+      crossorigin="anonymous" referrerpolicy="no-referrer">
 <!-- Chart.js con SRI: si el CDN se compromete y altera el archivo, el browser rechaza ejecutarlo -->
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"
@@ -50,16 +54,22 @@
      arranca el PIN gate. No reordenar ni pasar a type=module sin revisar
      ACTIONS. Bump del ?v= al cambiar cualquiera de ellos, para clientes con
      HTTP cache (el SW solo invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/01-core.js?v=92" defer></script>
-<script src="./js/02-datos.js?v=92" defer></script>
-<script src="./js/03-ui.js?v=92" defer></script>
-<script src="./js/04-carga.js?v=92" defer></script>
-<script src="./js/05-render.js?v=92" defer></script>
-<script src="./js/06-tabs.js?v=92" defer></script>
-<script src="./js/07-auditoria.js?v=92" defer></script>
-<script src="./js/08-bootstrap.js?v=92" defer></script>
-<script src="./js/09-bot.js?v=92" defer></script>
-<script src="./js/10-combustible.js?v=92" defer></script>
+<script src="./js/01-core.js?v=93" defer></script>
+<script src="./js/02-datos.js?v=93" defer></script>
+<script src="./js/03-ui.js?v=93" defer></script>
+<script src="./js/04-carga.js?v=93" defer></script>
+<script src="./js/05-render.js?v=93" defer></script>
+<script src="./js/06-tabs.js?v=93" defer></script>
+<script src="./js/07-auditoria.js?v=93" defer></script>
+<script src="./js/08-bootstrap.js?v=93" defer></script>
+<script src="./js/09-bot.js?v=93" defer></script>
+<script src="./js/10-combustible.js?v=93" defer></script>
+<!-- Tarja diaria: Trusted Types para Leaflet (antes que leaflet.js), Leaflet con SRI y el módulo -->
+<script src="./js/00-tt-leaflet.js?v=93" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
+        integrity="sha384-NElt3Op+9NBMCYaef5HxeJmU4Xeard/Lku8ek6hoPTvYkQPh3zLIrJP7KiRocsxO"
+        crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
+<script src="./js/11-tarjas.js?v=93" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -1920,6 +1930,13 @@
     .resumen-head .section-label{font-size:16px;}
     .kpi-mes-strip{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none;}
   }
+
+  /* mapa de la tarja */
+  .mapa-leyenda{display:flex;gap:14px;font-size:12px;color:var(--text2);flex-wrap:wrap}
+  .mapa-leyenda span{display:inline-flex;align-items:center;gap:6px}
+  .mapa-punto{display:inline-block;width:11px;height:11px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+  .mapa-pin-wrap{background:transparent;border:0}
+  .mapa-pin{display:flex;align-items:center;gap:5px;background:#fff;border-radius:999px;padding:2px 8px 2px 4px;font-weight:800;font-size:12px;color:#14212c;box-shadow:0 1px 4px rgba(0,0,0,.35);white-space:nowrap;font-family:'Barlow',sans-serif}
 </style>
 
 </head>
@@ -2036,6 +2053,7 @@
     <div class="tab-bar" id="tabBar">
       <button class="tab-btn active" data-action="setTab" data-arg="tabTelemetria">telemetría de flota<span class="tab-badge" id="telemetriaBadge">—</span></button>
       <button class="tab-btn" data-action="setTab" data-arg="tabEquipos">equipos<span class="tab-badge" id="equipoCount">—</span></button>
+      <button class="tab-btn" data-action="setTab" data-arg="tabMapa">mapa</button>
       <!-- "Consultar equipo" apagado a pedido de Marcos (19-oct-2026). El panel
            #tabConsulta y su lógica en 06-tabs.js siguen intactos: para revivirlo
            basta con sacar el atributo hidden de este botón. -->
@@ -2190,6 +2208,24 @@
         <div class="telemetria-card" style="margin-top:12px">
           <div class="telemetria-card-title">parámetros del cálculo</div>
           <div id="costosParams" style="font-size:12px;color:var(--text2);line-height:1.7;padding:6px 2px">cargando…</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tabMapa">
+      <div class="section-content">
+        <div class="telemetria-card">
+          <div class="combo-header">
+            <div class="telemetria-card-title">dónde está cada equipo — según la tarja diaria</div>
+            <div class="mapa-leyenda">
+              <span><i class="mapa-punto" style="background:#0f766e"></i> hoy</span>
+              <span><i class="mapa-punto" style="background:#1e3a8a"></i> esta semana</span>
+              <span><i class="mapa-punto" style="background:#b45309"></i> más antiguo</span>
+            </div>
+          </div>
+          <div id="mapaFlota" style="height:68vh;min-height:360px;border-radius:12px;margin-top:10px"></div>
+          <div id="mapaEstado" style="font-size:12px;color:var(--text3);margin-top:8px"></div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">Mapa © colaboradores de OpenStreetMap · Leaflet</div>
         </div>
       </div>
     </div>

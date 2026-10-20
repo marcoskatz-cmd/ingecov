@@ -35,6 +35,7 @@ function setTab(id,t){
   if(id==='tabReemplazo'){ renderReemplazo(); }
   if(id==='tabCombustible'){ try{ renderCombustibleTab(); }catch(e){ console.warn('[INGECO] combustible tab:',e); } }
   if(id==='tabConsulta'){ try{ _renderConsultaRecientes(); }catch(_){} }
+  if(id==='tabMapa'){ try{ renderMapaTab(); }catch(e){ console.warn('[INGECO] mapa:',e); } }
 }
 
 function toggleEqSec(uid){
