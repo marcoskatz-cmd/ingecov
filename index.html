@@ -53,31 +53,30 @@
         integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG"
         crossorigin="anonymous"
         referrerpolicy="no-referrer"></script>
-<!-- init.js: setea el tema en <html> ANTES del paint para evitar FOUC.
-     Sin defer a propósito. -->
-<script src="./js/init.js?v=51"></script>
+<!-- init.js: limpia la preferencia vieja de tema y registra el SW. Sin defer a propósito. -->
+<script src="./js/init.js?v=52"></script>
 <!-- La app: 8 scripts CLÁSICOS que comparten el mismo scope global y corren
      EN ESTE ORDEN (defer respeta el orden del documento). El orden importa:
      core define el templating y la config, bootstrap registra ACTIONS y
      arranca el PIN gate. No reordenar ni pasar a type=module sin revisar
      ACTIONS. Bump del ?v= al cambiar cualquiera de ellos, para clientes con
      HTTP cache (el SW solo invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/01-core.js?v=93" defer></script>
-<script src="./js/02-datos.js?v=93" defer></script>
-<script src="./js/03-ui.js?v=93" defer></script>
-<script src="./js/04-carga.js?v=93" defer></script>
-<script src="./js/05-render.js?v=93" defer></script>
-<script src="./js/06-tabs.js?v=93" defer></script>
-<script src="./js/07-auditoria.js?v=93" defer></script>
-<script src="./js/08-bootstrap.js?v=93" defer></script>
-<script src="./js/09-bot.js?v=93" defer></script>
-<script src="./js/10-combustible.js?v=93" defer></script>
+<script src="./js/01-core.js?v=94" defer></script>
+<script src="./js/02-datos.js?v=94" defer></script>
+<script src="./js/03-ui.js?v=94" defer></script>
+<script src="./js/04-carga.js?v=94" defer></script>
+<script src="./js/05-render.js?v=94" defer></script>
+<script src="./js/06-tabs.js?v=94" defer></script>
+<script src="./js/07-auditoria.js?v=94" defer></script>
+<script src="./js/08-bootstrap.js?v=94" defer></script>
+<script src="./js/09-bot.js?v=94" defer></script>
+<script src="./js/10-combustible.js?v=94" defer></script>
 <!-- Tarja diaria: Trusted Types para Leaflet (antes que leaflet.js), Leaflet con SRI y el módulo -->
-<script src="./js/00-tt-leaflet.js?v=93" defer></script>
+<script src="./js/00-tt-leaflet.js?v=94" defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
         integrity="sha384-NElt3Op+9NBMCYaef5HxeJmU4Xeard/Lku8ek6hoPTvYkQPh3zLIrJP7KiRocsxO"
         crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
-<script src="./js/11-tarjas.js?v=93" defer></script>
+<script src="./js/11-tarjas.js?v=94" defer></script>
 <style>
   /* ═══════════════════════════════════════════════════════════════
      INGECO · Panel técnico de mantenimiento de flota
@@ -686,11 +685,11 @@
   .hr-split-bar{display:flex;height:5px;margin-bottom:6px;overflow:hidden;background:var(--bg3);}
   .hr-split-bar span{display:block;height:100%;}
   .hr-split-bar span.corr{background:var(--red);}
-  .hr-split-bar span.prev{background:var(--corp);}
+  .hr-split-bar span.prev{background:var(--teal);}
   .hr-split-leg{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--text3);line-height:1.5;}
   .hr-split-leg i{width:7px;height:7px;flex-shrink:0;display:inline-block;}
   .hr-split-leg i.corr{background:var(--red);}
-  .hr-split-leg i.prev{background:var(--corp);}
+  .hr-split-leg i.prev{background:var(--teal);}
 
   /* Selector de mes dentro del KPI de combustible */
   .kpi-mes-sel{
@@ -1194,8 +1193,8 @@
   .combo-swatch{
     width:14px;height:14px;display:inline-block;
   }
-  .combo-swatch.costo{background:var(--amber);}
-  .combo-swatch.combustible{background:var(--blue);}
+  .combo-swatch.costo{background:var(--g3);}
+  .combo-swatch.combustible{background:var(--g1);}
   .combo-swatch.horas,
   .combo-swatch.corr,
   .combo-swatch.prev{
@@ -1207,18 +1206,18 @@
   .combo-swatch.prev::after{
     content:'';position:absolute;inset:0;background:var(--corp);
   }
-  .combo-swatch.corr::after{background:var(--red);}
-  .combo-swatch.prev::after{background:var(--corp);}
+  .combo-swatch.corr::after{background:var(--g4);}
+  .combo-swatch.prev::after{background:var(--g2);}
   .combo-totals{
     font-family:var(--display);font-variant-numeric:tabular-nums;font-size:10.5px;
     color:var(--text3);letter-spacing:.08em;margin-bottom:18px;
     text-transform:uppercase;
   }
   .combo-totals .v-costo{color:var(--amber);font-weight:700;}
-  .combo-totals .v-combustible{color:var(--blue);font-weight:700;}
+  .combo-totals .v-combustible{color:var(--azul);font-weight:700;}
   .combo-totals .v-horas{color:var(--corp);font-weight:700;}
   .combo-totals .v-corr{color:var(--red);font-weight:700;}
-  .combo-totals .v-prev{color:var(--corp);font-weight:700;}
+  .combo-totals .v-prev{color:var(--teal);font-weight:700;}
   .combo-totals .sep{opacity:.4;margin:0 10px;}
   .combo-chart-wrap{position:relative;height:300px;}
   @media(max-width:600px){.combo-chart-wrap{height:240px;}}
@@ -1975,12 +1974,18 @@
   .stat-chip.alert i{background:var(--ambar);} .stat-chip.alert b{color:var(--ambar-texto);}
   .stat-chip.crit i{background:var(--alerta);} .stat-chip.crit b{color:var(--alerta);}
   @media (max-width:768px){
-    .header-top{padding:4px 10px 4px 4px;gap:8px;}
-    .logo-sub{font-size:1.05rem;}
+    .header-top{padding:4px 10px 4px 12px;gap:8px;}
+    html[data-ig-contexto="pestana"] .header-top{padding-left:2px;}
+    .logo-sub{font-size:1.1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .logo,.logo-text{min-width:0;}
     .logo-sub-small{display:none;}
     .refresh-btn{padding:0 12px;}
   }
   @media (max-width:420px){ .refresh-btn .rb-txt{display:none;} .logo-divider{display:none;} }
+
+  /* El selector de período no ensancha la página en el celular (el strip de meses scrollea solo) */
+  .resumen-head .kpi-range-bar{min-width:0;max-width:100%;}
+  .kpi-mes-strip{min-width:0;}
 
   /* Títulos de sección */
   .section-label{font-family:var(--display);color:var(--tinta);font-weight:600;}

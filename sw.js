@@ -13,7 +13,7 @@
 // v3: bump para forzar invalidación del app.js viejo cacheado en HTTP cache del
 // browser de clientes ya instalados. El JS vigente calcula horas en taller sumando
 // todo PANEL_TRABAJOS (no solo 2026 como hacía una versión anterior).
-const CACHE_VERSION = 'v69';
+const CACHE_VERSION = 'v70';
 const SHELL_CACHE   = `ingecov-shell-${CACHE_VERSION}`;
 const CDN_CACHE     = `ingecov-cdn-${CACHE_VERSION}`;
 
@@ -52,6 +52,7 @@ const SHELL_ASSETS = [
   './icon.svg',
   './apple-touch-icon.png',
   './favicon-32.png',
+  './img/logo-ingeco.png',
 ];
 
 self.addEventListener('install', (event) => {
@@ -79,6 +80,24 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
+const COMUN = 'https://marcoskatz-cmd.github.io/app-ingeco/ingeco.';
+async function comunRedPrimero(req) {
+  const cache = await caches.open(SHELL_CACHE);
+  try {
+    const r = await fetch(req);
+    // <link>/<script> sin crossorigin → respuesta opaca: también se guarda.
+    if (r && (r.ok || r.type === 'opaque')) {
+      const copia = r.clone();
+      cache.put(req, copia).catch(()=>{});
+    }
+    return r;
+  } catch (err) {
+    const cached = await cache.match(req);
+    if (cached) return cached;
+    throw err;
+  }
+}
+
 function isGvizRequest(url) {
   return url.hostname === 'docs.google.com' && url.pathname.includes('/gviz/');
 }
@@ -97,6 +116,13 @@ self.addEventListener('fetch', (event) => {
   // CDN: cache-first.
   if (isCDNRequest(url)) {
     event.respondWith(cacheFirst(req, CDN_CACHE));
+    return;
+  }
+
+  // Estilo común de la App INGECO (ingeco.css / ingeco.js): red primero,
+  // caché solo sin señal. Así un cambio de la App llega en la próxima visita.
+  if (req.url.startsWith(COMUN)) {
+    event.respondWith(comunRedPrimero(req));
     return;
   }
 

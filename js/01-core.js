@@ -72,7 +72,7 @@ function showErrorToast(msg) {
       document.body.appendChild(stack);
     }
     const toast = document.createElement('div');
-    toast.style.cssText = 'background:#2a1414;border:1px solid #6b1a1a;color:#ffb4b4;padding:10px 12px;border-radius:6px;font:12px/1.4 IBM Plex Sans,system-ui,sans-serif;box-shadow:0 4px 12px rgba(0,0,0,.4);cursor:pointer;pointer-events:auto;word-break:break-word';
+    toast.style.cssText = 'background:var(--alerta);border:1px solid var(--alerta);color:#fff;padding:10px 12px;border-radius:var(--radio-s);font:13px/1.4 var(--cuerpo);box-shadow:0 4px 12px rgba(0,0,0,.4);cursor:pointer;pointer-events:auto;word-break:break-word';
     toast.textContent = String(msg || 'Error');
     toast.title = 'Click para copiar';
     toast.addEventListener('click', () => {

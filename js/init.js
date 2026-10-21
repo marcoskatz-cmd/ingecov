@@ -4,15 +4,8 @@
     // Tema único claro (oct-2026). Se pisa cualquier preferencia guardada del
     // viejo modo oscuro.
     localStorage.removeItem('ingecov-theme');
-    document.documentElement.setAttribute('data-theme', 'light');
-  }catch(_){ document.documentElement.setAttribute('data-theme','light'); }
+  }catch(_){}
 })();
-function toggleTheme(){
-  const cur = document.documentElement.getAttribute('data-theme') || 'dark';
-  const nxt = cur === 'dark' ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', nxt);
-  try{ localStorage.setItem('ingecov-theme', nxt); }catch(_){}
-}
 
 // PWA: registrar el service worker habilita "instalar app" en PC y celular y
 // cachea el app-shell para uso offline. sw.js está en la raíz del scope

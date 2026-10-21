@@ -222,8 +222,8 @@ function _costoBreakdownHTML(codN, cfg, yms){
   const total=repTotal+moTotal+(opTotal||0);
 
   const secStyle='background:var(--bg3);border:1px solid var(--border);margin-bottom:10px';
-  const headStyle='padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg2);font-family:\'JetBrains Mono\',monospace;font-size:11px;font-weight:600;letter-spacing:.04em';
-  const formulaStyle='padding:8px 12px;font-family:\'IBM Plex Mono\',monospace;font-size:12px;color:var(--text)';
+  const headStyle='padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg2);font-family:var(--display);font-variant-numeric:tabular-nums;font-size:11px;font-weight:600;letter-spacing:.04em';
+  const formulaStyle='padding:8px 12px;font-family:var(--display);font-variant-numeric:tabular-nums;font-size:12px;color:var(--text)';
   const noteStyle='padding:0 12px 8px;font-size:11px;color:var(--text3);line-height:1.5';
   const liWrap='max-height:190px;overflow:auto;border-top:1px solid var(--border)';
   const liRow='display:grid;grid-template-columns:70px 1fr auto;gap:10px;padding:5px 12px;border-bottom:1px solid var(--border);font-size:11.5px;align-items:baseline';
@@ -248,7 +248,7 @@ function _costoBreakdownHTML(codN, cfg, yms){
 
   return html`
   <div style="margin-bottom:14px">
-    <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text2);margin-bottom:10px;letter-spacing:.03em">
+    <div style="font-family:var(--display);font-variant-numeric:tabular-nums;font-size:11px;color:var(--text2);margin-bottom:10px;letter-spacing:.03em">
       CÓMO SE CALCULA · ${periodo} · ${String(nMeses)} ${nMeses===1?'mes':'meses'} · todos los importes en ARS
     </div>
 
@@ -259,7 +259,7 @@ function _costoBreakdownHTML(codN, cfg, yms){
     </div>
 
     <div style="${new RawHTML(secStyle)}">
-      <div style="${new RawHTML(headStyle)};color:var(--corp,#5d80e8)">② MANO DE OBRA · ${new RawHTML(fARS(moTotal))}</div>
+      <div style="${new RawHTML(headStyle)};color:var(--azul)">② MANO DE OBRA · ${new RawHTML(fARS(moTotal))}</div>
       <div style="${new RawHTML(formulaStyle)}">${new RawHTML(fHs(hsTotal))} hs correctivas × ${new RawHTML(fARS(cfg.moArsH))}/h = <b>${new RawHTML(fARS(moTotal))}</b></div>
       <div style="${new RawHTML(noteStyle)}">Horas de TIEMPO TRABAJO de las reparaciones (mismas que alimentan la oportunidad). Tarifa editable en el sheet COSTOS DOWNTIME.</div>
       <div style="${new RawHTML(liWrap)}">${moItems}</div>
@@ -273,7 +273,7 @@ function _costoBreakdownHTML(codN, cfg, yms){
         : html`<div style="${new RawHTML(noteStyle)};padding-top:8px;color:var(--amber)">Sin alquiler cargado para este equipo en la pestaña ALQUILERES → no se computa. Cargá su alquiler mensual (USD) para incluir el lucro cesante.</div>`}
     </div>
 
-    <div style="background:var(--bg2);border:1px solid var(--border);padding:10px 12px;font-family:'IBM Plex Mono',monospace;font-size:12px">
+    <div style="background:var(--bg2);border:1px solid var(--border);padding:10px 12px;font-family:var(--display);font-variant-numeric:tabular-nums;font-size:12px">
       <span style="color:var(--text3)">TOTAL ${periodo} =</span>
       ${new RawHTML(fARS(repTotal))} <span style="color:var(--text3)">+</span> ${new RawHTML(fARS(moTotal))} <span style="color:var(--text3)">+</span> ${opTotal!=null?new RawHTML(fARS(opTotal)):'0'}
       <span style="color:var(--text3)">=</span> <b style="color:var(--amber)">${new RawHTML(fARS(total))}</b>
@@ -321,13 +321,13 @@ function toggleCostoEquipo(codN){
   if(chev)chev.textContent='▾';
   _costoChartCod=codN;
 
-  const AMBER=_cssVar('--amber','#ffa030');
-  const CORP =_cssVar('--corp','#5d80e8');
-  const RED  =_cssVar('--red','#e5484d');
-  const GRID =_cssVar('--chart-grid','#1a2030');
-  const TEXT2=_cssVar('--text2','#aab3c8');
-  const TOOLTIP_BG=_cssVar('--chart-tooltip-bg','#0d1019');
-  const TOOLTIP_FG=_cssVar('--chart-tooltip-fg','#f1f4fb');
+  // Paleta común: repuestos ámbar · mano de obra azul · oportunidad naranja oscuro
+  const [G_AZUL,,G_AMBAR,G_ALERTA]=_igPaleta();
+  const AMBER=G_AMBAR, CORP=G_AZUL, RED=G_ALERTA;
+  const GRID =_igColor('linea');
+  const TEXT2=_igColor('texto-2');
+  const TOOLTIP_BG=_igColor('tinta');
+  const TOOLTIP_FG='#ffffff';
   const mkDs=(label,data,color)=>({type:'bar',label,data,backgroundColor:color+'cc',borderColor:color,borderWidth:1,maxBarThickness:44,stack:'usd'});
   _costoChartEq=new Chart(canvas.getContext('2d'),{
     type:'bar',
@@ -340,11 +340,11 @@ function toggleCostoEquipo(codN){
       responsive:true,maintainAspectRatio:false,
       interaction:{mode:'index',intersect:false},
       plugins:{
-        legend:{display:true,position:'top',labels:{color:TEXT2,font:{size:10,family:'JetBrains Mono'},boxWidth:10}},
+        legend:{display:true,position:'top',labels:{color:TEXT2,font:{size:10,family:'Barlow Semi Condensed'},boxWidth:10}},
         tooltip:{
           backgroundColor:TOOLTIP_BG,titleColor:TOOLTIP_FG,bodyColor:TOOLTIP_FG,
           padding:12,borderColor:GRID,borderWidth:1,
-          titleFont:{family:'JetBrains Mono',size:11,weight:'600'},
+          titleFont:{family:'Barlow Semi Condensed',size:11,weight:'600'},
           bodyFont:{family:'Barlow',size:12},bodySpacing:6,
           callbacks:{
             label:c=>`  ${c.dataset.label}: ${_fmtARS(c.raw)}`,
@@ -353,9 +353,9 @@ function toggleCostoEquipo(codN){
         }
       },
       scales:{
-        x:{stacked:true,ticks:{color:TEXT2,font:{size:11,family:'JetBrains Mono',weight:'500'}},grid:{display:false},border:{color:GRID}},
+        x:{stacked:true,ticks:{color:TEXT2,font:{size:11,family:'Barlow Semi Condensed',weight:'500'}},grid:{display:false},border:{color:GRID}},
         y:{stacked:true,beginAtZero:true,
-          ticks:{color:TEXT2,font:{size:10,family:'JetBrains Mono'},callback:v=>formatMoney(v)},
+          ticks:{color:TEXT2,font:{size:10,family:'Barlow Semi Condensed'},callback:v=>formatMoney(v)},
           grid:{color:GRID,drawTicks:false},border:{display:false}},
       }
     }
@@ -397,11 +397,11 @@ function _renderAutoCD(){
 // ═══════════════════════════════════════════════════════════════════
 window.diag=function(codigo){
   const cn=normCod(codigo||'');
-  console.log('%c═══ diag("'+codigo+'") · normalizado: '+cn+' ═══','color:#3b82f6;font-weight:bold');
+  console.log('%c═══ diag("'+codigo+'") · normalizado: '+cn+' ═══','color:#1e3a8a;font-weight:bold');
 
   // 1) Hoja ENTREGADOS
   const pedEnt=window._pedidosEntregados||[];
-  console.log('%c[1] _pedidosEntregados — '+pedEnt.length+' filas totales','color:#10b981;font-weight:bold');
+  console.log('%c[1] _pedidosEntregados — '+pedEnt.length+' filas totales','color:#0e8a7a;font-weight:bold');
   if(pedEnt.length){
     console.log('    Keys (nombres de columna reales):',Object.keys(pedEnt[0]));
     console.log('    Primer objeto completo:',pedEnt[0]);
@@ -412,7 +412,7 @@ window.diag=function(codigo){
 
   // 2) Hoja PENDIENTES
   const pedAll=window._pedidosAll||[];
-  console.log('%c[2] _pedidosAll (pendientes) — '+pedAll.length+' filas','color:#10b981;font-weight:bold');
+  console.log('%c[2] _pedidosAll (pendientes) — '+pedAll.length+' filas','color:#0e8a7a;font-weight:bold');
   if(pedAll.length){
     console.log('    Keys del primer objeto:',Object.keys(pedAll[0]));
     console.log('    Primer objeto:',pedAll[0]);
@@ -423,7 +423,7 @@ window.diag=function(codigo){
 
   // 3) Costos por mes (de hojas MESES_ENTREGAS)
   const cpm=window._costosPorMes||{};
-  console.log('%c[3] _costosPorMes para "'+cn+'"','color:#f59e0b;font-weight:bold');
+  console.log('%c[3] _costosPorMes para "'+cn+'"','color:#8a5a00;font-weight:bold');
   let total=0;
   for(const ym of Object.keys(cpm).sort()){
     const v=(cpm[ym]||{})[cn]||0;
@@ -434,25 +434,25 @@ window.diag=function(codigo){
 
   // 4) Items detallados (de hojas mensuales)
   const ipe=window._itemsPorEntrega||{};
-  console.log('%c[4] _itemsPorEntrega — '+Object.keys(ipe).length+' N° entrega con items detallados','color:#f59e0b;font-weight:bold');
+  console.log('%c[4] _itemsPorEntrega — '+Object.keys(ipe).length+' N° entrega con items detallados','color:#8a5a00;font-weight:bold');
   const sample=Object.keys(ipe).slice(0,3);
   for(const k of sample){console.log('    Entrega "'+k+'":',ipe[k]);}
 
   // 5) Costos por entrega
   const ec=window._entregaCostos||{};
-  console.log('%c[5] _entregaCostos — '+Object.keys(ec).length+' entregas con costo registrado','color:#f59e0b;font-weight:bold');
+  console.log('%c[5] _entregaCostos — '+Object.keys(ec).length+' entregas con costo registrado','color:#8a5a00;font-weight:bold');
   const sampleEc=Object.keys(ec).slice(0,3);
   for(const k of sampleEc){console.log('    Entrega "'+k+'":',ec[k]);}
 
   // 6) Entregas por equipo (PANEL_REPUESTOS)
   const epe=(window._entregasPorEquipo||{})[cn]||[];
-  console.log('%c[6] _entregasPorEquipo["'+cn+'"] — '+epe.length+' filas (de PANEL_REPUESTOS)','color:#8b5cf6;font-weight:bold');
+  console.log('%c[6] _entregasPorEquipo["'+cn+'"] — '+epe.length+' filas (de PANEL_REPUESTOS)','color:#6d4ab1;font-weight:bold');
   epe.slice(0,5).forEach((e,i)=>console.log('    ['+i+']:',e));
 
   // 7) Lookup N° PEDIDO → fecha (para calcular demora cruzando ENTREGADOS con PENDIENTES)
   const fpn=window._fechaPedidoByNro||{};
   const totalLookup=Object.keys(fpn).length;
-  console.log('%c[7] _fechaPedidoByNro — '+totalLookup+' N° pedido con fecha en PENDIENTES','color:#06b6d4;font-weight:bold');
+  console.log('%c[7] _fechaPedidoByNro — '+totalLookup+' N° pedido con fecha en PENDIENTES','color:#2b4fb3;font-weight:bold');
   // Para cada pedido entregado del equipo, ver si tiene match en el lookup
   if(pedEnt.length){
     const pickC=(o,c)=>{for(const k of c){if(o[k]!=null&&String(o[k]).trim()!=='')return String(o[k]).trim();}return'';};

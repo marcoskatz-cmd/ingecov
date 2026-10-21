@@ -15,7 +15,6 @@
 ═══════════════════════════════════════════════════════ */
 const ACTIONS = {
   setAutoRefresh:                () => setAutoRefresh(),
-  toggleTheme:                   () => toggleTheme(),
   loadAll:                       () => loadAll(),
   syncNow:                       () => syncNow(),
   toggleSection:                 (id) => toggleSection(id),

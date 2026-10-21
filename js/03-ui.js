@@ -15,6 +15,21 @@ const _cssVar=(name,fallback='#888')=>{
   const v=getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return v||fallback;
 };
+// Colores de gráficos y mapa = tokens del estilo común (ingeco.css) vía IG.color/IG.paleta.
+// Se leen DENTRO de cada función que arma el gráfico (ingeco.js es defer). Si ingeco.js no
+// cargó, se lee la misma variable del respaldo mínimo; si tampoco está, el valor del token.
+const _IG_RESPALDO={azul:'#1e3a8a','azul-claro':'#2b4fb3',teal:'#0e8a7a',ambar:'#d98f00','ambar-texto':'#8a5a00',
+  alerta:'#b8410e',tinta:'#0f1a3d',texto:'#171c2e','texto-2':'#5b6274','texto-3':'#8a90a0',linea:'#e2dfd7',fondo:'#f5f4f0'};
+const _igColor=(tok)=>{
+  let v='';
+  try{ if(window.IG&&IG.color) v=IG.color(tok); }catch(_){}
+  return v||_cssVar('--'+tok,_IG_RESPALDO[tok]||'#5b6274');
+};
+// [azul, teal, ámbar, naranja oscuro, violeta, gris]
+const _igPaleta=()=>{
+  try{ const p=window.IG&&IG.paleta&&IG.paleta(); if(p&&p.length===6&&p.every(Boolean)) return p; }catch(_){}
+  return ['#1e3a8a','#0e8a7a','#d98f00','#b8410e','#6d4ab1','#5b6274'];
+};
 /* ═══════════════════════════════════════════════════════
    UI — SECCIONES, FILTROS, VISTAS
 ═══════════════════════════════════════════════════════ */

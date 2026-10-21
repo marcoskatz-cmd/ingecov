@@ -310,7 +310,7 @@ async function toggleEquipoDetail(codigo,cardEl){
   document.getElementById('eqDetailTitle').textContent=nombre;
   setHTML(document.getElementById('eqDetailSub'), html`<span>${codigo}</span>${subTags}`);
   setHTML(document.getElementById('eqDetailBody'),
-    html`<div style="padding:2rem;text-align:center;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text3)">cargando historial...</div>`);
+    html`<div style="padding:2rem;text-align:center;font-family:var(--display);font-variant-numeric:tabular-nums;font-size:12px;color:var(--text3)">cargando historial...</div>`);
   panel.classList.add('open');
   setTimeout(()=>panel.scrollIntoView({behavior:'smooth',block:'nearest'}),60);
   _secCounter=0;
@@ -393,14 +393,14 @@ async function toggleEquipoDetail(codigo,cardEl){
   const tenInfo=(info?.tenencia==='propio'||info?.tenencia==='alquilado')?info:null;
   const tenColor=tenInfo?.tenencia==='propio'?'var(--green)':'var(--amber)';
   const tenLabelDet=tenInfo?(tenInfo.observacion||(tenInfo.tenencia==='propio'?'Propio':'Alquilado')):'';
-  const tenTag=tenInfo?`<span style="color:${tenColor};font-weight:600;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase">◆ ${tenLabelDet}</span>`:'';
+  const tenTag=tenInfo?`<span style="color:${tenColor};font-weight:600;font-family:var(--display);font-variant-numeric:tabular-nums;font-size:11px;letter-spacing:.08em;text-transform:uppercase">◆ ${tenLabelDet}</span>`:'';
   const infoBar=info?.estado?`
     <div style="display:flex;gap:14px;background:var(--bg3);border:1px solid var(--border);padding:9px 14px;margin-bottom:12px;font-size:12px;flex-wrap:wrap;align-items:center;border-left:3px solid ${ESTADO_CSS[est]}">
       <span style="font-weight:600;color:${ESTADO_CSS[est]}">${info.estado}</span>
       ${tenTag}
       ${info.ubicacion?`<span style="color:var(--text2)">📍 ${info.ubicacion}</span>`:''}
       ${info.operario?`<span style="color:var(--text2)">👤 ${info.operario}</span>`:''}
-      ${info.fecha?`<span style="color:var(--text3);font-size:11px;font-family:'IBM Plex Mono',monospace">act. ${info.fecha}</span>`:''}
+      ${info.fecha?`<span style="color:var(--text3);font-size:11px;font-family:var(--display);font-variant-numeric:tabular-nums">act. ${info.fecha}</span>`:''}
     </div>`:
     (tenInfo?`
     <div style="display:flex;gap:14px;background:var(--bg3);border:1px solid var(--border);padding:9px 14px;margin-bottom:12px;font-size:12px;flex-wrap:wrap;align-items:center">
@@ -430,24 +430,24 @@ async function toggleEquipoDetail(codigo,cardEl){
     <div style="background:var(--bg3);border:1px solid var(--border);border-left:3px solid ${estadoColor};margin-bottom:12px">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border);background:var(--bg2)">
         <div style="display:flex;align-items:center;gap:10px">
-          <span style="font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;color:${estadoColor};letter-spacing:.1em">● OPERATIVIDAD ${estadoLabel}</span>
-          ${restantesTxt?`<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text2)">${restantesTxt}</span>`:''}
+          <span style="font-family:var(--display);font-variant-numeric:tabular-nums;font-size:10px;font-weight:600;color:${estadoColor};letter-spacing:.1em">● OPERATIVIDAD ${estadoLabel}</span>
+          ${restantesTxt?`<span style="font-family:var(--display);font-variant-numeric:tabular-nums;font-size:11px;color:var(--text2)">${restantesTxt}</span>`:''}
         </div>
       </div>
       <div style="display:flex;flex-wrap:wrap">
         <div style="flex:1;min-width:140px;padding:10px 14px;border-right:1px solid var(--border)">
-          <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Última lectura hr/km</div>
-          <div style="font-size:15px;color:var(--blue);font-family:'IBM Plex Mono',monospace;font-weight:500">${typeof ultHr==='number'?fmtInt(ultHr):ultHr}</div>
-          <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text3);margin-top:2px">${ultFecha}${ultFuente?` <span style="color:var(--amber)">· ${ultFuente}</span>`:''}</div>
+          <div style="font-family:var(--display);font-variant-numeric:tabular-nums;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Última lectura hr/km</div>
+          <div style="font-size:15px;color:var(--blue);font-family:var(--display);font-variant-numeric:tabular-nums;font-weight:500">${typeof ultHr==='number'?fmtInt(ultHr):ultHr}</div>
+          <div style="font-family:var(--display);font-variant-numeric:tabular-nums;font-size:10px;color:var(--text3);margin-top:2px">${ultFecha}${ultFuente?` <span style="color:var(--amber)">· ${ultFuente}</span>`:''}</div>
         </div>
         <div style="flex:1;min-width:140px;padding:10px 14px;border-right:1px solid var(--border)">
-          <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Próximo service</div>
-          <div style="font-size:15px;color:${estadoColor};font-family:'IBM Plex Mono',monospace;font-weight:500">${typeof estHr==='number'?fmtInt(estHr):estHr}</div>
+          <div style="font-family:var(--display);font-variant-numeric:tabular-nums;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Próximo service</div>
+          <div style="font-size:15px;color:${estadoColor};font-family:var(--display);font-variant-numeric:tabular-nums;font-weight:500">${typeof estHr==='number'?fmtInt(estHr):estHr}</div>
         </div>
         <div style="flex:1;min-width:120px;padding:10px 14px">
-          <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Frecuencia</div>
-          <div style="font-size:15px;color:var(--text2);font-family:'IBM Plex Mono',monospace;font-weight:500">${frec}</div>
-          ${sp.patente?`<div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text3);margin-top:2px">${sp.patente}</div>`:''}
+          <div style="font-family:var(--display);font-variant-numeric:tabular-nums;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Frecuencia</div>
+          <div style="font-size:15px;color:var(--text2);font-family:var(--display);font-variant-numeric:tabular-nums;font-weight:500">${frec}</div>
+          ${sp.patente?`<div style="font-family:var(--display);font-variant-numeric:tabular-nums;font-size:10px;color:var(--text3);margin-top:2px">${sp.patente}</div>`:''}
         </div>
       </div>
     </div>`;
@@ -456,17 +456,17 @@ async function toggleEquipoDetail(codigo,cardEl){
     horHTML=`
     <div style="display:flex;background:var(--bg3);border:1px solid var(--border);margin-bottom:12px;overflow:hidden">
       <div style="flex:1;padding:10px 14px;border-right:1px solid var(--border)">
-        <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Horóm./Odóm. actual</div>
-        <div style="font-size:15px;color:var(--blue);font-family:'IBM Plex Mono',monospace;font-weight:500">${serviceRow.horActual}</div>
+        <div style="font-family:var(--display);font-variant-numeric:tabular-nums;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Horóm./Odóm. actual</div>
+        <div style="font-size:15px;color:var(--blue);font-family:var(--display);font-variant-numeric:tabular-nums;font-weight:500">${serviceRow.horActual}</div>
       </div>
       <div style="flex:1;padding:10px 14px;border-right:1px solid var(--border)">
-        <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Próximo service</div>
-        <div style="font-size:15px;color:var(--amber);font-family:'IBM Plex Mono',monospace;font-weight:500">${serviceRow.horProximo||'—'}</div>
+        <div style="font-family:var(--display);font-variant-numeric:tabular-nums;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Próximo service</div>
+        <div style="font-size:15px;color:var(--amber);font-family:var(--display);font-variant-numeric:tabular-nums;font-weight:500">${serviceRow.horProximo||'—'}</div>
       </div>
       <div style="padding:10px 14px;min-width:120px">
-        <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Último service</div>
+        <div style="font-family:var(--display);font-variant-numeric:tabular-nums;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Último service</div>
         <div style="font-size:12px;color:var(--text2)">${serviceRow.mes}</div>
-        ${serviceRow.serie?`<div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text3);margin-top:2px">${serviceRow.serie}</div>`:''}
+        ${serviceRow.serie?`<div style="font-family:var(--display);font-variant-numeric:tabular-nums;font-size:10px;color:var(--text3);margin-top:2px">${serviceRow.serie}</div>`:''}
       </div>
     </div>`;
   } else if(comb?.ultimaHr!=null){
@@ -479,9 +479,9 @@ async function toggleEquipoDetail(codigo,cardEl){
     horHTML=`
     <div style="display:flex;background:var(--bg3);border:1px solid var(--border);border-left:3px solid var(--blue);margin-bottom:12px;overflow:hidden">
       <div style="flex:1;padding:10px 14px">
-        <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Última lectura ${_hu}</div>
-        <div style="font-size:15px;color:var(--blue);font-family:'IBM Plex Mono',monospace;font-weight:500">${fmtInt(comb.ultimaHr)} ${_hu}</div>
-        <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text3);margin-top:2px">${_fc}${_fc?' ':''}<span style="color:var(--amber)">· ${_src}</span></div>
+        <div style="font-family:var(--display);font-variant-numeric:tabular-nums;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Última lectura ${_hu}</div>
+        <div style="font-size:15px;color:var(--blue);font-family:var(--display);font-variant-numeric:tabular-nums;font-weight:500">${fmtInt(comb.ultimaHr)} ${_hu}</div>
+        <div style="font-family:var(--display);font-variant-numeric:tabular-nums;font-size:10px;color:var(--text3);margin-top:2px">${_fc}${_fc?' ':''}<span style="color:var(--amber)">· ${_src}</span></div>
       </div>
     </div>`;
   }
@@ -541,16 +541,16 @@ async function toggleEquipoDetail(codigo,cardEl){
           <td>${(f.tipo==='service'||f.tipo==='preventivo')?'<span class="badge badge-blue" style="font-size:9px">Preventivo</span>':'<span class="badge badge-green" style="font-size:9px">Correctivo</span>'}</td>
           <td style="font-size:12px;color:var(--text2)">${f.desc}</td>
           <td style="font-size:11px;color:var(--text3);white-space:nowrap">${f.lugar}</td>
-          <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text3)">${f.tiempo}</td>
+          <td style="text-align:right;font-family:var(--display);font-variant-numeric:tabular-nums;font-size:11px;color:var(--text3)">${f.tiempo}</td>
         </tr>`).join('')}</tbody>
         <tfoot>
           ${(horasPrevEq>0||horasCorrEq>0)?`<tr style="border-top:2px solid var(--border);background:var(--bg3)">
             <td colspan="5" style="text-align:right;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;padding:6px 12px">Correctivo · Preventivo</td>
-            <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px;padding:6px 12px;white-space:nowrap"><span style="color:var(--green)">${horasCorrEq.toFixed(1)}</span> · <span style="color:var(--blue)">${horasPrevEq.toFixed(1)}</span></td>
+            <td style="text-align:right;font-family:var(--display);font-variant-numeric:tabular-nums;font-size:11px;padding:6px 12px;white-space:nowrap"><span style="color:var(--green)">${horasCorrEq.toFixed(1)}</span> · <span style="color:var(--blue)">${horasPrevEq.toFixed(1)}</span></td>
           </tr>`:''}
           <tr style="border-top:1px solid var(--border);background:var(--bg3)">
           <td colspan="5" style="text-align:right;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;padding:8px 12px">Total horas trabajadas</td>
-          <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--amber);font-weight:500;padding:8px 12px">${totalHoras>0?totalHoras.toFixed(1)+' hr':'—'}</td>
+          <td style="text-align:right;font-family:var(--display);font-variant-numeric:tabular-nums;font-size:12px;color:var(--amber);font-weight:500;padding:8px 12px">${totalHoras>0?totalHoras.toFixed(1)+' hr':'—'}</td>
         </tr></tfoot>
       </table></div>`
     :`<div class="no-data">Sin trabajos registrados para este equipo.${
@@ -641,7 +641,7 @@ async function toggleEquipoDetail(codigo,cardEl){
     if(dias<0)return'<span style="color:var(--text3)">—</span>';
     let color='var(--text2)';
     if(dias<=7)color='var(--green)';else if(dias<=21)color='var(--text2)';else if(dias<=45)color='var(--amber)';else color='var(--red)';
-    return`<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:${color};font-weight:500">${dias}d</span>`;
+    return`<span style="font-family:var(--display);font-variant-numeric:tabular-nums;font-size:11px;color:${color};font-weight:500">${dias}d</span>`;
   };
 
   const contPedidos=pedidosEquipo.length
@@ -655,7 +655,7 @@ async function toggleEquipoDetail(codigo,cardEl){
           <td class="mono" style="font-size:10px;color:var(--text3)">${p.entTxt||'—'}</td>
           <td class="mono" style="font-size:10px;color:var(--text3);white-space:nowrap">${p.fEnt?formatFechaCorta(p.fEnt):'—'}</td>
           <td style="text-align:center;white-space:nowrap">${demoraHTML(p.fecha,p.fEnt)}</td>
-          <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px;color:${p.costo!=null?'var(--amber)':'var(--text3)'};white-space:nowrap">${p.costo!=null?formatMoney(p.costo):'—'}</td>
+          <td style="text-align:right;font-family:var(--display);font-variant-numeric:tabular-nums;font-size:11px;color:${p.costo!=null?'var(--amber)':'var(--text3)'};white-space:nowrap">${p.costo!=null?formatMoney(p.costo):'—'}</td>
           <td>${badgeEstado(p.estado)}</td>
         </tr>`).join('')}</tbody>
       </table></div>`
@@ -681,7 +681,7 @@ async function toggleEquipoDetail(codigo,cardEl){
     if(items&&items.length){
       return items.map(it=>{
         const cant=it.cantidad&&it.cantidad!=='-'&&it.cantidad!=='—'
-          ?`<span style="color:var(--text3);font-family:'IBM Plex Mono',monospace;font-size:10px">${escapeHTML(it.cantidad)}×</span> `:'';
+          ?`<span style="color:var(--text3);font-family:var(--display);font-variant-numeric:tabular-nums;font-size:10px">${escapeHTML(it.cantidad)}×</span> `:'';
         const desc=escapeHTML(it.descripcion||'');
         const prov=it.proveedor&&it.proveedor!=='-'&&it.proveedor!=='—'
           ?` <span style="color:var(--text3);font-size:10px">· ${escapeHTML(it.proveedor)}</span>`:'';
@@ -703,7 +703,7 @@ async function toggleEquipoDetail(codigo,cardEl){
           <td class="mono" style="font-size:10px">${e.nro}</td>
           <td class="mono" style="font-size:10px;color:var(--text3);white-space:nowrap">${formatFechaCorta(e.fecha)}</td>
           <td style="font-size:12px;color:var(--text2)">${renderItems(e.nro,e.items)}</td>
-          <td style="text-align:right;font-family:'IBM Plex Mono',monospace;font-size:11px;color:${costo?'var(--amber)':'var(--text3)'};white-space:nowrap">${costo?costo.txt:'—'}${costo&&costo.nEquipos>1?` <span style="color:var(--text3)" title="Entrega imputada a ${costo.nEquipos} equipos: el costo se reparte en partes iguales">1/${costo.nEquipos}</span>`:''}</td>
+          <td style="text-align:right;font-family:var(--display);font-variant-numeric:tabular-nums;font-size:11px;color:${costo?'var(--amber)':'var(--text3)'};white-space:nowrap">${costo?costo.txt:'—'}${costo&&costo.nEquipos>1?` <span style="color:var(--text3)" title="Entrega imputada a ${costo.nEquipos} equipos: el costo se reparte en partes iguales">1/${costo.nEquipos}</span>`:''}</td>
         </tr>`;}).join('')}</tbody>
       </table></div>`
     :`<div class="no-data">Sin entregas de repuestos con costo para este equipo.</div>`;
@@ -739,7 +739,7 @@ async function toggleEquipoDetail(codigo,cardEl){
   // como llave legacy de redirección y en su mayoría ya no son los archivos
   // reales (ver comentario junto a FUENTES_REALES).
   const _row=(label,content)=>`<div style="background:var(--bg3);padding:11px 14px;font-size:11px;color:var(--text2);line-height:1.7">
-      <span style="display:inline-block;min-width:140px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.12em;font-size:10px;font-weight:600;font-family:'JetBrains Mono',monospace">${label}</span>
+      <span style="display:inline-block;min-width:140px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.12em;font-size:10px;font-weight:600;font-family:var(--display);font-variant-numeric:tabular-nums">${label}</span>
       ${content}
     </div>`;
 
@@ -781,8 +781,8 @@ async function toggleEquipoDetail(codigo,cardEl){
           <td style="font-size:11px;color:var(--text3)">${c.obs||''}</td>
         </tr>`).join('')}</tbody>
         ${(comb?.promedio!=null||comb?.totalCosto>0)?`<tfoot><tr style="background:var(--bg3);font-weight:500">
-          <td colspan="2" style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em">Acumulado</td>
-          <td colspan="6" style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text)">${comb?.promedio!=null?`${comb.promedio.toFixed(_unidad==='km'?1:2)} ${_consumoLabel} · `:''}${fmtInt(comb.totalLitros)} L${comb?.totalCosto>0?` · ${formatMoney(comb.totalCosto)} en combustible${cargasOrdenadas.some(c=>c.costoEstimado)?' (parte estimado, ~)':''}`:''}</td>
+          <td colspan="2" style="font-family:var(--display);font-variant-numeric:tabular-nums;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em">Acumulado</td>
+          <td colspan="6" style="font-family:var(--display);font-variant-numeric:tabular-nums;font-size:11px;color:var(--text)">${comb?.promedio!=null?`${comb.promedio.toFixed(_unidad==='km'?1:2)} ${_consumoLabel} · `:''}${fmtInt(comb.totalLitros)} L${comb?.totalCosto>0?` · ${formatMoney(comb.totalCosto)} en combustible${cargasOrdenadas.some(c=>c.costoEstimado)?' (parte estimado, ~)':''}`:''}</td>
         </tr></tfoot>`:''}
       </table></div>`
     : `<div class="no-data">Sin cargas de combustible registradas para este equipo.</div>`;
@@ -797,13 +797,13 @@ async function toggleEquipoDetail(codigo,cardEl){
     vtvHTML=`
     <div style="display:flex;background:var(--bg3);border:1px solid var(--border);border-left:3px solid ${vtvColor};margin-bottom:12px;overflow:hidden">
       <div style="flex:1;padding:10px 14px;border-right:1px solid var(--border)">
-        <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">VTV — vencimiento</div>
-        <div style="font-size:15px;color:${vtvColor};font-family:'IBM Plex Mono',monospace;font-weight:500">${formatFechaCorta(vtv.vencimiento)||vtv.vencimiento}</div>
-        <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:${vtvColor};margin-top:2px">${vtvTxt}</div>
+        <div style="font-family:var(--display);font-variant-numeric:tabular-nums;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">VTV — vencimiento</div>
+        <div style="font-size:15px;color:${vtvColor};font-family:var(--display);font-variant-numeric:tabular-nums;font-weight:500">${formatFechaCorta(vtv.vencimiento)||vtv.vencimiento}</div>
+        <div style="font-family:var(--display);font-variant-numeric:tabular-nums;font-size:10px;color:${vtvColor};margin-top:2px">${vtvTxt}</div>
       </div>
       ${vtv.patente?`<div style="padding:10px 14px;min-width:120px">
-        <div style="font-family:'IBM Plex Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Patente</div>
-        <div style="font-size:15px;color:var(--text2);font-family:'IBM Plex Mono',monospace;font-weight:500">${vtv.patente}</div>
+        <div style="font-family:var(--display);font-variant-numeric:tabular-nums;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:3px">Patente</div>
+        <div style="font-size:15px;color:var(--text2);font-family:var(--display);font-variant-numeric:tabular-nums;font-weight:500">${vtv.patente}</div>
       </div>`:''}
     </div>`;
   }
@@ -846,16 +846,14 @@ let _chartComboFlota=null;
 
 function renderTelemetriaFlota(){
   if(typeof Chart==='undefined')return;
-  const AMBER=_cssVar('--amber','#ffa030');
-  const ACCENT=_cssVar('--accent','#3a5fc8');
-  const CORP =_cssVar('--corp','#5d80e8');
-  const RED  =_cssVar('--red','#e5484d');
-  const BLUE =_cssVar('--blue','#5d80e8');
-  const TICK =_cssVar('--chart-tick','#6a7287');
-  const GRID =_cssVar('--chart-grid','#1a2030');
-  const TEXT2=_cssVar('--text2','#aab3c8');
-  const TOOLTIP_BG=_cssVar('--chart-tooltip-bg','#0d1019');
-  const TOOLTIP_FG=_cssVar('--chart-tooltip-fg','#f1f4fb');
+  // Paleta común: repuestos ámbar · combustible azul · correctivo naranja oscuro · preventivo teal
+  const [G_AZUL,G_TEAL,G_AMBAR,G_ALERTA]=_igPaleta();
+  const AMBER=G_AMBAR, BLUE=G_AZUL, RED=G_ALERTA, CORP=G_TEAL, ACCENT=G_AZUL;
+  const AMBER_TXT=_igColor('ambar-texto');
+  const GRID =_igColor('linea');
+  const TEXT2=_igColor('texto-2');
+  const TOOLTIP_BG=_igColor('tinta');
+  const TOOLTIP_FG='#ffffff';
   const nomMes=['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
   // ─── Combo chart: costo (barras, eje izq) + horas (línea, eje der) ──
@@ -982,7 +980,7 @@ function renderTelemetriaFlota(){
             padding:12,
             borderColor:GRID,
             borderWidth:1,
-            titleFont:{family:'JetBrains Mono',size:11,weight:'600'},
+            titleFont:{family:'Barlow Semi Condensed',size:11,weight:'600'},
             bodyFont:{family:'Barlow',size:12},
             bodySpacing:6,
             callbacks:{
@@ -998,7 +996,7 @@ function renderTelemetriaFlota(){
         },
         scales:{
           x:{
-            ticks:{color:TEXT2,font:{size:11,family:'JetBrains Mono',weight:'500'}},
+            ticks:{color:TEXT2,font:{size:11,family:'Barlow Semi Condensed',weight:'500'}},
             grid:{display:false},
             border:{color:GRID}
           },
@@ -1006,8 +1004,8 @@ function renderTelemetriaFlota(){
             type:'linear',
             position:'left',
             beginAtZero:true,
-            title:{display:true,text:'$ repuestos / combustible',color:AMBER,font:{size:10,family:'JetBrains Mono',weight:'600'},padding:{bottom:8}},
-            ticks:{color:TEXT2,font:{size:10,family:'JetBrains Mono'},callback:v=>v>=1e6?'$'+(v/1e6).toFixed(1)+'M':v>=1e3?'$'+(v/1e3).toFixed(0)+'K':'$'+v},
+            title:{display:true,text:'$ repuestos / combustible',color:AMBER_TXT,font:{size:10,family:'Barlow Semi Condensed',weight:'600'},padding:{bottom:8}},
+            ticks:{color:TEXT2,font:{size:10,family:'Barlow Semi Condensed'},callback:v=>v>=1e6?'$'+(v/1e6).toFixed(1)+'M':v>=1e3?'$'+(v/1e3).toFixed(0)+'K':'$'+v},
             grid:{color:GRID,drawTicks:false},
             border:{display:false}
           },
@@ -1015,8 +1013,8 @@ function renderTelemetriaFlota(){
             type:'linear',
             position:'right',
             beginAtZero:true,
-            title:{display:true,text:'horas',color:CORP,font:{size:10,family:'JetBrains Mono',weight:'600'},padding:{bottom:8}},
-            ticks:{color:CORP,font:{size:10,family:'JetBrains Mono'},callback:v=>v+' h'},
+            title:{display:true,text:'horas',color:CORP,font:{size:10,family:'Barlow Semi Condensed',weight:'600'},padding:{bottom:8}},
+            ticks:{color:CORP,font:{size:10,family:'Barlow Semi Condensed'},callback:v=>v+' h'},
             grid:{display:false}, // sin grid del eje derecho para no saturar
             border:{display:false}
           }
@@ -1045,7 +1043,7 @@ function renderTelemetriaFlota(){
       return html`<div class="rank-row" data-action="scrollToEquipo" data-arg="${codDisplay}" title="Ver detalle">
         <span class="rank-pos${i<3?' top':''}">${String(i+1).padStart(2,'0')}</span>
         <span class="rank-cod">${codDisplay}</span>
-        <div class="rank-bar-wrap"><div class="rank-bar-fill" style="width:${Math.round(v/maxCosto*100)}%;background:${AMBER};box-shadow:0 0 8px ${AMBER}80"></div></div>
+        <div class="rank-bar-wrap"><div class="rank-bar-fill" style="width:${Math.round(v/maxCosto*100)}%;background:${AMBER}"></div></div>
         <span class="rank-val">${formatMoney(v)}</span>
       </div>`;
     })
@@ -1064,7 +1062,7 @@ function renderTelemetriaFlota(){
       return html`<div class="rank-row" data-action="scrollToEquipo" data-arg="${codDisplay}" title="Ver detalle">
         <span class="rank-pos${i<3?' top':''}">${String(i+1).padStart(2,'0')}</span>
         <span class="rank-cod">${codDisplay}</span>
-        <div class="rank-bar-wrap"><div class="rank-bar-fill" style="width:${Math.round(v/maxHoras*100)}%;background:${ACCENT};box-shadow:0 0 8px ${ACCENT}80"></div></div>
+        <div class="rank-bar-wrap"><div class="rank-bar-fill" style="width:${Math.round(v/maxHoras*100)}%;background:${ACCENT}"></div></div>
         <span class="rank-val">${v.toFixed(1)} hr</span>
       </div>`;
     })

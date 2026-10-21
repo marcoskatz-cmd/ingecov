@@ -29,7 +29,7 @@ function _tarjaNum(v) {
 /** Placeholder que se inserta en el detalle; cargarTarjasEquipo lo completa. */
 function tarjasPlaceholder(codigo) {
   return eqSection('tarjas diarias',
-    html`<div id="eqTarjasBody" data-cod="${normCod(codigo)}" style="padding:.6rem 0;font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text3)">cargando tarjas…</div>`,
+    html`<div id="eqTarjasBody" data-cod="${normCod(codigo)}" style="padding:.6rem 0;font-family:var(--display);font-variant-numeric:tabular-nums;font-size:12px;color:var(--text3)">cargando tarjas…</div>`,
     false).value;
 }
 
@@ -52,13 +52,13 @@ async function cargarTarjasEquipo(codigo) {
     <span>horómetro según tarja: <strong>${_tarjaNum(d.horom_tarja)}</strong></span>
     <span>última tarja: <strong>${d.ultima_tarja || '—'}</strong>${d.ultimo_operador ? ' · ' + d.ultimo_operador : ''}</span>
   </div>`;
-  const fallas = d.fallas.length ? html`<div style="margin:6px 0 10px;padding:8px 10px;border-radius:8px;background:rgba(180,83,9,.08);font-size:12px">
+  const fallas = d.fallas.length ? html`<div style="margin:6px 0 10px;padding:8px 10px;border-radius:8px;background:var(--ambar-suave);font-size:12px">
     <strong>fallas abiertas del checklist (${d.fallas.length})</strong>
     ${d.fallas.map(f => html`<div style="margin-top:4px">${f.fecha} · ${f.item}${f.comentario ? ' — ' + f.comentario : ''}${f.foto ? html` · <a href="${f.foto}" target="_blank" rel="noopener">foto</a>` : ''}</div>`)}
   </div>` : '';
   const filas = d.tarjas.map(t => html`<tr>
     <td>${t.fecha}</td>
-    <td>${t.operador}${t.cierre_tercero === 'SI' ? html` <span style="color:var(--amber,#b45309)">(cerró otro)</span>` : ''}</td>
+    <td>${t.operador}${t.cierre_tercero === 'SI' ? html` <span style="color:var(--ambar-texto)">(cerró otro)</span>` : ''}</td>
     <td style="text-align:right;font-variant-numeric:tabular-nums">${_tarjaNum(t.horom_ini)} → ${_tarjaNum(t.horom_fin)}</td>
     <td style="text-align:right;font-variant-numeric:tabular-nums">${t.estado === 'cerrada' ? html`<strong>${_tarjaNum(t.horas)}</strong>` : t.estado}</td>
     <td>${t.foto_horom_ini ? html`<a href="${t.foto_horom_ini}" target="_blank" rel="noopener">ini</a>` : ''} ${t.foto_horom_fin ? html`<a href="${t.foto_horom_fin}" target="_blank" rel="noopener">fin</a>` : ''}</td>
@@ -75,7 +75,8 @@ async function cargarTarjasEquipo(codigo) {
 
 let _mapaFlota = null;
 let _mapaCapa = null;
-const _MAPA_COLOR = { hoy: '#0f766e', semana: '#1e3a8a', viejo: '#b45309' };
+// Antigüedad del último reporte: teal = hoy, azul = esta semana, ámbar = más antiguo (tokens comunes).
+const _MAPA_TOKEN = { hoy: 'teal', semana: 'azul', viejo: 'ambar' };
 
 function _antiguedadPos(tsPos) {
   if (!tsPos) return 'viejo';
@@ -117,7 +118,7 @@ async function renderMapaTab() {
   d.puntos.forEach(p => {
     const ant = _antiguedadPos(p.ts_pos);
     const pin = _el('div', { class: 'mapa-pin' }, [
-      _el('span', { class: 'mapa-punto', style: 'background:' + _MAPA_COLOR[ant] }),
+      _el('span', { class: 'mapa-punto', style: 'background:' + _igColor(_MAPA_TOKEN[ant]) }),
       p.codigo
     ]);
     const icono = L.divIcon({ className: 'mapa-pin-wrap', html: pin, iconSize: null, iconAnchor: [10, 10] });

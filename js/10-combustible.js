@@ -315,9 +315,10 @@ function _renderCombChart(D){
   const yms=Object.keys(D.litrosPorMes).filter(ym=>/^\d{4}-\d{2}$/.test(ym)&&+ym.slice(0,4)>=2020).sort();
   if(!yms.length)return;
   const sel=new Set(_combYms());
-  const BLUE=_cssVar('--blue','#5d80e8'), AMBER=_cssVar('--amber','#ffa030');
-  const GRID=_cssVar('--chart-grid','#1a2030'), TEXT2=_cssVar('--text2','#aab3c8');
-  const TOOLTIP_BG=_cssVar('--chart-tooltip-bg','#0d1019'), TOOLTIP_FG=_cssVar('--chart-tooltip-fg','#f1f4fb');
+  // Paleta común: litros azul · gasto ámbar
+  const [BLUE,,AMBER]=_igPaleta(), AMBER_TXT=_igColor('ambar-texto');
+  const GRID=_igColor('linea'), TEXT2=_igColor('texto-2');
+  const TOOLTIP_BG=_igColor('tinta'), TOOLTIP_FG='#ffffff';
   _chartComb=new Chart(el.getContext('2d'),{
     type:'bar',
     data:{labels:yms.map(_ymCorto),datasets:[
@@ -328,14 +329,14 @@ function _renderCombChart(D){
     ]},
     options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
       plugins:{legend:{display:false},tooltip:{backgroundColor:TOOLTIP_BG,titleColor:TOOLTIP_FG,bodyColor:TOOLTIP_FG,padding:10,borderColor:GRID,borderWidth:1,
-        titleFont:{family:'JetBrains Mono',size:11,weight:'600'},bodyFont:{family:'Barlow',size:12},
+        titleFont:{family:'Barlow Semi Condensed',size:11,weight:'600'},bodyFont:{family:'Barlow',size:12},
         callbacks:{label:c=>c.dataset.label==='Litros'?'  ▣ '+fmtInt(c.raw)+' L':'  ─ '+formatMoney(c.raw)+(D.grupo==='pesados'?' (estimado)':'')}}},
       scales:{
-        x:{ticks:{color:TEXT2,font:{size:11,family:'JetBrains Mono',weight:'500'}},grid:{display:false},border:{color:GRID}},
-        yL:{type:'linear',position:'left',beginAtZero:true,title:{display:true,text:'litros',color:BLUE,font:{size:10,family:'JetBrains Mono',weight:'600'}},
-          ticks:{color:TEXT2,font:{size:10,family:'JetBrains Mono'},callback:v=>v>=1000?(v/1000).toFixed(v>=10000?0:1)+'K':v},grid:{color:GRID,drawTicks:false},border:{display:false}},
-        'y$':{type:'linear',position:'right',beginAtZero:true,title:{display:true,text:'$',color:AMBER,font:{size:10,family:'JetBrains Mono',weight:'600'}},
-          ticks:{color:AMBER,font:{size:10,family:'JetBrains Mono'},callback:v=>v>=1e6?'$'+(v/1e6).toFixed(1)+'M':v>=1e3?'$'+(v/1e3).toFixed(0)+'K':'$'+v},grid:{display:false},border:{display:false}},
+        x:{ticks:{color:TEXT2,font:{size:11,family:'Barlow Semi Condensed',weight:'500'}},grid:{display:false},border:{color:GRID}},
+        yL:{type:'linear',position:'left',beginAtZero:true,title:{display:true,text:'litros',color:BLUE,font:{size:10,family:'Barlow Semi Condensed',weight:'600'}},
+          ticks:{color:TEXT2,font:{size:10,family:'Barlow Semi Condensed'},callback:v=>v>=1000?(v/1000).toFixed(v>=10000?0:1)+'K':v},grid:{color:GRID,drawTicks:false},border:{display:false}},
+        'y$':{type:'linear',position:'right',beginAtZero:true,title:{display:true,text:'$',color:AMBER_TXT,font:{size:10,family:'Barlow Semi Condensed',weight:'600'}},
+          ticks:{color:AMBER_TXT,font:{size:10,family:'Barlow Semi Condensed'},callback:v=>v>=1e6?'$'+(v/1e6).toFixed(1)+'M':v>=1e3?'$'+(v/1e3).toFixed(0)+'K':'$'+v},grid:{display:false},border:{display:false}},
       }}
   });
 }
