@@ -538,7 +538,7 @@ async function toggleEquipoDetail(codigo,cardEl){
         <tbody>${filasServicio.map(f=>`<tr>
           <td class="mono" style="font-size:10px;color:var(--text3)">${f.ref}</td>
           <td class="mono" style="font-size:10px;color:var(--text3);white-space:nowrap">${formatFechaCorta(f.fecha)}${_matchSvcPlan(f.fecha)?' <span class="badge badge-blue" style="font-size:8px;padding:1px 4px;margin-left:3px" title="Coincide con un service planificado para este equipo">🔧 svc</span>':''}</td>
-          <td>${(f.tipo==='service'||f.tipo==='preventivo')?'<span class="badge badge-blue" style="font-size:9px">Preventivo</span>':'<span class="badge badge-green" style="font-size:9px">Correctivo</span>'}</td>
+          <td>${(f.tipo==='service'||f.tipo==='preventivo')?'<span class="badge badge-green" style="font-size:9px">Preventivo</span>':'<span class="badge badge-red" style="font-size:9px">Correctivo</span>'}</td>
           <td style="font-size:12px;color:var(--text2)">${f.desc}</td>
           <td style="font-size:11px;color:var(--text3);white-space:nowrap">${f.lugar}</td>
           <td style="text-align:right;font-family:var(--display);font-variant-numeric:tabular-nums;font-size:11px;color:var(--text3)">${f.tiempo}</td>
@@ -546,7 +546,7 @@ async function toggleEquipoDetail(codigo,cardEl){
         <tfoot>
           ${(horasPrevEq>0||horasCorrEq>0)?`<tr style="border-top:2px solid var(--border);background:var(--bg3)">
             <td colspan="5" style="text-align:right;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;padding:6px 12px">Correctivo · Preventivo</td>
-            <td style="text-align:right;font-family:var(--display);font-variant-numeric:tabular-nums;font-size:11px;padding:6px 12px;white-space:nowrap"><span style="color:var(--green)">${horasCorrEq.toFixed(1)}</span> · <span style="color:var(--blue)">${horasPrevEq.toFixed(1)}</span></td>
+            <td style="text-align:right;font-family:var(--display);font-variant-numeric:tabular-nums;font-size:11px;padding:6px 12px;white-space:nowrap"><span style="color:var(--red)">${horasCorrEq.toFixed(1)}</span> · <span style="color:var(--teal)">${horasPrevEq.toFixed(1)}</span></td>
           </tr>`:''}
           <tr style="border-top:1px solid var(--border);background:var(--bg3)">
           <td colspan="5" style="text-align:right;font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;padding:8px 12px">Total horas trabajadas</td>
