@@ -10,10 +10,14 @@
    FRAME-BUSTER (compensa frame-ancestors no soportado por CSP meta)
 ═══════════════════════════════════════════════════════ */
 if (window.top !== window.self) {
-  // La app INGECO (misma origin: marcoskatz-cmd.github.io/app-ingeco) embebe el panel en un iframe: se permite.
-  // Cualquier otro ancestro (otra origin → leer top.location tira) se bloquea.
+  // La app INGECO (https://app.ingecosa.com.ar, otra origin) embebe el panel en un iframe: se permite.
+  // Cualquier otro ancestro se bloquea. ancestorOrigins (Chrome/Safari) o, si no existe, el referrer.
+  const APP_ORIGIN = 'https://app.ingecosa.com.ar';
   let embebidoPorApp = false;
-  try { embebidoPorApp = window.top.location.origin === window.location.origin; } catch { embebidoPorApp = false; }
+  try {
+    const ao = window.location.ancestorOrigins;
+    embebidoPorApp = ao && ao.length ? ao[ao.length - 1] === APP_ORIGIN : document.referrer.indexOf(APP_ORIGIN + '/') === 0;
+  } catch { embebidoPorApp = false; }
   if (!embebidoPorApp) {
     try { window.top.location = window.self.location; }
     catch { document.body && (document.body.textContent = ''); }

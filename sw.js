@@ -80,7 +80,7 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
-const COMUN = 'https://marcoskatz-cmd.github.io/app-ingeco/ingeco.';
+const COMUN = 'https://app.ingecosa.com.ar/ingeco.';
 async function comunRedPrimero(req) {
   const cache = await caches.open(SHELL_CACHE);
   try {

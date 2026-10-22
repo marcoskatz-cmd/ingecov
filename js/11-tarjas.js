@@ -7,7 +7,7 @@
    con nodos, no con strings: el CSP exige Trusted Types. */
 
 const TARJA_API = 'https://script.google.com/macros/s/AKfycbydf1RDfDnIPZs2uZaiXyZ7uPsmw67gUbQ1C2-NRcZkmg9OO4ZMQe45AyMTc75k0nEv/exec';
-const TARJA_PANEL = 'https://marcoskatz-cmd.github.io/tarja-flota/panel.html';
+const TARJA_PANEL = 'https://tarjas.ingecosa.com.ar/panel.html';
 
 async function tarjaFetch(action, datos) {
   const r = await fetch(TARJA_API, {

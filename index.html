@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<script src="https://marcoskatz-cmd.github.io/app-ingeco/guard.js" data-modulo="INGECOV"></script>
+<script src="https://app.ingecosa.com.ar/guard.js" data-modulo="INGECOV"></script>
 <script>/* Si llegó desde la app INGECO (identidad validada por guard.js), no pedir el PIN del panel. */ if (window.INGECO_USUARIO) { try { sessionStorage.setItem('ingeco-pin-ok', '1'); } catch (e) {} }</script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -21,13 +21,13 @@
     + Google Fonts (Barlow, que importa ingeco.css). Sin señal queda el respaldo
     mínimo de abajo y la Barlow autoalojada de fonts/fonts.css.
 -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdnjs.cloudflare.com https://marcoskatz-cmd.github.io; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://marcoskatz-cmd.github.io https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self' https://docs.google.com https://script.google.com https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'self'; form-action 'none'; object-src 'none'; require-trusted-types-for 'script'; trusted-types ingecov-html ingecov-sw default;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdnjs.cloudflare.com https://app.ingecosa.com.ar https://marcoskatz-cmd.github.io; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://app.ingecosa.com.ar https://marcoskatz-cmd.github.io https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self' https://docs.google.com https://script.google.com https://script.googleusercontent.com; manifest-src 'self'; worker-src 'self'; base-uri 'self'; form-action 'none'; object-src 'none'; require-trusted-types-for 'script'; trusted-types ingecov-html ingecov-sw default;">
 <title>Panel de Mantenimiento — INGECO</title>
 <!-- Estilo común INGECO (respaldo mínimo + ingeco.css + ingeco.js), antes de cualquier estilo propio -->
 <style>:root{--azul:#1e3a8a;--azul-claro:#2b4fb3;--azul-suave:#e6ecfb;--tinta:#0f1a3d;--teal:#0e8a7a;--teal-suave:#dcf1ee;--ambar:#d98f00;--ambar-suave:#fff1cf;--ambar-texto:#8a5a00;--alerta:#b8410e;--alerta-suave:#fbe6dc;--fondo:#f5f4f0;--fondo-2:#ebe9e3;--superficie:#fff;--texto:#171c2e;--texto-2:#5b6274;--texto-3:#8a90a0;--linea:#e2dfd7;--linea-fuerte:#c9c5bb;--radio:14px;--radio-s:10px;--barra-h:56px;--cuerpo:system-ui,sans-serif;--display:system-ui,sans-serif}[data-ig-volver]{display:none}</style>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://marcoskatz-cmd.github.io/app-ingeco/ingeco.css">
-<script src="https://marcoskatz-cmd.github.io/app-ingeco/ingeco.js" defer></script>
+<link rel="stylesheet" href="https://app.ingecosa.com.ar/ingeco.css">
+<script src="https://app.ingecosa.com.ar/ingeco.js" defer></script>
 <!-- PWA: instalable como app en PC y celular. El manifest describe nombre,
      icono y modo standalone; el service worker (registrado en init.js) da el
      app-shell offline. Sin estas líneas el navegador no ofrece "instalar". -->
@@ -61,7 +61,7 @@
      arranca el PIN gate. No reordenar ni pasar a type=module sin revisar
      ACTIONS. Bump del ?v= al cambiar cualquiera de ellos, para clientes con
      HTTP cache (el SW solo invalida cuando cambia CACHE_VERSION en sw.js). -->
-<script src="./js/01-core.js?v=95" defer></script>
+<script src="./js/01-core.js?v=96" defer></script>
 <script src="./js/02-datos.js?v=95" defer></script>
 <script src="./js/03-ui.js?v=95" defer></script>
 <script src="./js/04-carga.js?v=95" defer></script>
