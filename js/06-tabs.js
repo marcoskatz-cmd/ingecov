@@ -380,7 +380,7 @@ function setAutoRefresh(){
     _autoSecs--;
     if(_autoSecs<=0){
       _autoSecs=_autoInterval;
-      loadAll();
+      loadAll({silencioso:true});
     }
     _renderAutoCD();
   },1000);

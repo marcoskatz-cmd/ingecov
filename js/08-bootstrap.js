@@ -141,14 +141,22 @@ document.addEventListener('input',  _dispatchAction);
 // El overlay de PIN vive en index.html y se hace cargo de mostrar el form.
 // Cuando el usuario ingresa el PIN correcto, se dispara este loadAll().
 // sessionStorage guarda el flag para que no pida PIN otra vez en la sesión.
+// Arranque: si hay caché local, pinta al instante y refresca por detrás.
+async function arrancarPanel(){
+  if(await cacheCargar()){
+    try{ await loadAll({desdeCache:true}); loadAll({silencioso:true}); return; }
+    catch(e){ /* caché rota → carga normal */ }
+  }
+  loadAll();
+}
 if (sessionStorage.getItem('ingeco-pin-ok') === '1') {
   // Sesión ya validada — arrancar directo
-  loadAll();
+  arrancarPanel();
 }
 // Si NO está validado, el overlay queda visible (lo maneja el script
 // inline de index.html que verifica el PIN). Cuando valida, llama a
 // window.__startPanel() que dispara loadAll().
 window.__startPanel = () => {
   sessionStorage.setItem('ingeco-pin-ok', '1');
-  loadAll();
+  arrancarPanel();
 };

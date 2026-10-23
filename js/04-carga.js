@@ -16,18 +16,25 @@ function setLoadProgress(pct){
   fill.style.width=pct+'%';
 }
 
-async function loadAll(){
+// opts.desdeCache: pinta con la caché local (instantáneo).
+// opts.silencioso: refresca sin ocultar el panel que ya se ve.
+async function loadAll(opts){
+  opts=opts||{};
   // Si ya hay datos cargados, este es un refresh manual (click en "sync") y
   // no el initial load. Cuando USE_API está activo, eso fuerza un refresh
   // server-side (corre los consolidadores e invalida cache server) antes
   // de re-fetchear los endpoints.
   const esManualRefresh = !!window._estadoEquipos;
+  const silencioso = !!opts.silencioso && esManualRefresh;
+  window._usarCache = !!opts.desdeCache;
   const btn=document.getElementById('refreshBtn');
-  btn.classList.add('loading');(btn.querySelector('.rb-txt')||btn).textContent='Cargando…';
-  document.getElementById('loadingState').style.display='block';
-  document.getElementById('dashboard').style.display='none';
-  document.getElementById('errorState').style.display='none';
-  setLoadProgress(0);
+  btn.classList.add('loading');(btn.querySelector('.rb-txt')||btn).textContent=silencioso?'Actualizando…':'Cargando…';
+  if(!silencioso){
+    document.getElementById('loadingState').style.display='block';
+    document.getElementById('dashboard').style.display='none';
+    document.getElementById('errorState').style.display='none';
+    setLoadProgress(0);
+  }
 
   try{
     if (esManualRefresh) await apiRefreshAll();
@@ -74,7 +81,7 @@ async function loadAll(){
       fetchGvizObj(SNAPSHOT_ID,'TRAB_PEND').catch(()=>[]),
       // Config del panel (hoy: precio de combustible pesados). Lectura pública,
       // sin PIN — la edición sí lo pide (⚙ en el modal de auditoría).
-      fetch(REFRESH_URL+'?ep=config').then(r=>r.json()).catch(()=>({ok:false})),
+      fetchJsonCache(REFRESH_URL+'?ep=config','config').catch(()=>({ok:false})),
     ]);
     setLoadProgress(55);
 
@@ -449,25 +456,33 @@ async function loadAll(){
     renderTelemetriaFlota();
 
     const _hsl=document.getElementById('hsLast');
-    if(_hsl)_hsl.textContent=fmtHora();
+    if(_hsl)_hsl.textContent=opts.desdeCache&&_cacheTs?fmtHora(new Date(_cacheTs)):fmtHora();
     document.getElementById('loadingState').style.display='none';
     document.getElementById('dashboard').style.display='block';
+    performance.mark(opts.desdeCache?'panel-cache':'panel-red');
     setLoadProgress(80);
 
     setLoadProgress(100);
 
-    // Tab costos downtime: lee el sheet COSTOS DOWNTIME (parámetros editables)
-    // y renderiza. Fuera del flujo principal a propósito — si el sheet no está
-    // accesible, el resto del panel no se entera.
-    cargarCostosDowntime();
+    // Desde caché no se piden los extras: los trae el refresco que sigue.
+    if(!opts.desdeCache){
+      // Tab costos downtime: lee el sheet COSTOS DOWNTIME (parámetros editables)
+      // y renderiza. Fuera del flujo principal a propósito — si el sheet no está
+      // accesible, el resto del panel no se entera.
+      cargarCostosDowntime();
 
-    precargarHorometros();
+      precargarHorometros();
+    }
   }catch(e){
+    window._usarCache=false;
+    // Si ya hay un panel a la vista, un refresco fallido no lo tapa.
+    if(silencioso||opts.desdeCache){showErrorToast('No se pudo actualizar: '+e.message);btn.classList.remove('loading');(btn.querySelector('.rb-txt')||btn).textContent='Actualizar';if(opts.desdeCache)throw e;return;}
     document.getElementById('loadingState').style.display='none';
     document.getElementById('errorState').style.display='block';
     setHTML(document.getElementById('errorState'), html`<div style="color:var(--red);margin-bottom:8px">⚠ Error al cargar datos</div><div style="font-size:12px;color:var(--text3)">${e.message}</div><div style="margin-top:12px"><button data-action="loadAll" class="refresh-btn">Reintentar</button></div>`);
     setLoadProgress(100);
   }
+  window._usarCache=false;
   btn.classList.remove('loading');(btn.querySelector('.rb-txt')||btn).textContent='Actualizar';
 }
 

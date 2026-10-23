@@ -279,11 +279,51 @@ const _cellStr=cell=>{
   return cell.f!=null?String(cell.f):String(cell.v);
 };
 
+/* Caché local (IndexedDB) de las respuestas crudas: el panel se pinta al
+   instante con lo último leído en este dispositivo y después se refresca
+   en segundo plano. _usarCache lo prende loadAll({desdeCache:true}). */
+let _cacheMem=null, _cacheTs=0;
+window._usarCache=false;
+function _cacheDb(){
+  return new Promise((ok,mal)=>{
+    const rq=indexedDB.open('ingecov-cache',1);
+    rq.onupgradeneeded=()=>rq.result.createObjectStore('r');
+    rq.onsuccess=()=>ok(rq.result);rq.onerror=()=>mal(rq.error);
+  });
+}
+async function cacheCargar(){
+  try{
+    const db=await _cacheDb();
+    const m=new Map();
+    await new Promise((ok,mal)=>{
+      const cur=db.transaction('r').objectStore('r').openCursor();
+      cur.onsuccess=()=>{const c=cur.result;if(!c)return ok();m.set(c.key,c.value);c.continue();};
+      cur.onerror=()=>mal(cur.error);
+    });
+    _cacheTs=m.get('__ts')||0;
+    _cacheMem=m;
+    return m.size>1;
+  }catch(e){return false;}
+}
+function cacheGuardar(k,v){
+  _cacheDb().then(db=>{const st=db.transaction('r','readwrite').objectStore('r');st.put(v,k);st.put(Date.now(),'__ts');}).catch(()=>{});
+}
+async function fetchJsonCache(url,k){
+  if(window._usarCache&&_cacheMem&&_cacheMem.has(k))return _cacheMem.get(k);
+  const j=await fetch(url).then(r=>r.json());
+  if(j&&j.ok!==false)cacheGuardar(k,j);
+  return j;
+}
+
 async function _fetchGvizJson(id,sheet,range,headers){
+  const k=[id,sheet,range,headers].join('|');
+  if(window._usarCache&&_cacheMem&&_cacheMem.has(k))return _cacheMem.get(k);
   const r=await fetch(gvizUrl(id,sheet,range,headers));
   if(!r.ok)throw new Error(`HTTP ${r.status} · ${sheet}`);
   const txt=await r.text();
-  return JSON.parse(txt.substring(txt.indexOf('{'),txt.lastIndexOf('}')+1));
+  const json=JSON.parse(txt.substring(txt.indexOf('{'),txt.lastIndexOf('}')+1));
+  if(json.status!=='error')cacheGuardar(k,json);
+  return json;
 }
 
 // Implementaciones originales — gviz directo. El shim de la API las llama
@@ -360,6 +400,6 @@ async function syncNow(){
   }finally{
     clearInterval(tick);clearTimeout(killer);
     _syncing=false;
-    await loadAll(); // re-lee el snapshot fresco; loadAll restaura el texto del boton al final
+    await loadAll({silencioso:true}); // re-lee el snapshot fresco; loadAll restaura el texto del boton al final
   }
 }
