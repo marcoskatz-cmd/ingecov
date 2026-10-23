@@ -1012,6 +1012,9 @@ function operatividadEquipo(codN){
   const numHr=v=>{
     const s=String(v||'').trim();
     if(!s||s==='-'||/\//.test(s)||/s\/?h/i.test(s))return null;
+    // Número crudo de gviz ("11.299999999999956"): el punto es decimal, no miles.
+    if(typeof v==='number')return isFinite(v)?v:null;
+    if(/^-?\d+\.\d+$/.test(s)&&!/^-?\d{1,3}(\.\d{3})+$/.test(s))return parseFloat(s);
     const n=parseFloat(s.replace(/\./g,'').replace(',','.').replace(/[^\d.-]/g,''));
     return isFinite(n)?n:null;
   };
