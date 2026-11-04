@@ -274,12 +274,14 @@ function _buildTrabajosPendientes_(snap){
     const iCod = _idx_(h, ['CÓDIGO','CODIGO']);
     const iEqu = _idx_(h, ['EQUIPO']);
     const iFec = _idx_(h, ['FECHA']);
-    const iDes = _idx_(h, ['DESCRIPCIÓN','DESCRIPCION']);
+    // 4-nov-2026: Marcos renombró las columnas a 'DESCRIPCIÓN TRABAJOS' e 'ID TRABAJO'
+    // (igual que en TRABAJOS REALIZADOS); con el match exacto quedaban vacías en silencio.
+    const iDes = _idx_(h, ['DESCRIPCIÓN TRABAJOS','DESCRIPCION TRABAJOS','DESCRIPCIÓN','DESCRIPCION']);
     const iRes = _idx_(h, ['ORIGEN/RESPONSABLE','ORIGEN RESPONSABLE','RESPONSABLE','ORIGEN']);
     const iEst = _idx_(h, ['ESTADO']);
     const iFRe = _idx_(h, ['FECHA RESOLUCIÓN','FECHA RESOLUCION']);
     const iDRe = _idx_(h, ['DESCRIPCIÓN RESOLUCIÓN','DESCRIPCION RESOLUCION']);
-    const iId  = _idx_(h, ['ID']);
+    const iId  = _idx_(h, ['ID TRABAJO','ID']);
 
     const out = [['CODIGO','EQUIPO','FECHA','DESCRIPCION','RESPONSABLE','ESTADO','FECHA_RESOLUCION','DESCRIPCION_RESOLUCION','ID']];
     let n = 0;

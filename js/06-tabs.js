@@ -775,9 +775,10 @@ function renderTrabajosPendientes(){
   const badge=document.getElementById('trabPendBadge');
   if(!wrap)return;
   const items=window._trabajosPendientes||[];
-  const abiertos=items.filter(t=>!t.resuelto);
+  const aRevisar=items.filter(t=>!t.resuelto&&t.aRevisar);
+  const abiertos=items.filter(t=>!t.resuelto&&!t.aRevisar);
   const resueltos=items.filter(t=>t.resuelto);
-  if(badge)badge.textContent=String(abiertos.length);
+  if(badge)badge.textContent=String(abiertos.length+aRevisar.length);
   if(!items.length){
     setHTML(wrap,html`<div class="no-data">No hay trabajos pendientes cargados.</div>`);
     return;
@@ -803,6 +804,17 @@ function renderTrabajosPendientes(){
         <tbody>${rows.map(fila)}</tbody>
       </table></div>`
     : html`<div class="no-data">${vacio}</div>`;
+  // Fallas reportadas por los operarios en la tarja diaria: entran como
+  // "A revisar" y el taller las pasa a Pendiente (o las resuelve) en la hoja.
+  const bloqueRevisar=aRevisar.length?html`<div style="margin-bottom:22px">
+      <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:8px">
+        <span style="width:9px;height:9px;background:var(--blue);display:inline-block;border-radius:50%"></span>
+        <span style="font-size:13px;color:var(--text);font-weight:600">A revisar</span>
+        <span class="mono" style="font-size:11px;color:var(--text3)">${aRevisar.length}</span>
+        <span style="font-size:11px;color:var(--text3)">fallas reportadas en la tarja, sin confirmar por el taller</span>
+      </div>
+      ${tabla(aRevisar,'—')}
+    </div>`:'';
   const bloqueAbiertos=html`<div style="margin-bottom:22px">
       <div style="display:flex;align-items:baseline;gap:9px;margin-bottom:8px">
         <span style="width:9px;height:9px;background:var(--amber);display:inline-block;border-radius:50%"></span>
@@ -812,7 +824,7 @@ function renderTrabajosPendientes(){
       ${tabla(abiertos,'Sin trabajos pendientes abiertos.')}
     </div>`;
   const bloqueResueltos=eqSection(`resueltos recientes (${resueltos.length})`,tabla(resueltos,'—'),false);
-  setHTML(wrap,html`${bloqueAbiertos}${resueltos.length?bloqueResueltos:''}`);
+  setHTML(wrap,html`${bloqueRevisar}${bloqueAbiertos}${resueltos.length?bloqueResueltos:''}`);
 }
 
 function renderServiceTab(){
@@ -1194,10 +1206,23 @@ function _consultaTodoOkHTML(pendAbiertos, op, vtv, recurrencias){
 function _consultaChecklistHTML(codigo, info, pendAbiertos, op, vtv, recurrencias, serviceHist, timelineHTML){
   const nombre=info?.nombre||codigo;
 
-  const filaPend = pendAbiertos.length
+  const pendRevisar = pendAbiertos.filter(t=>t.aRevisar);
+  const pendTaller = pendAbiertos.filter(t=>!t.aRevisar);
+  const tablaPend = rows => html`<div class="table-wrap"><table class="eq-inner-table">
+        <thead><tr><th>Fecha</th><th>Descripción</th><th>Responsable</th></tr></thead>
+        <tbody>${rows.map(t=>html`<tr>
+          <td class="mono" style="font-size:10.5px;color:var(--text3);white-space:nowrap">${formatFechaCorta(t.fecha)}</td>
+          <td style="font-size:12px;color:var(--text2)">${t.descripcion||'—'}</td>
+          <td style="font-size:11px;color:var(--text3)">${t.responsable||'—'}</td>
+        </tr>`)}</tbody>
+      </table></div>`;
+  const filaRevisar = pendRevisar.length ? html`
+    <div class="consulta-label">🔎 a revisar${` (${pendRevisar.length})`} <span style="font-weight:400;text-transform:none;letter-spacing:0">— fallas reportadas en la tarja, sin confirmar por el taller</span></div>
+    ${tablaPend(pendRevisar)}` : '';
+  const filaPend = pendTaller.length
     ? html`<div class="table-wrap"><table class="eq-inner-table">
         <thead><tr><th>Fecha</th><th>Descripción</th><th>Responsable</th></tr></thead>
-        <tbody>${pendAbiertos.map(t=>html`<tr>
+        <tbody>${pendTaller.map(t=>html`<tr>
           <td class="mono" style="font-size:10.5px;color:var(--text3);white-space:nowrap">${formatFechaCorta(t.fecha)}</td>
           <td style="font-size:12px;color:var(--text2)">${t.descripcion||'—'}</td>
           <td style="font-size:11px;color:var(--text3)">${t.responsable||'—'}</td>
@@ -1219,7 +1244,8 @@ function _consultaChecklistHTML(codigo, info, pendAbiertos, op, vtv, recurrencia
     <div class="mono" style="font-size:11px;color:var(--text3);margin-bottom:14px">${codigo}</div>
     <div id="consultaRecurrenteWrap">${recurrencias==null?'':_consultaRecurrenteHTML(recurrencias)}</div>
     <div id="consultaTodoOkWrap">${_consultaTodoOkHTML(pendAbiertos, op, vtv, recurrencias)}</div>
-    <div class="consulta-label">⚠ trabajos pendientes${pendAbiertos.length?` (${pendAbiertos.length})`:''}</div>
+    ${filaRevisar}
+    <div class="consulta-label">⚠ trabajos pendientes${pendTaller.length?` (${pendTaller.length})`:''}</div>
     ${filaPend}
     <div class="consulta-label">🔧 service</div>
     <div style="border-left:3px solid ${op.color};background:var(--bg3);padding:10px 14px;font-size:13px;color:${op.color};font-weight:500">${svcTxt}</div>

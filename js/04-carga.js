@@ -410,7 +410,10 @@ async function loadAll(opts){
         const codigo=String(r['CODIGO']||'').trim();
         const estadoRaw=String(r['ESTADO']||'').trim();
         const fechaRes=String(r['FECHA_RESOLUCION']||'').trim();
-        const resuelto=fechaRes!=='' || /resuel/i.test(estadoRaw);
+        const resuelto=fechaRes!=='' || /resuel|realiz/i.test(estadoRaw);
+        // "A revisar": falla que llegó desde la tarja (checklist del operario) y
+        // el taller todavía no confirmó como trabajo real.
+        const aRevisar=!resuelto && /revisar/i.test(estadoRaw);
         return {
           codigo, codN:normCod(codigo),
           equipo:String(r['EQUIPO']||'').trim(),
@@ -420,7 +423,7 @@ async function loadAll(opts){
           estado:estadoRaw||(resuelto?'Resuelto':'Pendiente'),
           fechaResolucion:fechaRes,
           descripcionResolucion:String(r['DESCRIPCION_RESOLUCION']||'').trim(),
-          resuelto,
+          resuelto, aRevisar,
         };
       }).filter(t=>t.codN);
       lista.sort((a,b)=>(_parseDate(a.fecha)?.getTime()||0)-(_parseDate(b.fecha)?.getTime()||0));
