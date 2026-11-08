@@ -159,7 +159,7 @@ function doGet(e) {
         try { resumen = alertasResumenSemanal(); }
         catch (re) { resumen = 'EXCEPCION: ' + (re && re.message || re); }
       }
-      // ?ep=alertas&key=…&instalar=1 → instala/reinstala el trigger de los lunes 8am.
+      // ?ep=alertas&key=…&instalar=1 → instala/reinstala el trigger del mail diario (lun-vie 9 hs).
       var trigger = null;
       if (String(params.instalar || '') === '1') {
         try { trigger = alertasInstalarTriggerResumen(); }

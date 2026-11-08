@@ -149,7 +149,8 @@ function construirSnapshot(){
   // Properties, NO al snapshot público; lo sirve la webapp con PIN).
   try{ _auditar_(); }catch(e){ Logger.log('[auditoría] falló: ' + (e && e.message || e)); }
 
-  // Alertas de service por email (alertas.js). Nunca debe tumbar el snapshot.
+  // Alertas de service/VTV (alertas-service-email.gs): encola para el mail diario
+  // de las 9 (lun-vie) y avisa por la App. Nunca debe tumbar el snapshot.
   try{ alertasService_(snap); }catch(e){ Logger.log('[alertas] falló: ' + (e && e.message || e)); }
 
   const dt = ((Date.now() - t0) / 1000).toFixed(1);
