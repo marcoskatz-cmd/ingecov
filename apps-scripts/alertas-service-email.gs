@@ -17,13 +17,14 @@
  * MAIL: la corrida de 30 min NO manda mails (nov-2026). Lo que detecta
  * (service nuevos en zona + VTV por vencer/vencidas) se acumula en la Script
  * Property ALERTAS_PENDIENTES y sale en UN solo mail por día, de lunes a
- * viernes a las 9, desde alertasDigestDiario(). Los lunes ese mismo mail
- * trae además la foto completa (vencidos · en zona · próximos) que antes
- * iba en un mail aparte. Si no hay novedades (y no es lunes) no sale nada.
- * Los avisos por la App INGECO (push) siguen saliendo al momento.
+ * viernes a las 9, desde alertasDigestDiario(). Ese mail va SIEMPRE y trae
+ * dos partes: lo que entró desde el mail anterior y todo lo pendiente hoy
+ * (service vencidos · en zona · VTV vencidas o por vencer). Los lunes suma
+ * los próximos service fuera de zona. Los avisos por la App INGECO (push)
+ * siguen saliendo al momento.
  *
  * Funciones útiles a mano desde el editor:
- *   alertasDigestDiario()         → manda el mail del día ahora (si hay algo).
+ *   alertasDigestDiario(true)     → manda el mail del día ahora (también fin de semana).
  *   alertasInstalarTriggerDigest()→ instala el trigger lun-vie 9am (y borra el
  *                                   viejo de los lunes).
  *   alertasServiceProbar()        → manda el mail con TODO lo que hay en zona
@@ -141,10 +142,14 @@ function _alertaEncolarVtv_(items){
 }
 
 /**
- * Mail diario (trigger lun-vie 9am). Un solo mail con todo lo acumulado desde
- * el mail anterior: service que entró en zona + VTV por vencer/vencidas.
- * Los lunes suma la foto completa (antes era un mail aparte). Si no hay nada
- * nuevo y no es lunes, no manda nada.
+ * Mail diario (trigger lun-vie 9am). Va SIEMPRE, de lunes a viernes, con dos
+ * partes (pedido de Marcos, nov-2026):
+ *   1. Lo que entró desde el mail anterior: equipos que entraron en zona de
+ *      service + VTV que cruzaron 15 días / 3 días / vencida.
+ *   2. Todo lo pendiente hoy: service vencidos, service en zona de aviso y
+ *      VTV vencidas o por vencer (≤ 15 días). Lo nuevo va marcado "NUEVO".
+ * Los lunes suma además los próximos service todavía fuera de zona.
+ * forzar: true → manda aunque sea fin de semana.
  */
 function alertasDigestDiario(forzar){
   var dow = new Date().getDay();                 // 0 dom … 6 sáb
@@ -152,43 +157,49 @@ function alertasDigestDiario(forzar){
   var p = _alertaPendLeer_();
   var svc = Object.keys(p.svc).map(function(k){ return p.svc[k]; });
   var vtv = Object.keys(p.vtv).map(function(k){ return p.vtv[k]; });
-  var lunes = dow === 1;
+  var lunes = dow === 1 || forzar === 'resumen';
 
-  var resumen = null;
-  if(lunes || forzar === 'resumen'){
-    var filas = _alertaLeerPanel_(null);
-    filas.forEach(function(f){ f.ratio = f.rest / (f.umbral || 1); });
-    filas.sort(function(a,b){ return a.ratio - b.ratio; });
-    resumen = {
-      vencidos: filas.filter(function(f){ return f.rest < 0; }),
-      enZona:   filas.filter(function(f){ return f.rest >= 0 && f.enZona; }),
-      proximos: filas.filter(function(f){ return !f.enZona; }).slice(0, ALERTA_RESUMEN_PROXIMOS)
-    };
-  }
-  if(!svc.length && !vtv.length && !resumen){ Logger.log('[alertas] sin novedades, sin mail.'); return 'sin novedades'; }
+  // Foto completa de lo pendiente, leída en el momento.
+  var filas = _alertaLeerPanel_(null);
+  filas.forEach(function(f){ f.ratio = f.rest / (f.umbral || 1); });
+  filas.sort(function(a,b){ return a.ratio - b.ratio; });
+  var nuevosCod = {}; svc.forEach(function(f){ nuevosCod[f.cod] = true; });
+  filas.forEach(function(f){ f.nuevo = !!nuevosCod[f.cod]; });
+  var pend = {
+    vencidos: filas.filter(function(f){ return f.rest < 0; }),
+    enZona:   filas.filter(function(f){ return f.rest >= 0 && f.enZona; }),
+    proximos: lunes ? filas.filter(function(f){ return !f.enZona; }).slice(0, ALERTA_RESUMEN_PROXIMOS) : null,
+    vtv:      _alertaLeerVtv_(null)
+  };
+  var vtvNuevas = {}; vtv.forEach(function(v){ vtvNuevas[v.cod + '|' + v.fecha] = true; });
+  pend.vtv.forEach(function(v){ v.nuevo = !!vtvNuevas[v.cod + '|' + v.fecha]; });
 
-  // Service: ordenar por proximidad; VTV: por fecha de vencimiento.
+  // Novedades: ordenar por proximidad; VTV por fecha de vencimiento.
   svc.forEach(function(f){ f.ratio = f.rest / (f.umbral || 1); });
   svc.sort(function(a,b){ return a.ratio - b.ratio; });
   vtv.sort(function(a,b){ return a.dias - b.dias; });
 
-  var vtvVenc = vtv.filter(function(v){ return v.dias < 0; }).length;
   var partes = [];
-  if(svc.length) partes.push(svc.length + ' service');
-  if(vtv.length) partes.push(vtv.length + ' VTV' + (vtvVenc ? ' (' + vtvVenc + ' vencida' + (vtvVenc===1?'':'s') + ')' : ''));
-  if(!partes.length && resumen) partes.push(resumen.vencidos.length + ' vencido(s), ' + resumen.enZona.length + ' por vencer');
-  var subject = '[INGECO] Flota del día — ' + partes.join(' · ');
+  var nNuevos = svc.length + vtv.length;
+  partes.push(nNuevos ? nNuevos + ' nuevo' + (nNuevos===1?'':'s') : 'sin novedades');
+  if(pend.vencidos.length) partes.push(pend.vencidos.length + ' vencido' + (pend.vencidos.length===1?'':'s'));
+  if(pend.enZona.length)   partes.push(pend.enZona.length + ' por vencer');
+  if(pend.vtv.length)      partes.push(pend.vtv.length + ' VTV');
+  if(!pend.vencidos.length && !pend.enZona.length && !pend.vtv.length) partes.push('nada pendiente');
+  var subject = '[INGECO] Service del día — ' + partes.join(' · ');
 
   MailApp.sendEmail({
     to: ALERTA_DEST.join(','),
     subject: subject,
-    body: _alertaDigestTexto_(svc, vtv, resumen, p.primera),
-    htmlBody: _alertaDigestHtml_(svc, vtv, resumen, p.primera),
+    body: _alertaDigestTexto_(svc, vtv, pend, p.primera),
+    htmlBody: _alertaDigestHtml_(svc, vtv, pend, p.primera),
     name: 'Panel INGECO'
   });
   _alertaPendGuardar_({ svc:{}, vtv:{}, primera:false });
-  Logger.log('[alertas] mail diario enviado — %s service, %s VTV%s', svc.length, vtv.length, resumen ? ' + resumen' : '');
-  return svc.length + ' service · ' + vtv.length + ' VTV' + (resumen ? ' · con resumen' : '');
+  var res = svc.length + ' service nuevos · ' + vtv.length + ' VTV nuevas · pendientes: ' +
+    pend.vencidos.length + ' vencidos, ' + pend.enZona.length + ' en zona, ' + pend.vtv.length + ' VTV';
+  Logger.log('[alertas] mail diario enviado — ' + res);
+  return res;
 }
 
 function _alertaVtvTxt_(v){
@@ -197,73 +208,85 @@ function _alertaVtvTxt_(v){
        : ('vence en ' + v.dias + ' día' + (v.dias===1?'':'s') + ' (' + v.fecha + ')');
 }
 
-function _alertaDigestHtml_(svc, vtv, resumen, primera){
-  function vtvTabla(arr){
-    return '<table style="border-collapse:collapse;width:100%;font-size:13px;border:1px solid #dcdcdc">' +
-      '<thead><tr style="background:#fafafa">' +
-      ['Código','Vehículo','Patente','Vencimiento'].map(function(t,i){
-        return '<th style="padding:8px 12px;text-align:' + (i===3?'right':'left') +
-          ';font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.06em">' + t + '</th>';
-      }).join('') + '</tr></thead><tbody>' +
-      arr.map(function(v){
-        var color = v.dias <= 3 ? '#b3261e' : '#0f766e';
-        return '<tr style="border-bottom:1px solid #e6e6e6">' +
-          '<td style="padding:9px 12px;font-family:monospace;font-weight:600">' + _alertaEsc_(v.cod) + '</td>' +
-          '<td style="padding:9px 12px">' + _alertaEsc_(v.nom || '—') + '</td>' +
-          '<td style="padding:9px 12px;font-family:monospace;font-size:12px;color:#666">' + _alertaEsc_(v.pat || '—') + '</td>' +
-          '<td style="padding:9px 12px;font-family:monospace;font-size:12px;font-weight:700;text-align:right;color:' + color + '">' +
-            _alertaEsc_(_alertaVtvTxt_(v)) + '</td></tr>';
-      }).join('') + '</tbody></table>';
+// Colores pensando en daltonismo rojo-verde: ámbar (urgente) / teal (aviso) / gris.
+var ALERTA_COL = { urgente:'#b45309', aviso:'#0f766e', gris:'#6b6b6b' };
+var ALERTA_BADGE_NUEVO = '<span style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:3px;background:#1d4ed8;color:#fff;font-family:Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:.04em;vertical-align:middle">NUEVO</span>';
+
+function _alertaVtvTablaHtml_(arr){
+  return '<table style="border-collapse:collapse;width:100%;font-size:13px;border:1px solid #dcdcdc">' +
+    '<thead><tr style="background:#fafafa">' +
+    ['Código','Vehículo','Patente','Vencimiento'].map(function(t,i){
+      return '<th style="padding:8px 12px;text-align:' + (i===3?'right':'left') +
+        ';font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.06em">' + t + '</th>';
+    }).join('') + '</tr></thead><tbody>' +
+    arr.map(function(v){
+      var color = v.dias <= 3 ? ALERTA_COL.urgente : ALERTA_COL.aviso;
+      return '<tr style="border-bottom:1px solid #e6e6e6">' +
+        '<td style="padding:9px 12px;font-family:monospace;font-weight:600">' + _alertaEsc_(v.cod) + (v.nuevo ? ALERTA_BADGE_NUEVO : '') + '</td>' +
+        '<td style="padding:9px 12px">' + _alertaEsc_(v.nom || '—') + '</td>' +
+        '<td style="padding:9px 12px;font-family:monospace;font-size:12px;color:#666">' + _alertaEsc_(v.pat || '—') + '</td>' +
+        '<td style="padding:9px 12px;font-family:monospace;font-size:12px;font-weight:700;text-align:right;color:' + color + '">' +
+          _alertaEsc_(_alertaVtvTxt_(v)) + '</td></tr>';
+    }).join('') + '</tbody></table>';
+}
+
+function _alertaDigestHtml_(svc, vtv, pend, primera){
+  function h3(titulo, n, color, mt){
+    return '<h3 style="font-size:14px;color:' + color + ';margin:' + (mt||22) + 'px 0 8px">' + titulo + ' (' + n + ')</h3>';
   }
-  function bloque(titulo, arr, color, vacio){
-    if(!arr.length) return '<h3 style="font-size:14px;color:' + color + ';margin:22px 0 8px">' + titulo +
-      ' (0)</h3><p style="margin:0;font-size:13px;color:#8a8a8a">' + vacio + '</p>';
-    return '<h3 style="font-size:14px;color:' + color + ';margin:22px 0 8px">' + titulo + ' (' + arr.length + ')</h3>' +
-      _alertaResumenTablaHtml_(arr, color);
+  function vacio(t){ return '<p style="margin:0;font-size:13px;color:#8a8a8a">' + t + '</p>'; }
+  function bloque(titulo, arr, color, txtVacio){
+    return h3(titulo, arr.length, color) + (arr.length ? _alertaResumenTablaHtml_(arr, color) : vacio(txtVacio));
   }
   var html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:820px;margin:0 auto;padding:20px;color:#0f1318">' +
-    (primera ? '<div style="background:#e6f4f1;border-left:4px solid #0f766e;padding:10px 14px;margin-bottom:18px;font-size:13px">Primera corrida del sistema de alertas: va la foto completa de lo que hoy está en zona de aviso. De acá en más solo se avisa cuando un equipo <b>entra</b> a la zona.</div>' : '') +
-    '<h2 style="margin:0 0 6px;font-size:18px">🔧 Flota INGECO — novedades del día</h2>' +
-    '<p style="margin:0 0 18px;color:#666;font-size:13px">Un solo mail por día, de lunes a viernes. Zona de aviso de service: ' +
-      ALERTA_UMBRAL.hs + ' hs · ' + ALERTA_UMBRAL.km + ' km · ' + ALERTA_UMBRAL.dias + ' días. VTV: aviso a 15 días, 3 días y al vencer.</p>';
-  if(svc.length) html += '<h3 style="font-size:14px;color:#0f766e;margin:20px 0 8px">Service — entraron en zona de aviso (' + svc.length + ')</h3>' + _alertaResumenTablaHtml_(svc, '#0f766e');
-  if(vtv.length) html += '<h3 style="font-size:14px;color:#0f766e;margin:24px 0 8px">VTV — por vencer / vencidas (' + vtv.length + ')</h3>' + vtvTabla(vtv);
-  if(!svc.length && !vtv.length) html += '<p style="margin:0;font-size:13px;color:#8a8a8a">Sin novedades de service ni VTV desde el último mail.</p>';
-  if(resumen){
-    html += '<hr style="border:none;border-top:1px solid #eee;margin:26px 0">' +
-      '<h2 style="margin:0 0 6px;font-size:16px">Foto completa de la semana</h2>' +
-      bloque('⚠ Vencidos — hacer ya', resumen.vencidos, '#b3261e', 'Ninguno vencido. 👌') +
-      bloque('Por vencer — en zona de aviso', resumen.enZona, '#0f766e', 'Ninguno en zona de aviso.') +
-      bloque('Próximos — todavía fuera de zona', resumen.proximos, '#6b6b6b', 'Sin próximos para listar.');
-  }
+    (primera ? '<div style="background:#e6f4f1;border-left:4px solid #0f766e;padding:10px 14px;margin-bottom:18px;font-size:13px">Primera corrida del sistema de alertas: todo lo que hoy está en zona figura como nuevo.</div>' : '') +
+    '<h2 style="margin:0 0 6px;font-size:18px">🔧 Service de la flota INGECO — mail del día</h2>' +
+    '<p style="margin:0 0 18px;color:#666;font-size:13px">Arriba, lo que entró desde el mail anterior; abajo, todo lo que está pendiente hoy. Zona de aviso de service: ' +
+      ALERTA_UMBRAL.hs + ' hs · ' + ALERTA_UMBRAL.km + ' km · ' + ALERTA_UMBRAL.dias + ' días. VTV: desde 15 días antes del vencimiento.</p>';
+
+  // 1. Lo que entró
+  html += '<h2 style="margin:8px 0 4px;font-size:16px;border-bottom:2px solid #1d4ed8;padding-bottom:4px">1 · Lo que entró desde el último mail</h2>';
+  if(svc.length) html += h3('Service — entraron en zona de aviso', svc.length, ALERTA_COL.aviso, 14) + _alertaResumenTablaHtml_(svc, ALERTA_COL.aviso);
+  if(vtv.length) html += h3('VTV — cruzaron un aviso', vtv.length, ALERTA_COL.aviso) + _alertaVtvTablaHtml_(vtv);
+  if(!svc.length && !vtv.length) html += '<p style="margin:12px 0 0;font-size:13px;color:#8a8a8a">Nada nuevo desde el último mail.</p>';
+
+  // 2. Todo lo pendiente
+  html += '<h2 style="margin:30px 0 4px;font-size:16px;border-bottom:2px solid #0f1318;padding-bottom:4px">2 · Todo lo pendiente hoy</h2>' +
+    bloque('⚠ Service vencido — hacer ya', pend.vencidos, ALERTA_COL.urgente, 'Ningún service vencido. 👌') +
+    bloque('Service por vencer — en zona de aviso', pend.enZona, ALERTA_COL.aviso, 'Ningún equipo en zona de aviso.') +
+    h3('VTV vencidas o por vencer', pend.vtv.length, ALERTA_COL.aviso) +
+      (pend.vtv.length ? _alertaVtvTablaHtml_(pend.vtv) : vacio('Ninguna VTV vencida ni por vencer en 15 días.'));
+  if(pend.proximos) html += bloque('Próximos service — todavía fuera de zona (solo lunes)', pend.proximos, ALERTA_COL.gris, 'Sin próximos para listar.');
+
   html += '<p style="margin:24px 0 0;font-size:12px"><a href="' + ALERTA_PANEL_URL + '" style="color:#0f766e">Abrir el panel completo →</a></p>' +
     '<hr style="border:none;border-top:1px solid #eee;margin:20px 0">' +
-    '<p style="margin:0;font-size:11px;color:#aaa">Mail diario automático del Panel INGECO (lunes a viernes, ' + ALERTA_DIGEST_HORA + ' hs). Si no hay novedades no se manda, salvo los lunes que va siempre con la foto completa.</p>' +
+    '<p style="margin:0;font-size:11px;color:#aaa">Mail diario automático del Panel INGECO, lunes a viernes a las ' + ALERTA_DIGEST_HORA + ' hs. Sale todos los días aunque no haya novedades, para que el pendiente siempre esté a la vista.</p>' +
     '</div>';
   return html;
 }
 
-function _alertaDigestTexto_(svc, vtv, resumen, primera){
+function _alertaDigestTexto_(svc, vtv, pend, primera){
   function linea(f){
-    return '  - ' + f.cod + '  ' + (f.desc || '—') +
+    return '  - ' + f.cod + (f.nuevo ? ' [NUEVO]' : '') + '  ' + (f.desc || '—') +
       '\n      actual ' + (f.actual||'?') + '  ·  próximo ' + (f.prox||'?') + '  ·  ' + _alertaRestTxt_(f);
   }
-  function bloque(t, arr, vacio){
-    return t + ' (' + arr.length + '):\n' + (arr.length ? arr.map(linea).join('\n') : '  ' + vacio) + '\n\n';
+  function lineaVtv(v){
+    return '  - ' + v.cod + (v.nuevo ? ' [NUEVO]' : '') + '  ' + (v.nom || '—') + (v.pat ? '  ' + v.pat : '') + '  ·  ' + _alertaVtvTxt_(v);
   }
-  var out = 'INGECO · flota, novedades del día.\n\n';
-  if(primera) out += '(Primera corrida: va la foto completa de lo que hoy está en zona.)\n\n';
-  if(svc.length) out += 'SERVICE — ENTRARON EN ZONA (' + svc.length + '):\n' + svc.map(linea).join('\n') + '\n\n';
-  if(vtv.length) out += 'VTV (' + vtv.length + '):\n' + vtv.map(function(v){
-    return '  - ' + v.cod + '  ' + (v.nom || '—') + (v.pat ? '  ' + v.pat : '') + '  ·  ' + _alertaVtvTxt_(v);
-  }).join('\n') + '\n\n';
-  if(!svc.length && !vtv.length) out += 'Sin novedades de service ni VTV.\n\n';
-  if(resumen){
-    out += '--- FOTO COMPLETA DE LA SEMANA ---\n\n' +
-      bloque('VENCIDOS — HACER YA', resumen.vencidos, 'ninguno.') +
-      bloque('POR VENCER — EN ZONA DE AVISO', resumen.enZona, 'ninguno.') +
-      bloque('PRÓXIMOS — TODAVÍA FUERA DE ZONA', resumen.proximos, 'ninguno.');
+  function bloque(t, arr, fn, vacio){
+    return t + ' (' + arr.length + '):\n' + (arr.length ? arr.map(fn).join('\n') : '  ' + vacio) + '\n\n';
   }
+  var out = 'INGECO · service de la flota, mail del día.\n\n';
+  if(primera) out += '(Primera corrida: todo lo que hoy está en zona figura como nuevo.)\n\n';
+  out += '=== 1 · LO QUE ENTRÓ DESDE EL ÚLTIMO MAIL ===\n\n';
+  if(svc.length) out += bloque('SERVICE — ENTRARON EN ZONA', svc, linea, '');
+  if(vtv.length) out += bloque('VTV — CRUZARON UN AVISO', vtv, lineaVtv, '');
+  if(!svc.length && !vtv.length) out += 'Nada nuevo desde el último mail.\n\n';
+  out += '=== 2 · TODO LO PENDIENTE HOY ===\n\n' +
+    bloque('SERVICE VENCIDO — HACER YA', pend.vencidos, linea, 'ninguno.') +
+    bloque('SERVICE POR VENCER — EN ZONA DE AVISO', pend.enZona, linea, 'ninguno.') +
+    bloque('VTV VENCIDAS O POR VENCER', pend.vtv, lineaVtv, 'ninguna.');
+  if(pend.proximos) out += bloque('PRÓXIMOS SERVICE — TODAVÍA FUERA DE ZONA', pend.proximos, linea, 'ninguno.');
   out += 'Panel: ' + ALERTA_PANEL_URL + '\n';
   return out;
 }
@@ -301,17 +324,20 @@ function _alertaApp_(nuevos){
   });
 }
 
-/** VTV: aviso a 15 días, a 3 días (crítico) y al vencer (crítico), una sola vez por vencimiento. */
-function _alertasVtvApp_(snap){
+/**
+ * VTV vencidas o que vencen en ≤ 15 días, leídas de la pestaña VTV del snapshot.
+ * bucket: '15' | '3' | 'vencida'. Ordenadas por días restantes.
+ */
+function _alertaLeerVtv_(snap){
   var ss = snap || _getOrCreateSnapshotSS_();
-  var sh = ss.getSheetByName('VTV'); if(!sh) return;
-  var v = sh.getDataRange().getValues(); if(v.length < 2) return;
+  var sh = ss.getSheetByName('VTV'); if(!sh) return [];
+  var v = sh.getDataRange().getValues(); if(v.length < 2) return [];
   var h = v[0].map(function(x){ return String(x).trim().toUpperCase(); });
   var iE = h.indexOf('EQUIPO'), iC = h.indexOf('CÓDIGO') >= 0 ? h.indexOf('CÓDIGO') : h.indexOf('CODIGO'), iP = h.indexOf('PATENTE');
   var iV = h.indexOf('VENCIMIENTO VTV') >= 0 ? h.indexOf('VENCIMIENTO VTV') : h.indexOf('VENCIMIENTO');
-  if(iV < 0 || iC < 0) return;
+  if(iV < 0 || iC < 0) return [];
   var tz = Session.getScriptTimeZone(), hoy = new Date(); hoy.setHours(0,0,0,0);
-  var paraMail = [];
+  var out = [];
   for(var i=1;i<v.length;i++){
     var r = v[i], venc = r[iV];
     if(!(venc instanceof Date)) continue;
@@ -319,19 +345,30 @@ function _alertasVtvApp_(snap){
     var dias = Math.round((d - hoy) / 86400000);
     var bucket = dias < 0 ? 'vencida' : dias <= 3 ? '3' : dias <= 15 ? '15' : null;
     if(!bucket) continue;
-    var cod = String(r[iC] || '').trim(), nom = String(iE >= 0 ? r[iE] : '').trim(), pat = String(iP >= 0 ? r[iP] : '').trim();
-    var fecha = Utilities.formatDate(d, tz, 'dd/MM/yyyy');
-    var titulo = bucket === 'vencida' ? 'VTV vencida: ' + cod : 'VTV vence en ' + dias + ' día' + (dias === 1 ? '' : 's') + ': ' + cod;
-    var cuerpo = (nom ? nom + ' · ' : '') + (pat ? pat + ' · ' : '') + (bucket === 'vencida' ? 'Venció el ' + fecha : 'Vence el ' + fecha);
-    var clave = 'vtv-' + cod + '-' + Utilities.formatDate(d, tz, 'yyyyMMdd') + '-' + bucket;
-    paraMail.push({ clave: clave, cod: cod, nom: nom, pat: pat, fecha: fecha, dias: dias, bucket: bucket });
-    notificarAppIngeco_('INGECOV', {
-      destinatarios: [{ area: 'ADMINISTRACION' }, { admin: true }], tipo: 'vencimiento_doc', prioridad: bucket === '15' ? 'normal' : 'critica',
-      titulo: titulo, cuerpo: cuerpo, url_destino: ALERTA_PANEL_URL,
-      clave_unica: clave, dias_unica: 120
+    var cod = String(r[iC] || '').trim();
+    out.push({
+      clave: 'vtv-' + cod + '-' + Utilities.formatDate(d, tz, 'yyyyMMdd') + '-' + bucket,
+      cod: cod, nom: String(iE >= 0 ? r[iE] : '').trim(), pat: String(iP >= 0 ? r[iP] : '').trim(),
+      fecha: Utilities.formatDate(d, tz, 'dd/MM/yyyy'), dias: dias, bucket: bucket
     });
   }
-  _alertaEncolarVtv_(paraMail);
+  out.sort(function(a,b){ return a.dias - b.dias; });
+  return out;
+}
+
+/** VTV: aviso a 15 días, a 3 días (crítico) y al vencer (crítico), una sola vez por vencimiento. */
+function _alertasVtvApp_(snap){
+  var items = _alertaLeerVtv_(snap);
+  items.forEach(function(it){
+    var titulo = it.bucket === 'vencida' ? 'VTV vencida: ' + it.cod : 'VTV vence en ' + it.dias + ' día' + (it.dias === 1 ? '' : 's') + ': ' + it.cod;
+    var cuerpo = (it.nom ? it.nom + ' · ' : '') + (it.pat ? it.pat + ' · ' : '') + (it.bucket === 'vencida' ? 'Venció el ' + it.fecha : 'Vence el ' + it.fecha);
+    notificarAppIngeco_('INGECOV', {
+      destinatarios: [{ area: 'ADMINISTRACION' }, { admin: true }], tipo: 'vencimiento_doc', prioridad: it.bucket === '15' ? 'normal' : 'critica',
+      titulo: titulo, cuerpo: cuerpo, url_destino: ALERTA_PANEL_URL,
+      clave_unica: it.clave, dias_unica: 120
+    });
+  });
+  _alertaEncolarVtv_(items);
 }
 
 function alertasServiceProbar(){
@@ -451,7 +488,7 @@ function _alertaRestTxt_(f){
 
 function _alertaHtml_(nuevos, siguen, modo){
   function fila(f, destacar){
-    var color = f.rest < 0 ? '#b3261e' : destacar ? '#0f766e' : '#6b6b6b';
+    var color = f.rest < 0 ? '#b45309' : destacar ? '#0f766e' : '#6b6b6b';
     return '<tr style="border-bottom:1px solid #e6e6e6">' +
       '<td style="padding:9px 12px;font-family:monospace;font-weight:600">' + _alertaEsc_(f.cod) + '</td>' +
       '<td style="padding:9px 12px">' + _alertaEsc_(f.desc || '—') +
@@ -513,9 +550,10 @@ function _alertaTexto_(nuevos, siguen, modo){
    nada cambie: si a un equipo no le hacen el service, sigue en zona y no
    vuelve a avisar nunca. El silencio pasa a leerse como "todo bien".
    La foto completa — VENCIDOS · EN ZONA · PRÓXIMOS — corrige eso.
-   Desde nov-2026 YA NO tiene trigger propio: va adentro del mail diario
-   de los lunes (alertasDigestDiario). alertasResumenSemanal() queda solo
-   para mandarla a mano (editor o ?ep=alertas&resumen=1).
+   Desde nov-2026 YA NO tiene trigger propio: lo pendiente va todos los
+   días en el mail diario (alertasDigestDiario) y los próximos, los lunes.
+   alertasResumenSemanal() queda solo para mandarla a mano (editor o
+   ?ep=alertas&resumen=1).
 
    Funciones a mano:
      alertasResumenSemanal()          → arma y manda el resumen ahora (mail aparte).
@@ -563,7 +601,7 @@ function alertasResumenSemanal(){
 function _alertaResumenTablaHtml_(arr, color){
   function fila(f){
     return '<tr style="border-bottom:1px solid #e6e6e6">' +
-      '<td style="padding:9px 12px;font-family:monospace;font-weight:600">' + _alertaEsc_(f.cod) + '</td>' +
+      '<td style="padding:9px 12px;font-family:monospace;font-weight:600">' + _alertaEsc_(f.cod) + (f.nuevo ? ALERTA_BADGE_NUEVO : '') + '</td>' +
       '<td style="padding:9px 12px">' + _alertaEsc_(f.desc || '—') +
         (f.pat ? '<br><span style="font-size:11px;color:#999;font-family:monospace">' + _alertaEsc_(f.pat) + '</span>' : '') + '</td>' +
       '<td style="padding:9px 12px;font-family:monospace;font-size:13px;color:#444">' + _alertaEsc_(f.actual || '—') + '</td>' +
@@ -590,7 +628,7 @@ function _alertaResumenHtml_(vencidos, enZona, proximos){
     '<h2 style="margin:0 0 6px;font-size:18px">🔧 Service de la semana — flota INGECO</h2>' +
     '<p style="margin:0 0 18px;color:#666;font-size:13px">Foto completa de los lunes. Zona de aviso: ' +
       ALERTA_UMBRAL.hs + ' hs · ' + ALERTA_UMBRAL.km + ' km · ' + ALERTA_UMBRAL.dias + ' días.</p>' +
-    bloque('⚠ Vencidos — hacer ya', vencidos, '#b3261e', 'Ninguno vencido. 👌') +
+    bloque('⚠ Vencidos — hacer ya', vencidos, '#b45309', 'Ninguno vencido. 👌') +
     bloque('Por vencer — en zona de aviso', enZona, '#0f766e', 'Ninguno en zona de aviso.') +
     bloque('Próximos — todavía fuera de zona', proximos, '#6b6b6b', 'Sin próximos para listar.') +
     '<p style="margin:24px 0 0;font-size:12px"><a href="' + ALERTA_PANEL_URL + '" style="color:#0f766e">Abrir el panel completo →</a></p>' +
